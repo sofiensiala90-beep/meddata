@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MedataAI</title>
+  
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Tailwind Config & Custom Styles -->
+  <style type="text/tailwindcss">
+    @layer base {
+      :root {
+        /* Define primary color palette for light mode */
+        --color-primary-50: 239 246 255;
+        --color-primary-100: 224 231 255;
+        --color-primary-200: 199 210 254;
+        --color-primary-300: 165 180 252;
+        --color-primary-400: 129 140 248;
+        --color-primary-500: 99 102 241;
+        --color-primary-600: 79 70 229;
+        --color-primary-700: 67 56 202;
+        --color-primary-800: 55 48 163;
+        --color-primary-900: 49 46 129;
+      }
+    }
+    @layer components {
+      .prose {
+        color: theme('colors.slate.700');
+      }
+      .dark .prose {
+        color: theme('colors.slate.300');
+      }
+      .prose h1, .prose h2, .prose h3, .prose h4 {
+        color: theme('colors.slate.900');
+      }
+      .dark .prose h1, .dark .prose h2, .dark .prose h3, .dark .prose h4 {
+        color: theme('colors.white');
+      }
+      .prose strong {
+         color: theme('colors.slate.900');
+      }
+      .dark .prose strong {
+         color: theme('colors.white');
+      }
+       .prose blockquote {
+        border-left-color: theme('colors.primary.500');
+        color: theme('colors.slate.600');
+      }
+      .dark .prose blockquote {
+         border-left-color: theme('colors.primary.400');
+         color: theme('colors.slate.400');
+      }
+      @keyframes blink {
+        50% { opacity: 0; }
+      }
+      .blinking-cursor {
+        display: inline-block;
+        width: 8px;
+        height: 1rem;
+        background-color: theme('colors.slate.700');
+        animation: blink 1s step-start infinite;
+      }
+      .dark .blinking-cursor {
+        background-color: theme('colors.slate.300');
+      }
+    }
+  </style>
+
+  <script>
+    // Tailwind Custom Configuration
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: 'rgb(var(--color-primary-50) / <alpha-value>)',
+              100: 'rgb(var(--color-primary-100) / <alpha-value>)',
+              200: 'rgb(var(--color-primary-200) / <alpha-value>)',
+              300: 'rgb(var(--color-primary-300) / <alpha-value>)',
+              400: 'rgb(var(--color-primary-400) / <alpha-value>)',
+              500: 'rgb(var(--color-primary-500) / <alpha-value>)',
+              600: 'rgb(var(--color-primary-600) / <alpha-value>)',
+              700: 'rgb(var(--color-primary-700) / <alpha-value>)',
+              800: 'rgb(var(--color-primary-800) / <alpha-value>)',
+              900: 'rgb(var(--color-primary-900) / <alpha-value>)',
+            },
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Import Map for ES Modules -->
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://aistudiocdn.com/react@^19.2.0",
+      "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+      "react/": "https://aistudiocdn.com/react@^19.2.0/",
+      "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+      "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0"
+    }
+  }
+  </script>
+
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-slate-100 dark:bg-slate-900">
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

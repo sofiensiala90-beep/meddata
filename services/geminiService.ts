@@ -3,9 +3,10 @@ import { ChatMessage, Form, FormResponse, User, ChatbotResponse } from '../types
 
 export const getChatbotResponseStream = async (userRole: User['role'], history: ChatMessage[]) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    console.log("GEMINI_API_KEY:", process.env.GEMINI_API_KEY);
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-2.0-flash';
 
     const contents = history;
 
@@ -138,7 +139,8 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
 
 
 export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    console.log("GEMINI_API_KEY:", process.env.GEMINI_API_KEY);
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     
     const formsData = forms.map(form => ({
         id: form.id,
@@ -169,7 +171,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
     `;
 
     try {
-        const model = 'gemini-2.5-pro';
+        const model = 'gemini-2.0-flash';
         
         const response = await ai.models.generateContent({
             model,

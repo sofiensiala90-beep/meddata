@@ -4,25 +4,27 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import Spinner from '../components/Spinner';
 import ChartRenderer from '../components/ChartRenderer';
-import { getAnalysis } from '../services/geminiService';
+import { getAnalysis, performSampledAnalysis } from '../services/geminiService';
 import DownloadIcon from '../components/icons/DownloadIcon';
 import BarChartIcon from '../components/icons/BarChartIcon';
 import PieChartIcon from '../components/icons/PieChartIcon';
 import DoughnutChartIcon from '../components/icons/DoughnutChartIcon';
 import HistoryIcon from '../components/icons/HistoryIcon';
 import ConfirmationModal, { ConfirmationModalProps } from '../components/ConfirmationModal';
+import { COIN_COSTS } from '../constants';
 
 
 interface AnalysisProps {
   user: User;
   forms: Form[];
   responses: FormResponse[];
-  onTransaction: (userId: string, reason: TransactionReason, context?: { formTitle?: string, formCount?: number }) => boolean;
+  onTransaction: (userId: string, reason: TransactionReason, context?: { formIds?: string[], formTitles?: string[] }) => boolean;
   analysisContext?: { formIds: string[] } | null;
   onNavigate: (page: string) => void;
   analysisHistory: AnalysisHistory[];
   saveAnalysisToHistory: (formIds: string[], formTitles: string[], userPrompt: string, analysisResult: any) => void;
   deleteAnalysisHistory: (historyId: string) => void;
+  unlockedAnalysis: {userId: string; formId: string}[];
 }
 
 const isValidHex = (color: string | undefined | null): color is string => {
@@ -46,7 +48,7 @@ const ChartTypeButton: React.FC<{ icon: React.ReactNode; label: string; isActive
     </button>
 );
 
-const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransaction, analysisContext, onNavigate, analysisHistory, saveAnalysisToHistory, deleteAnalysisHistory }) => {
+const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransaction, analysisContext, onNavigate, analysisHistory, saveAnalysisToHistory, deleteAnalysisHistory, unlockedAnalysis }) => {
     const [selectedFormId, setSelectedFormId] = useState<string>('');
     const [userPrompt, setUserPrompt] = useState<string>('');
     const [analysisResult, setAnalysisResult] = useState<any>(null);
@@ -56,6 +58,8 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
     const chartCanvasRef = useRef<HTMLCanvasElement>(null);
     const resultsRef = useRef<HTMLDivElement>(null);
     const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
+    const analysisContinuationRef = useRef<{ relevantFieldIds: string[] } | null>(null);
+
     
     const isMultiFormMode = user.role === 'admin' && !!analysisContext?.formIds && analysisContext.formIds.length > 0;
     const [selectedFormsForAnalysis, setSelectedFormsForAnalysis] = useState<Form[]>([]);
@@ -71,72 +75,132 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
         }
     }, [analysisContext, forms, isMultiFormMode]);
 
-
-    const handleAnalysis = async () => {
-        const promptIsMissing = !userPrompt.trim();
-        if (promptIsMissing) {
-            setError("Veuillez décrire votre besoin d'analyse.");
-            return;
-        }
-
-        let formsToAnalyze: Form[];
+    const getFormsToAnalyze = () => {
         if (isMultiFormMode) {
-             if (selectedFormsForAnalysis.length === 0) {
-                setError('Aucun formulaire sélectionné pour l\'analyse.');
-                return;
-            }
-            formsToAnalyze = selectedFormsForAnalysis;
-        } else {
-            if (!selectedFormId) {
-                setError('Veuillez sélectionner un formulaire à analyser.');
-                return;
-            }
-            const form = forms.find(f => f.id === selectedFormId);
-            if (!form) {
-                setError('Le formulaire sélectionné est introuvable.');
-                return;
-            }
-            formsToAnalyze = [form];
+            return selectedFormsForAnalysis;
         }
-        
-        const transactionContext = {
-            formCount: formsToAnalyze.length,
-            formTitle: formsToAnalyze.length === 1 ? formsToAnalyze[0].title : undefined,
-        };
+        const form = forms.find(f => f.id === selectedFormId);
+        return form ? [form] : [];
+    };
 
-        if (!onTransaction(user.id, TransactionReason.AiRequest, transactionContext)) {
-            return; 
-        }
+    const executeSampledAnalysis = async () => {
+        const formsToAnalyze = getFormsToAnalyze();
+        if (formsToAnalyze.length === 0 || !analysisContinuationRef.current) return;
         
         setIsLoading(true);
         setError('');
         setAnalysisResult(null);
-        setDisplayedChartType(null);
 
         try {
-            const responsesToAnalyze = responses.filter(r => formsToAnalyze.map(f => f.id).includes(r.formId));
-
-            if (formsToAnalyze.length === 0 || responsesToAnalyze.length === 0) {
-                setError('Aucune réponse à analyser pour le(s) formulaire(s) sélectionné(s).');
-                setIsLoading(false);
-                return;
-            }
-
-            const result = await getAnalysis(formsToAnalyze, responsesToAnalyze, userPrompt);
+            const result = await performSampledAnalysis(formsToAnalyze, responses, userPrompt, analysisContinuationRef.current.relevantFieldIds);
             setAnalysisResult(result);
-             if (result.chartData) {
-                setDisplayedChartType(result.chartData.type);
-            }
-            saveAnalysisToHistory(formsToAnalyze.map(f => f.id), formsToAnalyze.map(f => f.title), userPrompt, result);
+            if (result.chartData) setDisplayedChartType(result.chartData.type);
+            saveAnalysisToHistory(formsToAnalyze.map(f=>f.id), formsToAnalyze.map(f=>f.title), userPrompt, result);
             setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-
         } catch (e) {
-            setError('Une erreur est survenue lors de l\'analyse. Veuillez réessayer.');
+            setError('Une erreur est survenue lors de l\'analyse de l\'échantillon. Veuillez réessayer.');
             console.error(e);
         } finally {
             setIsLoading(false);
+            analysisContinuationRef.current = null;
         }
     };
+
+
+    const handleAnalysis = async () => {
+        if (!userPrompt.trim()) {
+            setError("Veuillez décrire votre besoin d'analyse.");
+            return;
+        }
+        const formsToAnalyze = getFormsToAnalyze();
+        if (formsToAnalyze.length === 0) {
+            setError(isMultiFormMode ? 'Aucun formulaire sélectionné pour l\'analyse.' : 'Veuillez sélectionner un formulaire à analyser.');
+            return;
+        }
+
+        const formsToUnlock = formsToAnalyze.filter(form => 
+            !unlockedAnalysis.some(ua => ua.userId === user.id && ua.formId === form.id)
+        );
+        const cost = formsToUnlock.length * COIN_COSTS.AI_ANALYSIS;
+
+        const executeInitialAnalysis = async () => {
+            setIsLoading(true);
+            setError('');
+            setAnalysisResult(null);
+            setDisplayedChartType(null);
+
+            try {
+                const result = await getAnalysis(formsToAnalyze, responses, userPrompt);
+                
+                if (result.requiresConfirmation) {
+                    analysisContinuationRef.current = { relevantFieldIds: result.relevantFieldIds };
+                    setConfirmation({
+                        isOpen: true,
+                        title: "Confirmation d'Analyse sur Échantillon",
+                        message: result.message,
+                        onConfirm: () => {
+                            setConfirmation(null);
+                            executeSampledAnalysis();
+                        },
+                        onClose: () => {
+                            setConfirmation(null);
+                            setIsLoading(false); // Stop loading if user cancels
+                        },
+                        variant: 'primary',
+                        confirmText: 'Oui, continuer',
+                        cancelText: 'Non, annuler',
+                    });
+                    // Don't stop loading indicator yet, wait for user choice
+                } else {
+                    setAnalysisResult(result);
+                    if (result.chartData) setDisplayedChartType(result.chartData.type);
+                    saveAnalysisToHistory(formsToAnalyze.map(f=>f.id), formsToAnalyze.map(f=>f.title), userPrompt, result);
+                    setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+                    setIsLoading(false);
+                }
+            } catch (e) {
+                setError('Une erreur est survenue lors de l\'analyse. Veuillez réessayer.');
+                console.error(e);
+                setIsLoading(false);
+            }
+        };
+
+        const proceedWithTransactionAndAnalysis = () => {
+             const transactionContext = {
+                formIds: formsToAnalyze.map(f => f.id),
+                formTitles: formsToAnalyze.map(f => f.title),
+            };
+            if (onTransaction(user.id, TransactionReason.AiRequest, transactionContext)) {
+                executeInitialAnalysis();
+            }
+        };
+
+        if (cost > 0) {
+            setConfirmation({
+                isOpen: true,
+                title: "Confirmer l'analyse IA",
+                message: (
+                    <div className="space-y-3">
+                        <p>Vous êtes sur le point de débloquer l'analyse pour le(s) formulaire(s) suivant(s) :</p>
+                        <ul className="list-disc list-inside bg-slate-100 dark:bg-slate-700 p-3 rounded-md text-sm">
+                            {formsToUnlock.map(f => <li key={f.id}>{f.title}</li>)}
+                        </ul>
+                        <p>Un coût total de <strong className="font-bold">{cost} coins</strong> sera déduit de votre solde. Une fois débloquée, l'analyse sur ce(s) formulaire(s) sera gratuite à l'avenir.</p>
+                    </div>
+                ),
+                onConfirm: () => {
+                    setConfirmation(null);
+                    proceedWithTransactionAndAnalysis();
+                },
+                onClose: () => setConfirmation(null),
+                variant: 'primary',
+                confirmText: `Payer ${cost} coins et analyser`,
+            });
+        } else {
+            proceedWithTransactionAndAnalysis();
+        }
+    };
+
 
     const handleLoadHistory = (historyItem: AnalysisHistory) => {
         setError('');
@@ -254,7 +318,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                 <h1>Résultats de l'analyse MedataAI</h1>
                 <hr>
                 <h2>Analyse Textuelle</h2>
-                <p>${analysisResult.analysisText.replace(/\n/g, '<br />')}</p>
+                <div style="white-space: pre-wrap; font-family: inherit;">${analysisResult.analysisText.replace(/\n/g, '<br />')}</div>
                 <br>
                 ${chartImageHtml}
                 ${chartDataTableHtml}
@@ -366,13 +430,16 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                             placeholder="Ex: Donne-moi l'âge moyen des patients et crée un graphique à barres des symptômes."
                             className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md"
                         />
+                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            Coût : 500 coins pour débloquer l'analyse illimitée sur un formulaire. Les analyses suivantes sur le même formulaire sont gratuites.
+                        </p>
                     </div>
 
                     <Button 
                         onClick={handleAnalysis} 
                         disabled={isLoading || (isMultiFormMode ? selectedFormsForAnalysis.length === 0 : !selectedFormId) || !userPrompt.trim()}
                     >
-                        {isLoading ? <Spinner /> : `Lancer l'analyse (${user.role === 'admin' ? 'Gratuit' : '10 Coins'})`}
+                        {isLoading ? <Spinner /> : `Lancer l'analyse`}
                     </Button>
                 </div>
             </Card>
@@ -383,7 +450,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                 </Card>
             )}
 
-            {isLoading && (
+            {isLoading && !confirmation?.isOpen && (
                 <Card>
                     <div className="flex flex-col items-center justify-center p-8">
                         <Spinner className="w-12 h-12" />
@@ -404,12 +471,10 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                                 Exporter en Word
                             </Button>
                         </div>
-                        <div className="prose dark:prose-invert max-w-none">
-                        {analysisResult.analysisText && <p className="mb-6 whitespace-pre-wrap">{analysisResult.analysisText}</p>}
-                        </div>
+                        <div className="prose dark:prose-invert max-w-none prose-p:whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: analysisResult.analysisText.replace(/\n/g, '<br />') }} />
                         
                         {analysisResult.chartData && (
-                            <div className="flex justify-between items-center mb-4">
+                            <div className="flex justify-between items-center mb-4 mt-6">
                                 <h4 className="text-base font-semibold text-slate-800 dark:text-slate-200">
                                     Visualisation
                                 </h4>

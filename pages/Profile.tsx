@@ -1,5 +1,3 @@
-
-
 import React, { useState } from 'react';
 import { User, MedicalField } from '../types';
 import Card from '../components/Card';
@@ -8,6 +6,7 @@ import Button from '../components/Button';
 interface ProfileProps {
   user: User;
   onUpdateProfile: (updatedUser: User) => void;
+  onUpdatePassword?: (userId: string, currentPass: string, newPass: string) => { success: boolean, message: string };
 }
 
 // Helper to translate field enum to French
@@ -20,9 +19,13 @@ const translateField = (field: MedicalField) => {
   }
 };
 
-const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile }) => {
+const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePassword }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<User>(user);
+  
+  // State for admin password change
+  const [passwordData, setPasswordData] = useState({ current: '', newPass: '', confirmPass: '' });
+  const [passwordMessage, setPasswordMessage] = useState<{ type: 'error' | 'success' | ''; text: string }>({ type: '', text: '' });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -69,6 +72,77 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile }) => {
       );
   }
 
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPasswordData({ ...passwordData, [e.target.name]: e.target.value });
+    if (passwordMessage.text) setPasswordMessage({ type: '', text: '' });
+  };
+  
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMessage({ type: '', text: '' });
+    
+    if (!onUpdatePassword) return;
+
+    if (passwordData.newPass !== passwordData.confirmPass) {
+      setPasswordMessage({ type: 'error', text: 'Les nouveaux mots de passe ne correspondent pas.' });
+      return;
+    }
+    if (passwordData.newPass.length < 8) {
+      setPasswordMessage({ type: 'error', text: 'Le nouveau mot de passe doit contenir au moins 8 caractères.' });
+      return;
+    }
+
+    const result = onUpdatePassword(user.id, passwordData.current, passwordData.newPass);
+    if (result.success) {
+      setPasswordMessage({ type: 'success', text: result.message });
+      setPasswordData({ current: '', newPass: '', confirmPass: '' });
+    } else {
+      setPasswordMessage({ type: 'error', text: result.message });
+    }
+  };
+
+  if (user.role === 'admin') {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Profil Administrateur</h2>
+        <Card title="Informations du compte">
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2">
+            {renderField("Nom complet", user.name)}
+            {renderField("Adresse e-mail", user.email)}
+            {renderField("Rôle", "Administrateur")}
+            {renderField("Statut", "Actif")}
+          </dl>
+        </Card>
+        
+        <Card title="Changer le mot de passe">
+          <form onSubmit={handlePasswordSubmit} className="space-y-4 max-w-lg">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mot de passe actuel</label>
+              <input type="password" name="current" value={passwordData.current} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nouveau mot de passe</label>
+              <input type="password" name="newPass" value={passwordData.newPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Confirmer le nouveau mot de passe</label>
+              <input type="password" name="confirmPass" value={passwordData.confirmPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+            </div>
+            {passwordMessage.text && (
+              <p className={`text-sm ${passwordMessage.type === 'error' ? 'text-red-500' : 'text-green-500'}`}>
+                {passwordMessage.text}
+              </p>
+            )}
+            <div className="flex justify-end">
+              <Button type="submit">Mettre à jour le mot de passe</Button>
+            </div>
+          </form>
+        </Card>
+      </div>
+    );
+  }
+
+  // Student Profile View
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">

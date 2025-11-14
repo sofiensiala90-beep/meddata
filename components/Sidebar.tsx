@@ -18,6 +18,8 @@ interface SidebarProps {
   currentPage: string;
   onNavigate: (page: string) => void;
   onOpenComplaintModal: () => void;
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (isOpen: boolean) => void;
 }
 
 const NavItem: React.FC<{ icon: React.ReactNode; label: string; isActive: boolean; onClick: () => void; disabled?: boolean; }> = ({ icon, label, isActive, onClick, disabled = false }) => (
@@ -36,8 +38,15 @@ const NavItem: React.FC<{ icon: React.ReactNode; label: string; isActive: boolea
   </button>
 );
 
-const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpenComplaintModal }) => {
+const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpenComplaintModal, isSidebarOpen, setIsSidebarOpen }) => {
   const isSuspended = user.role === 'student' && user.status.startsWith('suspended');
+
+  const handleNavigation = (page: string) => {
+    onNavigate(page);
+    if (window.innerWidth < 1024) { // 'lg' breakpoint in Tailwind
+      setIsSidebarOpen(false);
+    }
+  };
 
   const studentNavItems = [
     { id: 'tableau-de-bord', label: 'Tableau de bord', icon: <DashboardIcon className="w-5 h-5" />, disabled: isSuspended },
@@ -49,20 +58,21 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
     { id: 'profil', label: 'Profil', icon: <ProfileIcon className="w-5 h-5" />, disabled: false },
   ];
 
-  // FIX: Add `disabled: false` to admin nav items to ensure consistent object shape.
+  // FIX: Added `disabled: false` to all admin nav items to ensure a consistent object shape.
   const adminNavItems = [
     { id: 'tableau-de-bord', label: 'Tableau de bord', icon: <DashboardIcon className="w-5 h-5" />, disabled: false },
     { id: 'etudiants', label: 'Étudiants', icon: <StudentsIcon className="w-5 h-5" />, disabled: false },
     { id: 'formulaires', label: 'Formulaires', icon: <FormsIcon className="w-5 h-5" />, disabled: false },
     { id: 'finances', label: 'Finances', icon: <FinanceIcon className="w-5 h-5" />, disabled: false },
-    { id: 'notifications', label: 'Notifications', icon: <BellIcon className="w-5 h-5" />, disabled: false },
     { id: 'activite', label: 'Activité', icon: <ActivityIcon className="w-5 h-5" />, disabled: false },
+    { id: 'profil', label: 'Profil', icon: <ProfileIcon className="w-5 h-5" />, disabled: false },
+    { id: 'notifications', label: 'Notifications', icon: <BellIcon className="w-5 h-5" />, disabled: false },
   ];
 
   const navItems = user.role === 'admin' ? adminNavItems : studentNavItems;
 
   return (
-    <aside className="flex flex-col w-64 h-screen bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700">
+    <aside className={`fixed inset-y-0 left-0 z-30 flex flex-col w-64 h-screen bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
       <div className="flex items-center justify-center h-20 border-b border-slate-200 dark:border-slate-700">
         <LogoIcon className="h-16 w-auto" />
       </div>
@@ -74,7 +84,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
               icon={item.icon}
               label={item.label}
               isActive={currentPage === item.id}
-              onClick={() => onNavigate(item.id)}
+              onClick={() => handleNavigation(item.id)}
               disabled={item.disabled}
             />
           ))}

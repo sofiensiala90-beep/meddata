@@ -19,7 +19,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   title,
   message,
   confirmText = "Confirmer",
-  cancelText = "Annuler",
+  cancelText, // Removed default value
   variant = 'danger',
 }) => {
   if (!isOpen) return null;
@@ -33,7 +33,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
               {message}
             </div>
             <div className="mt-6 flex justify-end space-x-3">
-              <Button onClick={onClose} variant="secondary">{cancelText}</Button>
+              {cancelText && <Button onClick={onClose} variant="secondary">{cancelText}</Button>}
               <Button onClick={onConfirm} variant={variant}>{confirmText}</Button>
             </div>
         </div>

@@ -73,11 +73,11 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, responseCount, curr
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 <header className="p-4 border-b border-slate-200 dark:border-slate-700">
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Acheter: {form.title}</h3>
                 </header>
-                <main className="p-6 space-y-4">
+                <main className="p-6 space-y-4 overflow-y-auto">
                     <p className="text-sm text-slate-600 dark:text-slate-400">Choisissez une option d'achat :</p>
                     
                     <div className="space-y-3">
@@ -105,7 +105,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, responseCount, curr
                         L'usage des données achetées est strictement réservé à un but pédagogique. Les réponses sont anonymisées pour protéger la confidentialité.
                     </div>
                 </main>
-                <footer className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-lg">
+                <footer className="flex flex-col sm:flex-row justify-between items-center p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-lg gap-4">
                     <div className="text-sm">
                         <span className="text-slate-500 dark:text-slate-400">Total : </span>
                         {purchaseOption ? (
@@ -214,7 +214,7 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
     return (
         <div className="space-y-6">
              <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Bibliothèque Publique</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Bibliothèque Publique</h2>
             </div>
             <Card>
                 <input
@@ -233,8 +233,8 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
                         const responseCount = responses.filter(r => r.formId === form.id).length;
                         const isPurchased = purchasedFormIds.has(form.id);
                         return (
-                            <Card key={form.id} className="flex flex-col">
-                                <div className="flex-grow">
+                            <Card key={form.id} className="flex flex-col !p-0">
+                                <div className="flex-grow p-4 sm:p-6">
                                     <h3 className="text-xl font-bold text-slate-900 dark:text-white">{form.title}</h3>
                                     <p className="text-slate-600 dark:text-slate-400 mt-1">{form.description}</p>
                                     {creator && (<p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Par : <span className="font-medium">{creator.name}</span></p>)}
@@ -245,7 +245,7 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
                                         </span>
                                     </div>
                                 </div>
-                                <div className="mt-6 border-t border-slate-200 dark:border-slate-700 pt-4 flex space-x-3">
+                                <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
                                     <Button onClick={() => setFormToPreview(form)} variant="secondary" className="w-full" disabled={isPurchased}>
                                         {isPurchased ? 'Acheté' : 'Aperçu'}
                                     </Button>

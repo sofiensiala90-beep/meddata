@@ -130,7 +130,7 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
   return (
     <>
       <div className="space-y-6">
-        <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Mon Portefeuille</h2>
+        <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Mon Portefeuille</h2>
         
         <Card>
           <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">

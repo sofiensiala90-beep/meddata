@@ -173,7 +173,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate }) => {
       </div>
 
       {isOpen && (
-        <div ref={chatbotRef} className="fixed bottom-24 right-6 w-full max-w-sm h-[60vh] bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col z-40">
+        <div ref={chatbotRef} className="fixed bottom-24 right-6 w-[calc(100vw-3rem)] sm:w-full max-w-sm h-[70vh] sm:h-[60vh] bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col z-40">
           <header className="bg-primary-600 text-white p-4 rounded-t-xl flex justify-between items-center">
             <h3 className="font-bold text-lg">MedataAI Assistant</h3>
           </header>

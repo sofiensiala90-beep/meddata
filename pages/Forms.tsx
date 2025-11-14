@@ -18,7 +18,7 @@ interface FormsProps {
   deleteFormResponse: (responseId: string) => void;
   createForm: (form: Form) => void;
   updateForm: (form: Form) => void;
-  validateForm: (formId: string) => void;
+  saveAndValidateForm: (form: Form) => void;
   publishForm: (formId: string, price: number, pricePerResponse: number) => void;
   users: User[];
   onNavigate: (page: string, context?: any) => void;
@@ -37,11 +37,11 @@ const PublishModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <header className="p-4 border-b border-slate-200 dark:border-slate-700">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Publier "{form.title}"</h3>
         </header>
-        <main className="p-6 space-y-4">
+        <main className="p-6 space-y-4 overflow-y-auto">
             <p className="text-sm text-slate-600 dark:text-slate-400">En publiant votre formulaire dans la bibliothèque, vous acceptez de céder à MedataAI le droit non exclusif de le diffuser à d’autres utilisateurs. Vous restez le propriétaire intellectuel du contenu et percevrez une rémunération pour chaque achat.</p>
             
             <div className="p-4 bg-slate-100 dark:bg-slate-700/50 rounded-lg space-y-3">
@@ -50,7 +50,7 @@ const PublishModal: React.FC<{
                     <span className="font-semibold text-slate-900 dark:text-white flex items-center"><CoinIcon className="w-4 h-4 mr-1 text-yellow-500" />{LIBRARY_PRICES.DEFAULT_FORM_PRICE}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm text-green-600 dark:text-green-400">
-                    <span>Votre gain par vente (60%)</span>
+                    <span>Votre gain par vente</span>
                     <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{LIBRARY_PRICES.DEFAULT_FORM_PRICE * COMMISSION_RATES.CREATOR_FORM_SALE}</span>
                 </div>
                 <div className="border-t border-slate-200 dark:border-slate-600 !my-2"></div>
@@ -59,7 +59,7 @@ const PublishModal: React.FC<{
                     <span className="font-semibold text-slate-900 dark:text-white flex items-center"><CoinIcon className="w-4 h-4 mr-1 text-yellow-500" />{LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm text-green-600 dark:text-green-400">
-                    <span>Votre gain par réponse (50%)</span>
+                    <span>Votre gain par réponse</span>
                     <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE * COMMISSION_RATES.CREATOR_RESPONSE_SALE}</span>
                 </div>
             </div>
@@ -78,7 +78,7 @@ const PublishModal: React.FC<{
 };
 
 
-const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, validateForm, publishForm, users, onNavigate }) => {
+const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, saveAndValidateForm, publishForm, users, onNavigate }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
   const [activeTab, setActiveTab] = useState<'my_forms' | 'my_purchases'>(user.role === 'admin' ? 'my_forms' : 'my_forms');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
@@ -196,14 +196,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     setView('list');
   };
 
-  const handleValidateAndSaveForm = (form: Form) => {
-    if (selectedForm || forms.find(f => f.id === form.id)) { // Update existing form
-      updateForm(form);
-    } else { // Create new form
-      createForm(form);
-    }
-    // The validation function will handle the 'validated' flag and transaction
-    validateForm(form.id);
+  const handleValidateAndSaveFormWrapper = (form: Form) => {
+    saveAndValidateForm(form);
     setView('list');
   };
 
@@ -527,7 +521,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     return <FormBuilder
       initialForm={selectedForm}
       onSave={handleSaveForm}
-      onValidate={handleValidateAndSaveForm}
+      onValidate={handleValidateAndSaveFormWrapper}
       onCancel={handleBackToList}
       userId={user.id}
     />
@@ -576,11 +570,11 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   return ( // view === 'list'
     <>
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{user.role === 'admin' ? 'Tous les formulaires' : 'Gestion des Formulaires'}</h2>
-          {user.role === 'student' && activeTab === 'my_forms' && <Button onClick={handleStartCreating} disabled={isSuspended}>+ Créer un formulaire</Button>}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{user.role === 'admin' ? 'Tous les formulaires' : 'Gestion des Formulaires'}</h2>
+          {user.role === 'student' && activeTab === 'my_forms' && <Button onClick={handleStartCreating} disabled={isSuspended} className="w-full sm:w-auto">+ Créer un formulaire</Button>}
           {user.role === 'admin' && (
-             <Button onClick={handleStartMultiFormAnalysis} disabled={selectedFormIds.length === 0}>
+             <Button onClick={handleStartMultiFormAnalysis} disabled={selectedFormIds.length === 0} className="w-full sm:w-auto">
                 Analyse IA ({selectedFormIds.length})
              </Button>
           )}
@@ -635,7 +629,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                     return (
                         <Card key={form.id} className="flex flex-col relative">
                         {user.role === 'admin' && (<div className="absolute top-4 right-4 z-10 bg-white dark:bg-slate-800 p-1 rounded-full"><input type="checkbox" checked={selectedFormIds.includes(form.id)} onChange={() => handleToggleFormSelection(form.id)} className="h-5 w-5 rounded-full border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-700 text-primary-600 focus:ring-primary-500" aria-label={`Sélectionner le formulaire ${form.title}`}/></div>)}
-                        <div className="flex-grow">
+                        <div className="flex-grow p-4 sm:p-6">
                             <div className="flex justify-between items-start">
                             <div className="pr-12">
                                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">{highlightMatch(form.title, filters.searchTerm)}</h3>
@@ -654,7 +648,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                             {user.role === 'student' && form.validated ? (<button onClick={() => responseCount > 0 && handleViewResponses(form)} disabled={responseCount === 0} className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default">{responseCount} {responseCount > 1 ? 'réponses' : 'réponse'}</button>) : (<span>{responseCount} {responseCount > 1 ? 'réponses' : 'réponse'}</span>)}
                             </div>
                         </div>
-                        <div className="mt-6 border-t border-slate-200 dark:border-slate-700 pt-4 flex space-x-3">
+                        <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-3">
                             {user.role === 'student' && (
                                 <>
                                     {!form.validated ? (
@@ -703,8 +697,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                     const responsesUserCanSee = allFormResponses.filter(r => purchase.withResponses || r.userId === user.id);
                     
                     return (
-                        <Card key={purchase.id} className="flex flex-col">
-                            <div className="flex-grow">
+                        <Card key={purchase.id} className="flex flex-col !p-0">
+                            <div className="flex-grow p-4 sm:p-6">
                                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">{form.title}</h3>
                                 <p className="text-slate-600 dark:text-slate-400 mt-1">{form.description}</p>
                                 {creator && (<p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Par : <span className="font-medium">{creator.name}</span></p>)}
@@ -719,7 +713,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                     </button>
                                 </div>
                             </div>
-                            <div className="mt-6 border-t border-slate-200 dark:border-slate-700 pt-4">
+                            <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700">
                                 <Button 
                                     onClick={() => handleStartFilling(form)} 
                                     className="w-full"

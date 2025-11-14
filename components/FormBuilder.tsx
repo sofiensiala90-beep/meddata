@@ -507,15 +507,39 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
   
   const handleValidateClick = () => {
     if (!form.title.trim()) {
-      alert("Le titre du formulaire ne peut pas être vide.");
+      setConfirmation({
+        isOpen: true,
+        title: "Titre Manquant",
+        message: "Le formulaire doit avoir un titre avant de pouvoir être validé.",
+        onConfirm: () => setConfirmation(null),
+        onClose: () => setConfirmation(null),
+        confirmText: 'Compris',
+        variant: 'primary',
+      });
       return;
     }
     if (form.schema.length === 0) {
-      alert("Veuillez ajouter au moins une question avant de valider.");
+      setConfirmation({
+        isOpen: true,
+        title: "Formulaire Vide",
+        message: "Veuillez ajouter au moins une question avant de valider le formulaire.",
+        onConfirm: () => setConfirmation(null),
+        onClose: () => setConfirmation(null),
+        confirmText: 'Compris',
+        variant: 'primary',
+      });
       return;
     }
     if (form.schema.some(f => f.type !== 'note' && !f.label.trim())) {
-      alert("Toutes les questions doivent avoir un libellé.");
+      setConfirmation({
+        isOpen: true,
+        title: "Question(s) Incomplète(s)",
+        message: "Toutes les questions doivent avoir un libellé (un titre). Veuillez vérifier chaque question avant de valider le formulaire.",
+        onConfirm: () => setConfirmation(null),
+        onClose: () => setConfirmation(null),
+        confirmText: 'Compris',
+        variant: 'primary',
+      });
       return;
     }
 
@@ -553,15 +577,6 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
   return (
     <>
       <div className="space-y-6 max-w-4xl mx-auto">
-        <div className="sticky top-0 z-10 bg-slate-100/90 dark:bg-slate-900/90 backdrop-blur-sm py-3 -my-3">
-          <div className="max-w-4xl mx-auto">
-            <Button onClick={handleUndo} variant="secondary" disabled={history.length === 0}>
-                <UndoIcon className="w-5 h-5 mr-2" />
-                Annuler la modification
-            </Button>
-          </div>
-        </div>
-        
         <div className="pt-3">
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white">
             {initialForm ? 'Modifier le formulaire' : 'Créer un formulaire'}
@@ -646,10 +661,16 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
            </div>
         )}
 
-        <div className="sticky bottom-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm p-4 rounded-t-xl border-t border-slate-200 dark:border-slate-700 flex justify-end items-center space-x-4">
-          <Button onClick={onCancel} variant="secondary">Quitter l'éditeur</Button>
-          <Button onClick={() => onSave(form)} variant="secondary">Enregistrer le brouillon</Button>
-          {!form.validated && <Button onClick={handleValidateClick}>Valider le formulaire ({validationCost} Coins)</Button>}
+        <div className="sticky bottom-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm p-4 rounded-t-xl border-t border-slate-200 dark:border-slate-700 flex justify-between items-center space-x-4">
+            <Button onClick={handleUndo} variant="secondary" disabled={history.length === 0}>
+                <UndoIcon className="w-5 h-5 mr-2" />
+                Annuler la dernière modification
+            </Button>
+            <div className="flex items-center space-x-4">
+                <Button onClick={onCancel} variant="secondary">Quitter l'éditeur</Button>
+                <Button onClick={() => onSave(form)} variant="secondary">Enregistrer le brouillon</Button>
+                {!form.validated && <Button onClick={handleValidateClick}>Valider le formulaire ({validationCost} Coins)</Button>}
+            </div>
         </div>
       </div>
       {confirmation && <ConfirmationModal {...confirmation} />}

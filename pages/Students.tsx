@@ -155,9 +155,9 @@ const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNoti
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Gestion des Étudiants</h2>
-        <Button onClick={() => setIsNotifyAllModalOpen(true)}>Envoyer une notification à tous</Button>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Gestion des Étudiants</h2>
+        <Button onClick={() => setIsNotifyAllModalOpen(true)} className="w-full sm:w-auto">Envoyer une notification à tous</Button>
       </div>
 
       <Card title="Filtres">

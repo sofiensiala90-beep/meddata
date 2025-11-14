@@ -274,7 +274,7 @@ const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, response
         <>
             <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" onClick={onClose}>
                 <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                    <header className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-700">
+                    <header className="flex-shrink-0 flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-700">
                         <div>
                             <h3 className="text-xl font-bold text-slate-900 dark:text-white">{student.name}</h3>
                             <p className="text-sm text-slate-500 dark:text-slate-400">{student.email}</p>
@@ -284,12 +284,12 @@ const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, response
                         </button>
                     </header>
                     
-                    <nav className="border-b border-slate-200 dark:border-slate-700 px-4">
-                        <div className="flex space-x-4">
+                    <nav className="flex-shrink-0 border-b border-slate-200 dark:border-slate-700 px-4">
+                        <div className="flex space-x-4 overflow-x-auto">
                             <TabButton label="Infos" isActive={activeTab === 'info'} onClick={() => setActiveTab('info')} />
                             <TabButton label="Formulaires" isActive={activeTab === 'forms'} onClick={() => setActiveTab('forms')} />
-                            <TabButton label="Gérer le compte" isActive={activeTab === 'manage'} onClick={() => setActiveTab('manage')} />
-                            <TabButton label="Notifications" isActive={activeTab === 'notify'} onClick={() => setActiveTab('notify')} />
+                            <TabButton label="Gérer" isActive={activeTab === 'manage'} onClick={() => setActiveTab('manage')} />
+                            <TabButton label="Notifier" isActive={activeTab === 'notify'} onClick={() => setActiveTab('notify')} />
                         </div>
                     </nav>
 

@@ -15,9 +15,10 @@ interface HeaderProps {
   theme: string;
   onToggleTheme: () => void;
   onNavigate: (page: string) => void;
+  setIsSidebarOpen: (isOpen: boolean) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notifications, onMarkNotificationsRead, theme, onToggleTheme, onNavigate }) => {
+const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notifications, onMarkNotificationsRead, theme, onToggleTheme, onNavigate, setIsSidebarOpen }) => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -73,9 +74,18 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notificati
   return (
     <header className="flex-shrink-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 h-20">
       <div className="flex items-center justify-between p-4 h-full">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{title}</h1>
+        <div className="flex items-center">
+          <button
+            className="lg:hidden text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-white mr-4"
+            onClick={() => setIsSidebarOpen(true)}
+            aria-label="Ouvrir le menu"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+          </button>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{title}</h1>
+        </div>
         
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-4">
            <button 
             onClick={onToggleTheme}
             className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white focus:outline-none p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"

@@ -10,6 +10,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  password?: string;
   role: 'student' | 'admin';
   coinBalance: number;
   university: string;
@@ -110,6 +111,28 @@ export interface AnalysisHistory {
   userPrompt: string;
   analysisResult: any; // The structure from Gemini
   createdAt: string;
+}
+
+export enum ActivityType {
+  ACCOUNT_CREATED = 'ACCOUNT_CREATED',
+  FORM_CREATED = 'FORM_CREATED',
+  FORM_VALIDATED = 'FORM_VALIDATED',
+  FORM_PUBLISHED = 'FORM_PUBLISHED',
+  FORM_PURCHASED = 'FORM_PURCHASED',
+  AI_ANALYSIS_PERFORMED = 'AI_ANALYSIS_PERFORMED',
+  COIN_TRANSFER = 'COIN_TRANSFER',
+  ADMIN_COIN_ADJUSTMENT = 'ADMIN_COIN_ADJUSTMENT',
+  USER_STATUS_CHANGED = 'USER_STATUS_CHANGED',
+  RESPONSE_ADDED = 'RESPONSE_ADDED',
+}
+
+export interface Activity {
+  id: string;
+  userId: string; // The user who performed the action
+  type: ActivityType;
+  details: string;
+  createdAt: string;
+  targetId?: string; // e.g., form ID, recipient user ID
 }
 
 // For Gemini API chatbot response

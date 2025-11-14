@@ -1,12 +1,328 @@
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { ChatMessage, Form, FormResponse, User, ChatbotResponse } from '../types';
+import { GoogleGenAI, Type } from "@google/genai";
+import { ChatMessage, Form, FormResponse, User } from '../types';
+
+/**
+ * First step of the analysis: Ask a powerful model to identify which specific
+ * data fields are required to answer the user's query.
+ * @param schema - The structure of the form.
+ * @param userPrompt - The user's question in natural language.
+ * @returns A promise that resolves to an array of field IDs.
+ */
+const getRelevantFieldIds = async (schema: Form['schema'], userPrompt: string): Promise<string[]> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    const systemInstruction = `
+        Tu es un pré-processeur de données intelligent. Ton unique tâche est de déterminer quels champs de données sont nécessaires pour répondre à une demande utilisateur, en te basant sur le schéma d'un formulaire.
+        Tu dois répondre UNIQUEMENT avec un objet JSON contenant une seule clé "fieldIds", qui est un tableau de chaînes de caractères. Chaque chaîne doit être l'ID d'un champ requis.
+        Par exemple : { "fieldIds": ["field_age", "field_symptoms"] }.
+        N'ajoute aucun texte, aucune explication, aucune salutation. Ta réponse doit être uniquement et directement l'objet JSON.
+        Si la question est générale ("donne-moi un résumé", "analyse tout", "rapport pour ma thèse"), sélectionne tous les champs qui ne sont pas de type 'note'.
+    `;
+
+    const prompt = `
+        Schéma du formulaire :
+        \`\`\`json
+        ${JSON.stringify(schema.map(({ id, label, type, options }) => ({ id, label, type, options: options || [] })), null, 2)}
+        \`\`\`
+
+        Demande de l'utilisateur : "${userPrompt}"
+
+        Identifie les field IDs nécessaires.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro', // Use a powerful model for reasoning
+            contents: prompt,
+            config: {
+                systemInstruction: systemInstruction,
+                responseMimeType: 'application/json',
+            }
+        });
+        
+        const jsonResponse = JSON.parse(response.text);
+        if (jsonResponse && Array.isArray(jsonResponse.fieldIds)) {
+            return jsonResponse.fieldIds;
+        }
+        return [];
+    } catch (error) {
+        console.error("Failed to get relevant field IDs:", error);
+        // Fallback: return all non-note field IDs if the first call fails
+        return schema.filter(f => f.type !== 'note').map(f => f.id);
+    }
+};
+
+
+/**
+ * Performs the final analysis, adapting its system prompt based on whether it receives
+ * raw data, a sample of raw data, or a pre-computed summary.
+ * @param dataPayload - The data to analyze.
+ * @param userPrompt - The original user question.
+ * @param schema - The form schema, for context.
+ * @param sampleInfo - Optional information about the sample size if applicable.
+ * @returns A promise that resolves to the final analysis object.
+ */
+const generateFinalReport = async (
+    dataPayload: Record<string, any>[],
+    userPrompt: string,
+    schema: Form['schema'],
+    sampleInfo?: { sampleSize: number; totalSize: number }
+) => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    let dataContextInstruction = `
+        Tu es un assistant d'analyse de données médicales expert.
+        Analyse les données brutes fournies ci-dessous pour répondre à la demande de l'utilisateur. Ces données sont un extrait ciblé des réponses à un formulaire.
+    `;
+
+    if (sampleInfo) {
+        dataContextInstruction = `
+            Tu es un assistant d'analyse de données médicales expert.
+            Analyse les données brutes fournies ci-dessous.
+            NOTE TRÈS IMPORTANTE : Ces données sont un **échantillon aléatoire de ${sampleInfo.sampleSize} réponses** sur un total de ${sampleInfo.totalSize}. Tu dois mentionner ce fait dans ton analyse textuelle pour contextualiser tes conclusions (par ex. "Sur la base d'un échantillon de ${sampleInfo.sampleSize} réponses...").
+        `;
+    }
+
+    const commonInstruction = `
+        Ta réponse DOIT être un objet JSON valide avec la structure suivante :
+        {
+          "analysisText": "Ton analyse textuelle détaillée et perspicace en français, formatée en Markdown...",
+          "chartData": {
+            "type": "type_de_graphique", // 'bar', 'pie', ou 'doughnut'
+            "data": {
+              "labels": ["Label 1", "Label 2", ...],
+              "datasets": [{
+                "label": "Titre du jeu de données",
+                "data": [valeur1, valeur2, ...],
+                "backgroundColor": ["#RRGGBB", "#RRGGBB", ...]
+              }]
+            }
+          } // Ou null si aucun graphique n'est pertinent
+        }
+
+        RÈGLES IMPORTANTES :
+        1.  Base TOUTE ton analyse UNIQUEMENT sur les données fournies. N'invente pas de données.
+        2.  Si un graphique est pertinent, fournis les données pour 'chartData'. Choisis le type de graphique le plus approprié.
+        3.  Si aucun graphique n'est pertinent, mets la valeur de 'chartData' à null.
+        4.  Assure-toi que la longueur des tableaux 'labels' et 'data' est exactement la même.
+        5.  Ton 'analysisText' doit être bien structuré, en français, et facile à lire. Utilise le format Markdown (par ex. des listes à puces \`*\`) si cela améliore la clarté.
+        6.  Si tu génères un graphique, le tableau 'backgroundColor' DOIT être fourni et avoir EXACTEMENT le même nombre d'éléments que le tableau 'data'. Utilise des couleurs hexadécimales vives et distinctes.
+    `;
+
+    const systemInstruction = dataContextInstruction + commonInstruction;
+    
+    const prompt = `
+        Voici les données à analyser (${(dataPayload as any[]).length} réponses) :
+        \`\`\`json
+        ${JSON.stringify(dataPayload, null, 2)}
+        \`\`\`
+
+        Voici le schéma des questions correspondantes pour le contexte :
+        \`\`\`json
+        ${JSON.stringify(schema, null, 2)}
+        \`\`\`
+
+        Demande de l'utilisateur : "${userPrompt}"
+
+        Génère l'objet JSON de réponse.
+    `;
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                systemInstruction: systemInstruction,
+                responseMimeType: 'application/json'
+            }
+        });
+
+        return JSON.parse(response.text);
+    } catch (error) {
+        console.error("Failed to perform final analysis:", error);
+        throw new Error("The AI failed to generate a valid analysis.");
+    }
+};
+
+/**
+ * An AI planner that decides the best analysis strategy based on the query's complexity and data size.
+ */
+const getAnalysisStrategy = async (userPrompt: string, relevantFieldCount: number, totalResponseCount: number): Promise<'ANALYZE_ALL' | 'ANALYZE_SAMPLE'> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    // For smaller datasets, always analyze everything directly. This respects a previous user requirement.
+    if (totalResponseCount <= 100) {
+        return 'ANALYZE_ALL';
+    }
+
+    const systemInstruction = `
+        You are a data analysis planner AI. Your task is to choose the best strategy to analyze a dataset based on a user's request.
+        The goal is to provide a high-quality analysis while respecting technical limitations (large amounts of raw data can be slow or fail).
+
+        You have two choices:
+        1. "ANALYZE_ALL": Analyze the raw data from all responses. This is best for specific, targeted questions.
+        2. "ANALYZE_SAMPLE": The user's request is broad, and the dataset is large. The best approach is to analyze a random sample of the raw data (e.g., 100 responses) to provide a detailed, qualitative analysis without performance issues.
+
+        Based on the user's prompt and the data size, decide which strategy is more appropriate.
+        - If the user asks for specific correlations, statistics on a few fields, or filters (e.g., "average age of patients with symptom X"), choose "ANALYZE_ALL".
+        - If the user asks for a general summary, a full report, an open-ended analysis, or anything that requires looking at many fields at once (e.g., "give me a report for my thesis", "summarize the key findings", "analyze everything"), choose "ANALYZE_SAMPLE".
+
+        You MUST respond with a single JSON object with one key, "strategy". Do not add any other text.
+        Example: { "strategy": "ANALYZE_ALL" }
+    `;
+
+    const prompt = `
+        User's request: "${userPrompt}"
+        Number of relevant data fields: ${relevantFieldCount}
+        Total number of responses: ${totalResponseCount}
+
+        Choose the analysis strategy.
+    `;
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                systemInstruction,
+                responseMimeType: 'application/json',
+            }
+        });
+        
+        const jsonResponse = JSON.parse(response.text);
+        if (jsonResponse.strategy === 'ANALYZE_SAMPLE') {
+            return 'ANALYZE_SAMPLE';
+        }
+        return 'ANALYZE_ALL';
+    } catch (error) {
+        console.error("Failed to get analysis strategy, using fallback:", error);
+        // Fallback to simple logic if the AI planner fails.
+        if (relevantFieldCount > 25 && totalResponseCount > 100) {
+            return 'ANALYZE_SAMPLE';
+        }
+        return 'ANALYZE_ALL';
+    }
+};
+
+/**
+ * Main analysis function. It now uses an AI planner to decide the best strategy.
+ */
+export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
+    try {
+        const representativeSchema = forms[0].schema;
+        const SAMPLE_SIZE = 100;
+
+        const responsesToAnalyze = responses.filter(r => forms.map(f => f.id).includes(r.formId));
+        if (responsesToAnalyze.length === 0) {
+            return {
+                analysisText: "Aucune réponse disponible pour le(s) formulaire(s) sélectionné(s). Il n'y a rien à analyser.",
+                chartData: null
+            };
+        }
+
+        const relevantFieldIds = await getRelevantFieldIds(representativeSchema, userPrompt);
+        
+        if (relevantFieldIds.length === 0) {
+           return {
+                analysisText: "L'IA n'a pas pu déterminer quels champs étaient nécessaires pour votre question. Essayez de reformuler votre demande de manière plus précise.",
+                chartData: null
+            };
+        }
+        
+        // Let the AI planner decide the best strategy.
+        const strategy = await getAnalysisStrategy(userPrompt, relevantFieldIds.length, responsesToAnalyze.length);
+
+        if (strategy === 'ANALYZE_SAMPLE') {
+            return {
+                requiresConfirmation: true,
+                message: `Votre demande est large et concerne ${responsesToAnalyze.length} réponses. Pour garantir une analyse de qualité, l'IA propose de l'effectuer sur un échantillon aléatoire de ${SAMPLE_SIZE} réponses. Voulez-vous continuer ?`,
+                relevantFieldIds: relevantFieldIds,
+            };
+        }
+        
+        // If strategy is 'ANALYZE_ALL', proceed with a direct analysis of all relevant data.
+        const leanData = responsesToAnalyze.map(response => {
+            const extracted: Record<string, any> = {};
+            for (const fieldId of relevantFieldIds) {
+                if (response.data.hasOwnProperty(fieldId)) {
+                    extracted[fieldId] = response.data[fieldId];
+                }
+            }
+            return extracted;
+        }).filter(obj => Object.keys(obj).length > 0);
+        
+        if (leanData.length === 0) {
+             return {
+                analysisText: "Aucune des réponses ne contient de données pour les champs pertinents à votre question.",
+                chartData: null
+            };
+        }
+        
+        const relevantSchemaForContext = representativeSchema.filter(f => relevantFieldIds.includes(f.id));
+        const result = await generateFinalReport(leanData, userPrompt, relevantSchemaForContext);
+        
+        return result;
+
+    } catch (error) {
+        console.error("Error during analysis process:", error);
+        return {
+            analysisText: `Une erreur est survenue durant l'analyse. L'IA a peut-être retourné une réponse inattendue. Veuillez réessayer.`,
+            chartData: null
+        };
+    }
+};
+
+/**
+ * Performs analysis on a random sample of responses after user confirmation.
+ */
+export const performSampledAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string, relevantFieldIds: string[]): Promise<any> => {
+    try {
+        const SAMPLE_SIZE = 100;
+        const responsesToAnalyze = responses.filter(r => forms.map(f => f.id).includes(r.formId));
+
+        // Create a random sample
+        const sampledResponses = [...responsesToAnalyze].sort(() => 0.5 - Math.random()).slice(0, SAMPLE_SIZE);
+
+        const leanData = sampledResponses.map(response => {
+            const extracted: Record<string, any> = {};
+            for (const fieldId of relevantFieldIds) {
+                if (response.data.hasOwnProperty(fieldId)) {
+                    extracted[fieldId] = response.data[fieldId];
+                }
+            }
+            return extracted;
+        }).filter(obj => Object.keys(obj).length > 0);
+        
+        if (leanData.length === 0) {
+             return {
+                analysisText: "L'échantillon de réponses ne contenait pas de données pour les champs pertinents à votre question.",
+                chartData: null
+            };
+        }
+
+        const representativeSchema = forms[0].schema;
+        const relevantSchemaForContext = representativeSchema.filter(f => relevantFieldIds.includes(f.id));
+        const sampleInfo = { sampleSize: leanData.length, totalSize: responsesToAnalyze.length };
+
+        const result = await generateFinalReport(leanData, userPrompt, relevantSchemaForContext, sampleInfo);
+        return result;
+
+    } catch (error) {
+        console.error("Error during sampled analysis:", error);
+        return {
+            analysisText: `Une erreur est survenue durant l'analyse de l'échantillon. Veuillez réessayer.`,
+            chartData: null
+        };
+    }
+};
+
+
 
 export const getChatbotResponseStream = async (userRole: User['role'], history: ChatMessage[]) => {
   try {
-    console.log("GEMINI_API_KEY:", process.env.GEMINI_API_KEY);
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    const model = 'gemini-2.0-flash';
+    const model = 'gemini-2.5-flash';
 
     const contents = history;
 
@@ -46,9 +362,9 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
             - **Mes Formulaires :**
                 - **Création et Gestion :** Crée des formulaires de A à Z avec différents types de questions et de la logique conditionnelle.
                 - **Brouillon (Gratuit) :** Modifie ton formulaire librement.
-                - **Validation :** Finalise ton formulaire pour pouvoir y ajouter des réponses. Un formulaire validé ne peut plus être modifié. Le coût est de **200 coins** pour un formulaire créé de zéro, et de **120 coins** pour un modèle de formulaire acheté.
-                - **Ajouter une réponse (2 coins) :** Ajoute des données à tes propres formulaires validés.
-                - **Publication (Gratuit) :** Partage ton travail avec la communauté en publiant un formulaire validé dans la bibliothèque. C'est un excellent moyen de gagner des coins passivement ! Tu gagnes 60% sur la vente du formulaire (soit 120 coins) et 50% sur la vente de chaque réponse (soit 2 coins par réponse). Une fois publié, tu ne peux plus le modifier ni y ajouter de réponses.
+                - **Validation (500 coins) :** Finalise ton formulaire pour pouvoir y ajouter des réponses. Un formulaire validé ne peut plus être modifié.
+                - **Ajouter une réponse (10 coins) :** Ajoute des données à tes propres formulaires validés.
+                - **Publication (Gratuit) :** Partage ton travail avec la communauté en publiant un formulaire validé dans la bibliothèque. C'est un excellent moyen de gagner des coins passivement ! Tu gagnes 400 coins sur la vente du formulaire et 10 coins sur la vente de chaque réponse. Une fois publié, tu ne peux plus le modifier ni y ajouter de réponses.
             - **Mes Achats :**
                 - Retrouve ici tous les formulaires que tu as achetés.
                 - Tu peux y ajouter tes propres réponses pour enrichir le jeu de données.
@@ -58,15 +374,15 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
             - Explore et achète des formulaires de haute qualité créés par d'autres étudiants.
             - **Aperçu Gratuit :** Avant tout achat, tu peux visualiser la structure complète d'un formulaire (questions, options, logique conditionnelle) pour t'assurer qu'il correspond à tes besoins.
             - **Deux options d'achat flexibles :**
-                - **Formulaire Seul (200 coins) :** Idéal pour commencer ta propre collecte de données sur une base solide.
-                - **Formulaire + Réponses (200 coins + 4 coins/réponse) :** Accélère tes recherches en achetant le formulaire avec toutes les données anonymes déjà collectées par son créateur.
+                - **Formulaire Seul (700 coins) :** Idéal pour commencer ta propre collecte de données sur une base solide.
+                - **Formulaire + Réponses (700 coins + 15 coins/réponse) :** Accélère tes recherches en achetant le formulaire avec toutes les données anonymes déjà collectées par son créateur.
 
         4.  **Analyse IA :**
             - Sélectionne un de tes formulaires **validés** ou **achetés**.
             - Pose une question en langage naturel sur tes données (ex: "Quelle est la moyenne d'âge ?").
             - Demande des graphiques (ex: "Fais un diagramme circulaire des symptômes.").
             - L'analyse d'un formulaire acheté utilise à la fois les réponses que tu as achetées et celles que tu as personnellement ajoutées.
-            - **Coût :** 10 coins par analyse.
+            - **Coût :** 500 coins pour débloquer l'analyse illimitée sur un formulaire. Les analyses suivantes sur le même formulaire sont gratuites.
 
         5.  **Portefeuille :**
             - Affiche ton solde de Coins.
@@ -130,110 +446,10 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
     });
     
     return responseStream;
-
   } catch (error) {
-    console.error("Error getting chatbot response stream:", error);
-    throw new Error("Désolé, une erreur est survenue lors de la communication avec l'IA.");
+    console.error("Error getting chatbot stream:", error);
+    // This is a generator function, so we need to handle the error within the stream
+    // or let it bubble up. Here, we'll throw to be caught by the caller.
+    throw error;
   }
-};
-
-
-export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
-    console.log("GEMINI_API_KEY:", process.env.GEMINI_API_KEY);
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    
-    const formsData = forms.map(form => ({
-        id: form.id,
-        title: form.title,
-        schema: form.schema.map(f => ({ id: f.id, label: f.label, type: f.type, options: f.options, condition: f.condition }))
-    }));
-
-    const prompt = `
-        Tu es un analyste de données médicales. Analyse les données de formulaire suivantes en fonction de la demande de l'utilisateur.
-        
-        Tu analyses les données de ${forms.length} formulaire(s).
-        
-        Détails des formulaires (schémas) :
-        ${JSON.stringify(formsData, null, 2)}
-        
-        Réponses collectées (les réponses sont associées à un formulaire via 'formId') :
-        ${JSON.stringify(responses.map(r => ({ formId: r.formId, data: r.data })), null, 2)}
-
-        NOTE IMPORTANTE SUR LES DONNÉES : Dans le schéma d'un formulaire, une question peut avoir un champ 'condition'. Ce champ indique que la question n'est posée que si une question précédente (identifiée par 'sourceFieldId') a une valeur spécifique ('sourceFieldValue'). Prends en compte cette logique conditionnelle dans ton analyse, car elle peut expliquer pourquoi certains participants n'ont pas répondu à toutes les questions.
-
-        Demande de l'utilisateur : "${userPrompt}"
-
-        En te basant sur ces données et la demande de l'utilisateur, fournis ton analyse.
-        - Ton analyse textuelle DOIT être en français.
-        - Si l'utilisateur demande un graphique, une visualisation ou un diagramme, tu DOIS fournir les données pour celui-ci dans le champ 'chartData'. Si aucun graphique n'est demandé, 'chartData' doit être null.
-        - Le 'type' de graphique peut être 'bar', 'pie', 'line', ou 'doughnut'.
-        - Pour les graphiques, tu DOIS aussi fournir un tableau 'backgroundColor' dans chaque dataset. Ce tableau DOIT contenir des codes de couleur au format hexadécimal (par exemple, "#FF6384" ou "#36A2EB"). N'utilise JAMAIS de noms de couleur (comme "rouge"). Choisis une palette de couleurs esthétique et cohérente. Le nombre de couleurs doit correspondre exactement au nombre de points de données dans le tableau 'data'.
-    `;
-
-    try {
-        const model = 'gemini-2.0-flash';
-        
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        analysisText: { 
-                            type: Type.STRING,
-                            description: "Une analyse textuelle en français répondant à la demande de l'utilisateur."
-                        },
-                        chartData: {
-                            type: Type.OBJECT,
-                            nullable: true,
-                            description: "Données structurées pour un graphique si demandé, sinon null.",
-                            properties: {
-                                type: { type: Type.STRING, description: "Type de graphique, ex: 'bar', 'pie', 'line'." },
-                                data: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        labels: {
-                                            type: Type.ARRAY,
-                                            items: { type: Type.STRING }
-                                        },
-                                        datasets: {
-                                            type: Type.ARRAY,
-                                            items: {
-                                                type: Type.OBJECT,
-                                                properties: {
-                                                    label: { type: Type.STRING },
-                                                    data: {
-                                                        type: Type.ARRAY,
-                                                        items: { type: Type.NUMBER }
-                                                    },
-                                                    backgroundColor: {
-                                                        type: Type.ARRAY,
-                                                        items: { type: Type.STRING },
-                                                        description: "Tableau de couleurs (codes hexadécimaux, ex: '#FF6384') pour chaque point de donnée. DOIT être de la même taille que le tableau 'data'."
-                                                    }
-                                                },
-                                                required: ['label', 'data', 'backgroundColor']
-                                            }
-                                        }
-                                    },
-                                    required: ['labels', 'datasets']
-                                }
-                            },
-                            required: ['type', 'data']
-                        }
-                    },
-                    required: ['analysisText']
-                }
-            }
-        });
-        
-        const jsonResponse = JSON.parse(response.text);
-        return jsonResponse;
-
-    } catch (error) {
-        console.error("Error getting analysis:", error);
-        throw new Error("Échec de l'obtention de l'analyse par le service IA.");
-    }
 };

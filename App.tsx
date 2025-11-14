@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm } from './types';
-import { mockUsers, mockForms, mockFormResponses, mockTransactions, mockNotifications, mockAnalysisHistory, mockPurchasedForms } from './data/mockData';
+import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity, ActivityType } from './types';
+import { mockUsers, mockForms, mockFormResponses, mockTransactions, mockNotifications, mockAnalysisHistory, mockPurchasedForms, mockActivities } from './data/mockData';
 
 import AuthPage from './pages/AuthPage';
 import Sidebar from './components/Sidebar';
@@ -12,12 +12,13 @@ import Wallet from './pages/Wallet';
 import Profile from './pages/Profile';
 import Students from './pages/Students';
 import Finance from './pages/Finance';
-import Activity from './pages/Activity';
+import ActivityPage from './pages/Activity';
 import Chatbot from './components/Chatbot';
 import ComplaintModal from './components/ComplaintModal';
-import { COIN_COSTS, COMMISSION_RATES } from './constants';
+import { COIN_COSTS, COMMISSION_RATES, PLATFORM_FEES } from './constants';
 import NotificationsPage from './pages/NotificationsPage';
 import Library from './pages/Library';
+import InsufficientFundsModal from './components/InsufficientFundsModal';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -25,6 +26,8 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [analysisContext, setAnalysisContext] = useState<{ formIds: string[] } | null>(null);
   const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<{ required: number; balance: number } | null>(null);
 
 
   // App-wide state
@@ -35,6 +38,8 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistory[]>(mockAnalysisHistory);
   const [purchasedForms, setPurchasedForms] = useState<PurchasedForm[]>(mockPurchasedForms);
+  const [activities, setActivities] = useState<Activity[]>(mockActivities);
+  const [unlockedAnalysis, setUnlockedAnalysis] = useState<{userId: string; formId: string}[]>([]);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -49,7 +54,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const today = new Date();
     const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
-    const monthlyFee = 50;
+    const monthlyFee = PLATFORM_FEES.MONTHLY;
 
     let tempUsers = [...users];
     let tempTransactions = [...transactions];
@@ -141,7 +146,7 @@ const App: React.FC = () => {
     }
 
     const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
-    const monthlyFee = 50;
+    const monthlyFee = PLATFORM_FEES.MONTHLY;
     const today = new Date();
     
     const lastFeeTx = tempTransactions
@@ -194,6 +199,18 @@ const App: React.FC = () => {
     return { updatedUser, tempTransactions, tempNotifications, wasReactivated };
   };
 
+  const handleAddActivity = (type: ActivityType, userId: string, details: string, targetId?: string) => {
+    const newActivity: Activity = {
+      id: `activity-${Date.now()}`,
+      userId,
+      type,
+      details,
+      targetId,
+      createdAt: new Date().toISOString(),
+    };
+    setActivities(prev => [newActivity, ...prev]);
+  };
+
 
   const handleToggleTheme = () => {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));
@@ -202,6 +219,32 @@ const App: React.FC = () => {
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     setCurrentPage('tableau-de-bord');
+  };
+
+  const handleCreateUser = (newUserData: Omit<User, 'id' | 'createdAt' | 'role' | 'coinBalance' | 'status'>) => {
+    const newUser: User = {
+      ...newUserData,
+      id: `user-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      role: 'student',
+      coinBalance: 500, // Starting balance
+      status: 'active',
+    };
+    
+    setUsers(prev => [...prev, newUser]);
+    
+    const welcomeNotification: Notification = {
+      id: `notif-${Date.now()}`,
+      userId: newUser.id,
+      message: 'Bienvenue sur MedataAI ! Votre solde de départ est de 500 coins.',
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+    setNotifications(prev => [welcomeNotification, ...prev]);
+
+    handleAddActivity(ActivityType.ACCOUNT_CREATED, newUser.id, `Le compte de ${newUser.name} a été créé.`);
+
+    handleLogin(newUser); // Automatically log in the new user
   };
 
   const handleLogout = () => {
@@ -213,7 +256,7 @@ const App: React.FC = () => {
     setAnalysisContext(context);
   };
   
-  const handleTransaction = (userId: string, reason: TransactionReason, context?: { form?: Form, formTitle?: string, formCount?: number }): boolean => {
+  const handleTransaction = (userId: string, reason: TransactionReason, context?: { form?: Form, formIds?: string[], formTitles?: string[] }): boolean => {
     const user = users.find(u => u.id === userId);
     if (!user || user.role === 'admin') return true; // Admins have infinite coins
     
@@ -228,6 +271,8 @@ const App: React.FC = () => {
 
     let cost = 0;
     let details = '';
+    let formsToUnlock: string[] = [];
+
     switch(reason) {
       case TransactionReason.FormValidation:
         cost = context?.form?.origin === 'purchased' 
@@ -237,18 +282,26 @@ const App: React.FC = () => {
         break;
       case TransactionReason.FormResponse:
         cost = COIN_COSTS.ADD_RESPONSE;
-        details = `Ajout de réponse au formulaire : "${context?.formTitle || 'N/A'}"`;
+        details = `Ajout de réponse au formulaire : "${context?.form?.title || 'N/A'}"`;
         break;
       case TransactionReason.AiRequest:
-        cost = COIN_COSTS.AI_ANALYSIS;
-        details = `Analyse IA sur ${context?.formCount || 1} formulaire(s)${context?.formCount === 1 && context.formTitle ? `: "${context.formTitle}"` : ''}`;
+        if (!context?.formIds || context.formIds.length === 0) return false;
+        formsToUnlock = context.formIds.filter(formId => !unlockedAnalysis.some(ua => ua.userId === userId && ua.formId === formId));
+        
+        if (formsToUnlock.length === 0) {
+            return true; // All forms already unlocked, no cost.
+        }
+        
+        cost = formsToUnlock.length * COIN_COSTS.AI_ANALYSIS;
+        const formTitlesToUnlock = context.formTitles?.filter((title, index) => formsToUnlock.includes(context.formIds![index]));
+        details = `Déblocage de l'analyse IA pour ${formsToUnlock.length} formulaire(s): "${formTitlesToUnlock?.join('", "')}"`;
         break;
       default:
         return true; 
     }
     
     if (user.coinBalance < cost) {
-      alert("Solde de coins insuffisant !");
+      setInsufficientFundsInfo({ required: cost, balance: user.coinBalance });
       return false;
     }
 
@@ -273,6 +326,11 @@ const App: React.FC = () => {
     setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, coinBalance: u.coinBalance - cost } : u));
     setTransactions(prev => [newTransaction, ...prev]);
     setNotifications(prev => [newNotification, ...prev]);
+
+    if (reason === TransactionReason.AiRequest && formsToUnlock.length > 0) {
+        const newUnlocks = formsToUnlock.map(formId => ({ userId, formId }));
+        setUnlockedAnalysis(prev => [...prev, ...newUnlocks]);
+    }
     
     if (currentUser?.id === userId) {
         setCurrentUser(prev => prev ? { ...prev, coinBalance: prev.coinBalance - cost } : null);
@@ -288,7 +346,7 @@ const App: React.FC = () => {
           alert("Erreur: Formulaire introuvable.");
           return;
       }
-      if (!handleTransaction(currentUser.id, TransactionReason.FormResponse, { formTitle: form.title })) return;
+      if (!handleTransaction(currentUser.id, TransactionReason.FormResponse, { form: form })) return;
 
       const newResponse: FormResponse = {
           id: `resp-${Date.now()}`,
@@ -298,6 +356,7 @@ const App: React.FC = () => {
           createdAt: new Date().toISOString()
       };
       setResponses(prev => [...prev, newResponse]);
+      handleAddActivity(ActivityType.RESPONSE_ADDED, currentUser.id, `Nouvelle réponse ajoutée au formulaire "${form.title}".`, form.id);
       alert("Réponse soumise avec succès !");
   };
   
@@ -308,23 +367,33 @@ const App: React.FC = () => {
 
   const handleCreateForm = (newForm: Form) => {
     setForms(prev => [newForm, ...prev]);
+    handleAddActivity(ActivityType.FORM_CREATED, newForm.userId, `Le formulaire "${newForm.title}" a été créé en tant que brouillon.`, newForm.id);
   };
 
   const handleUpdateForm = (updatedForm: Form) => {
       setForms(prevForms => prevForms.map(f => f.id === updatedForm.id ? updatedForm : f));
   };
 
-  const handleValidateForm = (formId: string) => {
-      if(!currentUser) return;
-      const form = forms.find(f => f.id === formId);
-      if (!form) {
-          alert("Erreur: Formulaire introuvable.");
-          return;
-      }
-      if (!handleTransaction(currentUser.id, TransactionReason.FormValidation, { form: form })) return;
+  const handleSaveAndValidateForm = (formToValidate: Form) => {
+    if (!currentUser) return;
+    
+    // The form object is passed directly from the builder, so it's up-to-date.
+    if (!handleTransaction(currentUser.id, TransactionReason.FormValidation, { form: formToValidate })) {
+        return; // Transaction failed (e.g., insufficient funds), so we stop.
+    }
 
-      setForms(prevForms => prevForms.map(f => f.id === formId ? { ...f, validated: true } : f));
-      // The notification is now handled inside handleTransaction
+    const formExistsInState = forms.some(f => f.id === formToValidate.id);
+
+    if (formExistsInState) {
+        // Update existing form and validate it
+        setForms(prevForms => prevForms.map(f => f.id === formToValidate.id ? { ...formToValidate, validated: true } : f));
+        handleAddActivity(ActivityType.FORM_VALIDATED, currentUser.id, `Le formulaire "${formToValidate.title}" a été validé.`, formToValidate.id);
+    } else {
+        // Create new form and validate it
+        setForms(prevForms => [{ ...formToValidate, validated: true }, ...prevForms]);
+        handleAddActivity(ActivityType.FORM_CREATED, currentUser.id, `Le formulaire "${formToValidate.title}" a été créé.`, formToValidate.id);
+        handleAddActivity(ActivityType.FORM_VALIDATED, currentUser.id, `Le formulaire "${formToValidate.title}" a été validé.`, formToValidate.id);
+    }
   };
   
   const handlePublishForm = (formId: string, price: number, pricePerResponse: number) => {
@@ -336,6 +405,7 @@ const App: React.FC = () => {
 
     setForms(prev => prev.map(f => f.id === formId ? { ...f, isPublic: true, price, pricePerResponse } : f));
     handleSendNotification(formToPublish.userId, `Votre formulaire "${formToPublish.title}" a été publié dans la bibliothèque !`, false);
+    handleAddActivity(ActivityType.FORM_PUBLISHED, formToPublish.userId, `Le formulaire "${formToPublish.title}" a été publié dans la bibliothèque.`, formId);
     alert("Formulaire publié avec succès !");
 };
 
@@ -359,8 +429,7 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
     const totalCost = formCost + responsesCost;
 
     if (currentUser.coinBalance < totalCost) {
-        alert("Solde de coins insuffisant !");
-        handleNavigate('portefeuille');
+        setInsufficientFundsInfo({ required: totalCost, balance: currentUser.coinBalance });
         return;
     }
 
@@ -423,6 +492,9 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
 
     handleSendNotification(creator.id, `Votre formulaire "${formToBuy.title}" a été acheté ! Vous avez gagné ${totalCreatorCommission} coins.`, false);
     
+    const purchaseDetails = `Le formulaire "${formToBuy.title}" a été acheté par ${currentUser.name}` + (withResponses ? ' avec les réponses.' : '.');
+    handleAddActivity(ActivityType.FORM_PURCHASED, currentUser.id, purchaseDetails, formToBuy.id);
+    
     alert("Achat réussi !");
     return true; 
 };
@@ -433,6 +505,28 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
       setCurrentUser(updatedUser);
     }
     alert("Profil mis à jour !");
+  };
+
+  const handleUpdatePassword = (userId: string, currentPass: string, newPass: string): { success: boolean; message: string } => {
+    const userIndex = users.findIndex(u => u.id === userId);
+    if (userIndex === -1) {
+      return { success: false, message: 'Utilisateur non trouvé.' };
+    }
+    
+    const user = users[userIndex];
+    if (user.password !== currentPass) {
+      return { success: false, message: 'Le mot de passe actuel est incorrect.' };
+    }
+
+    const updatedUsers = [...users];
+    updatedUsers[userIndex] = { ...user, password: newPass };
+    setUsers(updatedUsers);
+
+    if (currentUser?.id === userId) {
+      setCurrentUser(prev => prev ? { ...prev, password: newPass } : null);
+    }
+    
+    return { success: true, message: 'Mot de passe mis à jour avec succès !' };
   };
 
   const handleSendNotification = (userId: string, message: string, showAlert = true) => {
@@ -458,7 +552,11 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
   };
 
   const handleUpdateUserStatus = (userId: string, status: User['status']) => {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
     setUsers(prev => prev.map(u => (u.id === userId ? { ...u, status } : u)));
+    const statusText = status.startsWith('suspended') ? 'suspendu' : 'réactivé';
+    handleAddActivity(ActivityType.USER_STATUS_CHANGED, 'user-2', `Le compte de ${user.name} a été ${statusText}.`, userId);
   };
 
   const handleAdminCoinAdjustment = (userId: string, amount: number, type: TransactionType) => {
@@ -511,7 +609,9 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
             read: false,
             createdAt: new Date().toISOString(),
         });
-
+      
+      const actionText = type === TransactionType.Credit ? 'crédité de' : 'débité de';
+      handleAddActivity(ActivityType.ADMIN_COIN_ADJUSTMENT, 'user-2', `Le compte de ${user.name} a été ${actionText} ${parsedAmount} coins.`, userId);
 
       setUsers(tempUsers);
       setTransactions(tempTransactions);
@@ -545,6 +645,8 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
       createdAt: new Date().toISOString()
     };
     setAnalysisHistory(prev => [newHistoryItem, ...prev]);
+    const details = `Analyse IA effectuée sur le(s) formulaire(s) : "${formTitles.join('", "')}".`;
+    handleAddActivity(ActivityType.AI_ANALYSIS_PERFORMED, currentUser.id, details, formIds.join(','));
   };
 
   const handleDeleteAnalysisHistory = (historyId: string) => {
@@ -577,7 +679,7 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
     }
 
     if (currentUser.coinBalance < amount) {
-      alert("Solde de coins insuffisant pour effectuer ce transfert.");
+      setInsufficientFundsInfo({ required: amount, balance: currentUser.coinBalance });
       return false;
     }
 
@@ -664,6 +766,9 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
     setTransactions(newTransactions);
     setUsers(tempUsers);
     setNotifications(newNotifications);
+    
+    const transferDetails = `Transfert de ${amount} coins de ${currentUser.name} à ${recipient.name}.`;
+    handleAddActivity(ActivityType.COIN_TRANSFER, currentUser.id, transferDetails, recipient.id);
 
     alert("Transfert effectué avec succès !");
     return true;
@@ -701,7 +806,7 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
                   deleteFormResponse={handleDeleteFormResponse}
                   createForm={handleCreateForm}
                   updateForm={handleUpdateForm}
-                  validateForm={handleValidateForm}
+                  saveAndValidateForm={handleSaveAndValidateForm}
                   publishForm={handlePublishForm}
                   users={users}
                   onNavigate={handleNavigate}
@@ -732,6 +837,7 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
                   analysisHistory={userAnalysisHistory}
                   saveAnalysisToHistory={handleSaveAnalysisToHistory}
                   deleteAnalysisHistory={handleDeleteAnalysisHistory}
+                  unlockedAnalysis={unlockedAnalysis}
                 />;
       case 'portefeuille':
         return <Wallet 
@@ -741,7 +847,11 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
                     onCoinTransfer={handleCoinTransfer}
                 />;
       case 'profil':
-        return <Profile user={currentUser} onUpdateProfile={handleUpdateProfile}/>;
+        return <Profile 
+                  user={currentUser} 
+                  onUpdateProfile={handleUpdateProfile}
+                  onUpdatePassword={handleUpdatePassword}
+               />;
       case 'notifications':
         return <NotificationsPage notifications={userNotifications} />;
       // Admin pages
@@ -757,27 +867,36 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
       case 'finances':
         return <Finance transactions={transactions} users={users}/>;
       case 'activite':
-        return <Activity />;
+        return <ActivityPage activities={activities} users={users} />;
       default:
         return <Dashboard user={currentUser} forms={userForms} responses={userResponses} />;
     }
   };
 
   if (!currentUser) {
-    return <AuthPage onLogin={handleLogin} users={users} />;
+    return <AuthPage onLogin={handleLogin} onCreateUser={handleCreateUser} users={users} />;
   }
   
   const userNotifications = notifications.filter(n => n.userId === currentUser.id);
 
   return (
-    <div className="flex h-screen bg-slate-100 dark:bg-slate-900 font-sans">
+    <div className="relative min-h-screen bg-slate-100 dark:bg-slate-900 font-sans lg:flex">
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
       <Sidebar
         user={currentUser}
         currentPage={currentPage}
         onNavigate={handleNavigate}
         onOpenComplaintModal={() => setIsComplaintModalOpen(true)}
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden lg:ml-64">
         <Header 
           user={currentUser} 
           onLogout={handleLogout} 
@@ -787,8 +906,9 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
           theme={theme}
           onToggleTheme={handleToggleTheme}
           onNavigate={handleNavigate}
+          setIsSidebarOpen={setIsSidebarOpen}
         />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-6">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
           {renderPage()}
         </main>
       </div>
@@ -797,6 +917,16 @@ const handlePurchaseForm = (formToBuy: Form, withResponses: boolean) => {
         isOpen={isComplaintModalOpen}
         onClose={() => setIsComplaintModalOpen(false)}
         onSubmit={handleSendComplaint}
+      />
+      <InsufficientFundsModal
+        isOpen={insufficientFundsInfo !== null}
+        onClose={() => setInsufficientFundsInfo(null)}
+        onNavigateToWallet={() => {
+          handleNavigate('portefeuille');
+          setInsufficientFundsInfo(null);
+        }}
+        requiredAmount={insufficientFundsInfo?.required || 0}
+        currentBalance={insufficientFundsInfo?.balance || 0}
       />
     </div>
   );

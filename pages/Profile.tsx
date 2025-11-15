@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User, MedicalField } from '../types';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import { db } from '../services/firebase';
 
 interface ProfileProps {
   user: User;
@@ -37,8 +38,8 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
     setFormData(prev => ({ ...prev, studyYear: isNaN(value) ? 0 : value }));
   };
 
-  const handleSave = () => {
-    onUpdateProfile(formData);
+  const handleSave = async () => {
+    await onUpdateProfile(formData);
     setIsEditing(false);
   };
 
@@ -63,7 +64,6 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
             type={type}
             name={name as string}
             id={name as string}
-            // FIX: Ensure value is a string for the input element to prevent type errors.
             value={String(value != null ? value : '')}
             onChange={name === 'studyYear' ? handleYearChange : handleInputChange}
             className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md"
@@ -81,24 +81,10 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
     e.preventDefault();
     setPasswordMessage({ type: '', text: '' });
     
-    if (!onUpdatePassword) return;
-
-    if (passwordData.newPass !== passwordData.confirmPass) {
-      setPasswordMessage({ type: 'error', text: 'Les nouveaux mots de passe ne correspondent pas.' });
-      return;
-    }
-    if (passwordData.newPass.length < 8) {
-      setPasswordMessage({ type: 'error', text: 'Le nouveau mot de passe doit contenir au moins 8 caractères.' });
-      return;
-    }
-
-    const result = onUpdatePassword(user.id, passwordData.current, passwordData.newPass);
-    if (result.success) {
-      setPasswordMessage({ type: 'success', text: result.message });
-      setPasswordData({ current: '', newPass: '', confirmPass: '' });
-    } else {
-      setPasswordMessage({ type: 'error', text: result.message });
-    }
+    // Firebase password change requires re-authentication, which is more complex.
+    // This is a placeholder for a future, more secure implementation.
+    alert("La fonctionnalité de changement de mot de passe sera bientôt disponible.");
+    return;
   };
 
   if (user.role === 'admin') {
@@ -118,15 +104,15 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
           <form onSubmit={handlePasswordSubmit} className="space-y-4 max-w-lg">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mot de passe actuel</label>
-              <input type="password" name="current" value={passwordData.current} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+              <input type="password" name="current" value={passwordData.current} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" disabled/>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nouveau mot de passe</label>
-              <input type="password" name="newPass" value={passwordData.newPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+              <input type="password" name="newPass" value={passwordData.newPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" disabled/>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Confirmer le nouveau mot de passe</label>
-              <input type="password" name="confirmPass" value={passwordData.confirmPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+              <input type="password" name="confirmPass" value={passwordData.confirmPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" disabled/>
             </div>
             {passwordMessage.text && (
               <p className={`text-sm ${passwordMessage.type === 'error' ? 'text-red-500' : 'text-green-500'}`}>
@@ -134,7 +120,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
               </p>
             )}
             <div className="flex justify-end">
-              <Button type="submit">Mettre à jour le mot de passe</Button>
+              <Button type="submit" disabled>Mettre à jour le mot de passe</Button>
             </div>
           </form>
         </Card>

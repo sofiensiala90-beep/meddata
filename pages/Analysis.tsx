@@ -18,7 +18,8 @@ interface AnalysisProps {
   user: User;
   forms: Form[];
   responses: FormResponse[];
-  onTransaction: (userId: string, reason: TransactionReason, context?: { formIds?: string[], formTitles?: string[] }) => boolean;
+  // FIX: Updated prop type to handle async function returning a Promise.
+  onTransaction: (userId: string, reason: TransactionReason, context?: { formIds?: string[], formTitles?: string[] }) => Promise<boolean>;
   analysisContext?: { formIds: string[] } | null;
   onNavigate: (page: string) => void;
   analysisHistory: AnalysisHistory[];
@@ -165,13 +166,14 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
             }
         };
 
-        const proceedWithTransactionAndAnalysis = () => {
+        // FIX: Made function async to await the onTransaction call.
+        const proceedWithTransactionAndAnalysis = async () => {
              const transactionContext = {
                 formIds: formsToAnalyze.map(f => f.id),
                 formTitles: formsToAnalyze.map(f => f.title),
             };
-            if (onTransaction(user.id, TransactionReason.AiRequest, transactionContext)) {
-                executeInitialAnalysis();
+            if (await onTransaction(user.id, TransactionReason.AiRequest, transactionContext)) {
+                await executeInitialAnalysis();
             }
         };
 
@@ -188,16 +190,18 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                         <p>Un coût total de <strong className="font-bold">{cost} coins</strong> sera déduit de votre solde. Une fois débloquée, l'analyse sur ce(s) formulaire(s) sera gratuite à l'avenir.</p>
                     </div>
                 ),
-                onConfirm: () => {
+                // FIX: Made onConfirm async to await the transaction and analysis.
+                onConfirm: async () => {
                     setConfirmation(null);
-                    proceedWithTransactionAndAnalysis();
+                    await proceedWithTransactionAndAnalysis();
                 },
                 onClose: () => setConfirmation(null),
                 variant: 'primary',
                 confirmText: `Payer ${cost} coins et analyser`,
             });
         } else {
-            proceedWithTransactionAndAnalysis();
+            // FIX: Awaited the async function call.
+            await proceedWithTransactionAndAnalysis();
         }
     };
 

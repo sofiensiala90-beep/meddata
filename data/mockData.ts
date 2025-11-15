@@ -1,11 +1,10 @@
-import { User, Form, FormResponse, Transaction, Notification, MedicalField, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity } from '../types';
+import { User, Form, FormResponse, Transaction, Notification, MedicalField, AnalysisHistory, PurchasedForm, Activity } from '../types';
 
-export const mockUsers: User[] = [
-  {
-    id: 'user-2',
+// The admin user is now used only for the initial seeding of the Firestore database if no admin exists.
+export const mockAdminUser: Omit<User, 'id'> = {
     name: 'Sofien SIALA',
     email: 'sofiensiala90@gmail.com',
-    password: 'Sofien@1990',
+    password: 'Sofien@1990', // This will be used for initial creation only
     role: 'admin',
     coinBalance: Infinity,
     university: 'Administration MedataAI',
@@ -14,19 +13,14 @@ export const mockUsers: User[] = [
     phoneNumber: '0123456789',
     createdAt: new Date('2022-12-01T10:00:00Z').toISOString(),
     status: 'active',
-  },
-];
+};
 
+// These arrays are now empty as all data will be fetched from Firestore.
+export const mockUsers: User[] = [];
 export const mockForms: Form[] = [];
-
 export const mockFormResponses: FormResponse[] = [];
-
 export const mockPurchasedForms: PurchasedForm[] = [];
-
 export const mockTransactions: Transaction[] = [];
-
 export const mockNotifications: Notification[] = [];
-
 export const mockAnalysisHistory: AnalysisHistory[] = [];
-
 export const mockActivities: Activity[] = [];

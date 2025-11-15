@@ -10,7 +10,8 @@ interface WalletProps {
   user: User;
   transactions: Transaction[];
   users: User[];
-  onCoinTransfer: (recipientEmail: string, amount: number) => boolean;
+  // FIX: Updated prop type to handle async function returning a Promise.
+  onCoinTransfer: (recipientEmail: string, amount: number) => Promise<boolean>;
 }
 
 const translateTransactionReason = (reason: TransactionReason): string => {
@@ -113,8 +114,9 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
           Êtes-vous sûr de vouloir transférer <strong className="font-bold">{transferAmount} coins</strong> à <strong className="font-bold">{recipient.name}</strong> ({recipient.email}) ?
         </p>
       ),
-      onConfirm: () => {
-        const success = onCoinTransfer(recipientEmail.trim(), transferAmount);
+      // FIX: Made function async to await the result of the transfer.
+      onConfirm: async () => {
+        const success = await onCoinTransfer(recipientEmail.trim(), transferAmount);
         if (success) {
           setRecipientEmail('');
           setAmount('');

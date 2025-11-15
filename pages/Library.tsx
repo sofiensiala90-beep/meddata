@@ -11,7 +11,8 @@ interface PurchaseModalProps {
     responseCount: number;
     currentUser: User;
     onClose: () => void;
-    onPurchase: (form: Form, withResponses: boolean) => boolean | void;
+    // FIX: Updated prop type to handle async function returning a Promise.
+    onPurchase: (form: Form, withResponses: boolean) => Promise<boolean | void>;
 }
 
 const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, responseCount, currentUser, onClose, onPurchase }) => {
@@ -23,9 +24,10 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, responseCount, curr
     const totalCost = purchaseOption === 'form_with_responses' ? formWithResponsesCost : (purchaseOption === 'form_only' ? formOnlyCost : 0);
     const canAfford = currentUser.coinBalance >= totalCost;
 
-    const handleConfirmPurchase = () => {
+    // FIX: Made function async to await the result of the purchase operation.
+    const handleConfirmPurchase = async () => {
         if (!purchaseOption) return;
-        const success = onPurchase(form, purchaseOption === 'form_with_responses');
+        const success = await onPurchase(form, purchaseOption === 'form_with_responses');
         if (success) {
             onClose();
         }
@@ -186,7 +188,8 @@ interface LibraryProps {
     purchasedForms: PurchasedForm[];
     responses: FormResponse[];
     users: User[];
-    onPurchase: (form: Form, withResponses: boolean) => boolean | void;
+    // FIX: Updated prop type to handle async function returning a Promise.
+    onPurchase: (form: Form, withResponses: boolean) => Promise<boolean | void>;
 }
 
 const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedForms, responses, users, onPurchase }) => {

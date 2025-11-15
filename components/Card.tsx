@@ -1,6 +1,7 @@
 import React from 'react';
 
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+// FIX: Used Omit to resolve conflict between custom `title: React.ReactNode` and inherited `title: string` from HTMLAttributes.
+interface CardProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
   title?: React.ReactNode;
   titleAddon?: React.ReactNode;
   children: React.ReactNode;

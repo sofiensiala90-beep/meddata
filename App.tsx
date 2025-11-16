@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity, ActivityType } from './types';
-import { mockAdminUser } from './data/mockData';
 import { auth, db } from './services/firebase';
 import firebase from 'firebase/compat/app';
 
@@ -22,7 +21,6 @@ import NotificationsPage from './pages/NotificationsPage';
 import Library from './pages/Library';
 import InsufficientFundsModal from './components/InsufficientFundsModal';
 import Spinner from './components/Spinner';
-import Card from './components/Card';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -33,7 +31,6 @@ const App: React.FC = () => {
   const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<{ required: number; balance: number } | null>(null);
-  const [setupError, setSetupError] = useState<string | null>(null);
 
   // App-wide state, now populated from Firestore
   const [users, setUsers] = useState<User[]>([]);
@@ -47,39 +44,6 @@ const App: React.FC = () => {
   const [unlockedAnalysis, setUnlockedAnalysis] = useState<{userId: string; formId: string}[]>([]);
   
   const listenersRef = useRef<(() => void)[]>([]);
-
-  // Seed admin user on first load if it doesn't exist
-  useEffect(() => {
-    const seedAdmin = async () => {
-        const adminQuery = await db.collection('users').where('role', '==', 'admin').limit(1).get();
-        if (adminQuery.empty) {
-            console.log("No admin found, seeding database...");
-            try {
-                const { email, password, ...adminData } = mockAdminUser;
-                if (!password) throw new Error("Admin password is not defined in mock data.");
-                
-                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-                const uid = userCredential.user?.uid;
-
-                if (uid) {
-                    await db.collection('users').doc(uid).set(adminData);
-                    console.log("Admin user created successfully in Auth and Firestore.");
-                }
-            } catch (error: any) {
-                if (error.code === 'auth/email-already-in-use') {
-                    console.log("Admin email already exists in Auth, skipping seeding.");
-                } else if (error.code === 'auth/operation-not-allowed') {
-                    console.error("SETUP ERROR:", error.message);
-                    setSetupError("Le fournisseur d'authentification par E-mail/Mot de passe est désactivé pour ce projet Firebase. Veuillez l'activer dans la console Firebase (Authentication > Sign-in method) pour que l'application puisse créer le compte administrateur initial.");
-                } else {
-                    console.error("Error seeding admin user:", error);
-                    setSetupError(`Une erreur critique est survenue lors de l'initialisation de l'application : ${error.message}`);
-                }
-            }
-        }
-    };
-    seedAdmin();
-  }, []);
 
   useEffect(() => {
     const authUnsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -606,27 +570,6 @@ const App: React.FC = () => {
         return <Dashboard user={currentUser} forms={userForms} responses={userResponses} />;
     }
   };
-
-  if (setupError) {
-    return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-900 p-4">
-            <div className="max-w-2xl w-full">
-                <Card className="!bg-red-50 dark:!bg-red-900/20 border border-red-200 dark:border-red-800">
-                    <div className="text-center">
-                         <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/50">
-                            <svg className="h-6 w-6 text-red-600 dark:text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
-                        </div>
-                        <h2 className="mt-4 text-lg font-semibold text-red-800 dark:text-red-200">Erreur de Configuration Initiale</h2>
-                        <p className="mt-2 text-md text-red-700 dark:text-red-300">{setupError}</p>
-                        <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">L'application ne peut pas démarrer tant que ce problème n'est pas résolu. Une fois la configuration corrigée dans Firebase, veuillez rafraîchir cette page.</p>
-                    </div>
-                </Card>
-            </div>
-        </div>
-    );
-  }
   
   if (isLoading) {
     return (

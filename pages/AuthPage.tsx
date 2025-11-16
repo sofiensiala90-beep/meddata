@@ -6,6 +6,7 @@ import LogoIcon from '../components/icons/LogoIcon';
 import TermsOfUseModal from '../components/TermsOfUseModal';
 import GoogleIcon from '../components/icons/GoogleIcon';
 import { auth, db, googleProvider } from '../services/firebase';
+import { mockAdminUser } from '../data/mockData';
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
@@ -79,6 +80,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       }
       // If user exists, onAuthStateChanged will handle login automatically.
     } catch (error: any) {
+      console.error("Google Sign-In Error:", error);
       if (error.code === 'auth/account-exists-with-different-credential') {
         setLoginError('Un compte existe déjà avec cette adresse e-mail. Veuillez vous connecter avec votre mot de passe.');
       } else {
@@ -135,6 +137,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       }
       
       if (user) {
+          const usersCollection = db.collection('users');
+          // Check if the signing up user is the designated admin by email
+          const isAdmin = signupData.email.trim().toLowerCase() === mockAdminUser.email.toLowerCase();
+
+          const role = isAdmin ? 'admin' : 'student';
+          const coinBalance = isAdmin ? Infinity : 500;
+          const welcomeMessage = isAdmin 
+            ? 'Bienvenue, Administrateur ! Votre compte a été créé avec les droits d\'administration.'
+            : 'Bienvenue sur MedataAI ! Votre solde de départ est de 500 coins.';
+
           const newUser: Omit<User, 'id' | 'password'> = {
               name: signupData.name,
               email: signupData.email.trim().toLowerCase(),
@@ -143,16 +155,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               studyYear: Number(signupData.studyYear),
               phoneNumber: signupData.phoneNumber,
               createdAt: new Date().toISOString(),
-              role: 'student',
-              coinBalance: 500,
+              role: role,
+              coinBalance: coinBalance,
               status: 'active',
           };
 
-          await db.collection('users').doc(user.uid).set(newUser);
+          await usersCollection.doc(user.uid).set(newUser);
           
           const welcomeNotification = {
               userId: user.uid,
-              message: 'Bienvenue sur MedataAI ! Votre solde de départ est de 500 coins.',
+              message: welcomeMessage,
               read: false,
               createdAt: new Date().toISOString(),
           };
@@ -161,16 +173,17 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
            const newActivity = {
               userId: user.uid,
               type: 'ACCOUNT_CREATED',
-              details: `Le compte de ${newUser.name} a été créé.`,
+              details: `Le compte de ${newUser.name} a été créé${isAdmin ? ' en tant qu\'administrateur' : ''}.`,
               createdAt: new Date().toISOString(),
           };
           await db.collection('activities').add(newActivity);
       }
     } catch (error: any) {
+        console.error("Erreur lors de la création du compte:", error);
         if (error.code === 'auth/email-already-in-use') {
             setSignupError('Cette adresse e-mail est déjà utilisée.');
         } else {
-            setSignupError('Une erreur est survenue lors de la création du compte.');
+            setSignupError(`Une erreur est survenue lors de la création du compte. Détails: ${error.message}`);
         }
     } finally {
         setIsLoading(false);

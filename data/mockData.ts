@@ -4,7 +4,7 @@ import { User, Form, FormResponse, Transaction, Notification, MedicalField, Anal
 export const mockAdminUser: Omit<User, 'id'> = {
     name: 'Sofien SIALA',
     email: 'sofiensiala90@gmail.com',
-    password: 'Sofien@1990', // This will be used for initial creation only
+    // password: 'Sofien@1990', // This will be used for initial creation only
     role: 'admin',
     coinBalance: Infinity,
     university: 'Administration MedataAI',

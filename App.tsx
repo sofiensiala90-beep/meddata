@@ -409,14 +409,54 @@ const App: React.FC = () => {
   };
 
   const handleAdminCoinAdjustment = async (userId: string, amount: number, type: TransactionType) => {
+      const user = users.find(u => u.id === userId);
+      if (!user) {
+        alert("Utilisateur introuvable.");
+        return;
+      }
+      if (!currentUser || currentUser.role !== 'admin') {
+        alert("Action non autorisée.");
+        return;
+      }
+
       const userRef = db.collection('users').doc(userId);
       const increment = type === TransactionType.Credit ? amount : -amount;
+      const actionText = type === TransactionType.Credit ? 'crédité' : 'débité';
+      const actionTextPast = type === TransactionType.Credit ? 'crédit' : 'débit';
 
       const batch = db.batch();
+
+      // Update user balance
       batch.update(userRef, { coinBalance: firebase.firestore.FieldValue.increment(increment) });
-      // Add transaction and notification
-      // ...
+      
+      // Create transaction record for history
+      const newTransaction: Omit<Transaction, 'id'> = {
+          userId,
+          type,
+          amount,
+          reason: TransactionReason.AdminAdjustment,
+          details: `Ajustement de ${actionTextPast} par l'administrateur ${currentUser.name}.`,
+          createdAt: new Date().toISOString(),
+      };
+      const txRef = db.collection('transactions').doc();
+      batch.set(txRef, newTransaction);
+
+      // Create notification for the student
+      const newNotification: Omit<Notification, 'id'> = {
+          userId,
+          message: `Un administrateur a ${actionText} ${amount} coins sur votre compte.`,
+          read: false,
+          createdAt: new Date().toISOString(),
+      };
+      const notifRef = db.collection('notifications').doc();
+      batch.set(notifRef, newNotification);
+
+      // Create activity log
+      const details = `A ${actionText} ${amount} coins sur le compte de ${user.name}.`;
+      await handleAddActivity(ActivityType.ADMIN_COIN_ADJUSTMENT, currentUser.id, details, userId);
+
       await batch.commit();
+      
       alert("Ajustement des coins effectué !");
   };
 
@@ -607,7 +647,7 @@ const App: React.FC = () => {
           onNavigate={handleNavigate}
           setIsSidebarOpen={setIsSidebarOpen}
         />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 pb-24 lg:pb-6">
           {renderPage()}
         </main>
       </div>

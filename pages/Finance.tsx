@@ -184,7 +184,7 @@ const Finance: React.FC<FinanceProps> = ({ transactions, users }) => {
   }, [userSearch, studentUsers, filters.userId]);
 
 
-  const inputClasses = "block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md";
+  const inputClasses = "block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500";
 
   return (
     <div className="space-y-6">

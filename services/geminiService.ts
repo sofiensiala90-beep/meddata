@@ -2,6 +2,27 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
 
 /**
+ * Cleans the AI's text response to extract a valid JSON string.
+ * It handles markdown code fences (```json ... ``` or ``` ... ```) and trims whitespace.
+ * @param text The raw text response from the AI.
+ * @returns A parsed JavaScript object.
+ * @throws An error if parsing fails.
+ */
+const cleanAndParseJson = (text: string): any => {
+    let cleanedText = text.trim();
+    // Handles ```json ... ```
+    if (cleanedText.startsWith('```json') && cleanedText.endsWith('```')) {
+        cleanedText = cleanedText.substring(7, cleanedText.length - 3).trim();
+    } 
+    // Handles ``` ... ```
+    else if (cleanedText.startsWith('```') && cleanedText.endsWith('```')) {
+        cleanedText = cleanedText.substring(3, cleanedText.length - 3).trim();
+    }
+    return JSON.parse(cleanedText);
+};
+
+
+/**
  * First step of the analysis: Ask a powerful model to identify which specific
  * data fields are required to answer the user's query.
  * @param schema - The structure of the form.
@@ -40,7 +61,7 @@ const getRelevantFieldIds = async (schema: Form['schema'], userPrompt: string): 
             }
         });
         
-        const jsonResponse = JSON.parse(response.text);
+        const jsonResponse = cleanAndParseJson(response.text);
         if (jsonResponse && Array.isArray(jsonResponse.fieldIds)) {
             return jsonResponse.fieldIds;
         }
@@ -137,7 +158,7 @@ const generateFinalReport = async (
             }
         });
 
-        return JSON.parse(response.text);
+        return cleanAndParseJson(response.text);
     } catch (error) {
         console.error("Failed to perform final analysis:", error);
         throw new Error("The AI failed to generate a valid analysis.");
@@ -189,7 +210,7 @@ const getAnalysisStrategy = async (userPrompt: string, relevantFieldCount: numbe
             }
         });
         
-        const jsonResponse = JSON.parse(response.text);
+        const jsonResponse = cleanAndParseJson(response.text);
         if (jsonResponse.strategy === 'ANALYZE_SAMPLE') {
             return 'ANALYZE_SAMPLE';
         }

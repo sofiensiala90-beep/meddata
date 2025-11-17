@@ -214,7 +214,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate }) => {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Posez votre question..."
-                className="flex-grow w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg"
+                className="flex-grow w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                 disabled={isLoading}
               />
               <Button onClick={handleSendMessage} disabled={isLoading || !inputValue.trim()}>

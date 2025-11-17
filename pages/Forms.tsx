@@ -305,7 +305,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   };
 
   const renderFormField = (field: FormField, data: Record<string, any>, isReadOnly = false) => {
-    const commonClasses = "mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md disabled:opacity-70 disabled:bg-slate-200 dark:disabled:bg-slate-600 disabled:text-slate-700 dark:disabled:text-slate-300";
+    const commonClasses = "mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500 disabled:opacity-70 disabled:bg-slate-200 dark:disabled:bg-slate-600 disabled:text-slate-700 dark:disabled:text-slate-300";
     const radioCheckboxClasses = "focus:ring-primary-500 h-4 w-4 text-primary-600 border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-700 disabled:opacity-70";
     
     switch (field.type) {
@@ -605,12 +605,12 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                 {user.role === 'admin' && (
                 <Card title="Filtres">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <input name="searchTerm" value={filters.searchTerm} onChange={handleFilterChange} placeholder="Rechercher par mot-clé (diabète, symptôme...)" className="block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md"/>
-                    <select name="studentId" value={filters.studentId} onChange={handleFilterChange} className="block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md">
+                    <input name="searchTerm" value={filters.searchTerm} onChange={handleFilterChange} placeholder="Rechercher par mot-clé (diabète, symptôme...)" className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"/>
+                    <select name="studentId" value={filters.studentId} onChange={handleFilterChange} className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500">
                         <option value="">Tous les étudiants</option>
                         {users.filter(u => u.role === 'student').sort((a,b) => a.name.localeCompare(b.name)).map(student => (<option key={student.id} value={student.id}>{student.name}</option>))}
                     </select>
-                    <select name="publicationStatus" value={filters.publicationStatus} onChange={handleFilterChange} className="block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md">
+                    <select name="publicationStatus" value={filters.publicationStatus} onChange={handleFilterChange} className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500">
                         <option value="all">Tous les statuts</option>
                         <option value="public">Publiés uniquement</option>
                         <option value="private">Non publiés</option>

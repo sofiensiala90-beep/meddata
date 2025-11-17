@@ -66,7 +66,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
             id={name as string}
             value={String(value != null ? value : '')}
             onChange={name === 'studyYear' ? handleYearChange : handleInputChange}
-            className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md"
+            className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
           />
         </div>
       );
@@ -104,15 +104,15 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
           <form onSubmit={handlePasswordSubmit} className="space-y-4 max-w-lg">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mot de passe actuel</label>
-              <input type="password" name="current" value={passwordData.current} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" disabled/>
+              <input type="password" name="current" value={passwordData.current} onChange={handlePasswordChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled/>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nouveau mot de passe</label>
-              <input type="password" name="newPass" value={passwordData.newPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" disabled/>
+              <input type="password" name="newPass" value={passwordData.newPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled/>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Confirmer le nouveau mot de passe</label>
-              <input type="password" name="confirmPass" value={passwordData.confirmPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" disabled/>
+              <input type="password" name="confirmPass" value={passwordData.confirmPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled/>
             </div>
             {passwordMessage.text && (
               <p className={`text-sm ${passwordMessage.type === 'error' ? 'text-red-500' : 'text-green-500'}`}>
@@ -161,7 +161,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
                 name="field"
                 value={formData.field}
                 onChange={handleInputChange}
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base shadow border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
               >
                 <option value={MedicalField.Medicine}>Médecine</option>
                 <option value={MedicalField.Pharmacy}>Pharmacie</option>

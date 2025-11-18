@@ -165,7 +165,7 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
                     if (error) setError('');
                   }}
                   placeholder="exemple@email.com"
-                  className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                  className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md"
                 />
                 {recipientName && (
                   <div className="mt-2 text-sm text-green-700 dark:text-green-300 p-2 bg-green-50 dark:bg-green-900/20 rounded-md border border-green-200 dark:border-green-700">
@@ -187,7 +187,7 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
                   }}
                   placeholder="100"
                   min="100"
-                  className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                  className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md"
                 />
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Le montant minimum pour un transfert est de 100 coins.

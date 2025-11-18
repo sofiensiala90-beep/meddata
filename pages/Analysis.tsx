@@ -409,7 +409,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                                 id="form-select"
                                 value={selectedFormId}
                                 onChange={(e) => setSelectedFormId(e.target.value)}
-                                className="mt-1 block w-full pl-3 pr-10 py-2 text-base shadow border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+                                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
                             >
                                 <option value="" disabled>Choisissez un formulaire validé</option>
                                 {forms.filter(f => f.validated).map(form => (
@@ -432,7 +432,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                             value={userPrompt}
                             onChange={(e) => setUserPrompt(e.target.value)}
                             placeholder="Ex: Donne-moi l'âge moyen des patients et crée un graphique à barres des symptômes."
-                            className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                            className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md"
                         />
                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             Coût : 500 coins pour débloquer l'analyse illimitée sur un formulaire. Les analyses suivantes sur le même formulaire sont gratuites.

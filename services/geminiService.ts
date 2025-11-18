@@ -1,6 +1,23 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
 
+// Centralize API Key access and client instantiation for homogeneity and clarity.
+const GEMINI_API_KEY = process.env.API_KEY;
+
+/**
+ * Creates and returns a GoogleGenAI client instance.
+ * Throws a clear error if the API key is not configured, which helps debugging on Vercel.
+ * @returns {GoogleGenAI} An instance of the GoogleGenAI client.
+ */
+const getAiClient = (): GoogleGenAI => {
+    if (!GEMINI_API_KEY) {
+        console.error("La variable d'environnement API_KEY pour Gemini n'est pas définie.");
+        throw new Error("La clé API pour le service Gemini n'est pas configurée. Assurez-vous que la variable d'environnement API_KEY est définie dans vos paramètres Vercel.");
+    }
+    return new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+};
+
+
 /**
  * Cleans the AI's text response to extract a valid JSON string.
  * It handles markdown code fences (```json ... ``` or ``` ... ```) and trims whitespace.
@@ -30,8 +47,6 @@ const cleanAndParseJson = (text: string): any => {
  * @returns A promise that resolves to an array of field IDs.
  */
 const getRelevantFieldIds = async (schema: Form['schema'], userPrompt: string): Promise<string[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
     const systemInstruction = `
         Tu es un pré-processeur de données intelligent. Ton unique tâche est de déterminer quels champs de données sont nécessaires pour répondre à une demande utilisateur, en te basant sur le schéma d'un formulaire.
         Tu dois répondre UNIQUEMENT avec un objet JSON contenant une seule clé "fieldIds", qui est un tableau de chaînes de caractères. Chaque chaîne doit être l'ID d'un champ requis.
@@ -52,6 +67,7 @@ const getRelevantFieldIds = async (schema: Form['schema'], userPrompt: string): 
     `;
 
     try {
+        const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro', // Use a powerful model for reasoning
             contents: prompt,
@@ -89,8 +105,6 @@ const generateFinalReport = async (
     schema: Form['schema'],
     sampleInfo?: { sampleSize: number; totalSize: number }
 ) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
     let dataContextInstruction = `
         Tu es un assistant d'analyse de données médicales expert.
         Analyse les données brutes fournies ci-dessous pour répondre à la demande de l'utilisateur. Ces données sont un extrait ciblé des réponses à un formulaire.
@@ -149,6 +163,7 @@ const generateFinalReport = async (
     `;
     
     try {
+        const ai = getAiClient();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
@@ -169,7 +184,7 @@ const generateFinalReport = async (
  * An AI planner that decides the best analysis strategy based on the query's complexity and data size.
  */
 const getAnalysisStrategy = async (userPrompt: string, relevantFieldCount: number, totalResponseCount: number): Promise<'ANALYZE_ALL' | 'ANALYZE_SAMPLE'> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = getAiClient();
 
     // For smaller datasets, always analyze everything directly. This respects a previous user requirement.
     if (totalResponseCount <= 100) {
@@ -284,10 +299,10 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
         
         return result;
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error during analysis process:", error);
         return {
-            analysisText: `Une erreur est survenue durant l'analyse. L'IA a peut-être retourné une réponse inattendue. Veuillez réessayer.`,
+            analysisText: `Une erreur est survenue durant l'analyse. ${error.message}`,
             chartData: null
         };
     }
@@ -328,10 +343,10 @@ export const performSampledAnalysis = async (forms: Form[], responses: FormRespo
         const result = await generateFinalReport(leanData, userPrompt, relevantSchemaForContext, sampleInfo);
         return result;
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error during sampled analysis:", error);
         return {
-            analysisText: `Une erreur est survenue durant l'analyse de l'échantillon. Veuillez réessayer.`,
+            analysisText: `Une erreur est survenue durant l'analyse de l'échantillon. ${error.message}`,
             chartData: null
         };
     }
@@ -341,7 +356,7 @@ export const performSampledAnalysis = async (forms: Form[], responses: FormRespo
 
 export const getChatbotResponseStream = async (userRole: User['role'], history: ChatMessage[]) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = getAiClient();
     
     const model = 'gemini-2.5-flash';
 

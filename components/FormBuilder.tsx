@@ -17,6 +17,7 @@ import ConfirmationModal, { ConfirmationModalProps } from './ConfirmationModal';
 import RangeIcon from './icons/RangeIcon';
 import UndoIcon from './icons/UndoIcon';
 import { COIN_COSTS } from '../constants';
+import EyeIcon from './icons/EyeIcon';
 
 interface FormBuilderProps {
   initialForm?: Form | null;
@@ -121,7 +122,7 @@ const FieldCard: React.FC<FieldCardProps> = ({ field, index, total, updateField,
                         value={field.label}
                         placeholder="Entrez votre question ici"
                         onChange={(e) => updateField(field.id, { label: e.target.value })}
-                        className="w-full text-lg font-semibold bg-slate-50/50 dark:bg-white/5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-slate-100 dark:focus:bg-slate-700 p-2 rounded-md transition-colors"
+                        className="w-full text-lg font-semibold bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 p-2 rounded-md transition-colors shadow"
                     />
                 </div>
                 <div className="flex items-center space-x-1">
@@ -138,7 +139,7 @@ const FieldCard: React.FC<FieldCardProps> = ({ field, index, total, updateField,
                                 type="text"
                                 value={opt}
                                 onChange={e => updateOption(field.id, i, e.target.value)}
-                                className="flex-grow bg-slate-50 dark:bg-slate-700/50 border-slate-300 dark:border-slate-600 focus:ring-primary-500 focus:border-primary-500 rounded-md shadow-sm sm:text-sm text-slate-900 dark:text-slate-200"
+                                className="flex-grow bg-white dark:bg-slate-700/50 border-slate-300 dark:border-slate-600 focus:ring-primary-500 focus:border-primary-500 rounded-md shadow sm:text-sm text-slate-900 dark:text-slate-200"
                             />
                             <div className="flex items-center shrink-0">
                                 <button onClick={() => moveOption(field.id, i, 'up')} disabled={i === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed dark:hover:text-slate-200" title="Monter l'option"><ArrowUpIcon className="w-4 h-4"/></button>
@@ -158,7 +159,7 @@ const FieldCard: React.FC<FieldCardProps> = ({ field, index, total, updateField,
                             type="number"
                             value={field.min != null ? field.min : 0}
                             onChange={e => updateField(field.id, { min: e.target.valueAsNumber })}
-                            className="w-24 mt-1 bg-slate-50 dark:bg-slate-700/50 border-slate-300 dark:border-slate-600 focus:ring-primary-500 focus:border-primary-500 rounded-md shadow-sm sm:text-sm text-slate-900 dark:text-slate-200"
+                            className="w-24 mt-1 bg-white dark:bg-slate-700/50 border-slate-300 dark:border-slate-600 focus:ring-primary-500 focus:border-primary-500 rounded-md shadow sm:text-sm text-slate-900 dark:text-slate-200"
                         />
                     </div>
                     <div>
@@ -167,7 +168,7 @@ const FieldCard: React.FC<FieldCardProps> = ({ field, index, total, updateField,
                             type="number"
                             value={field.max != null ? field.max : 100}
                             onChange={e => updateField(field.id, { max: e.target.valueAsNumber })}
-                            className="w-24 mt-1 bg-slate-50 dark:bg-slate-700/50 border-slate-300 dark:border-slate-600 focus:ring-primary-500 focus:border-primary-500 rounded-md shadow-sm sm:text-sm text-slate-900 dark:text-slate-200"
+                            className="w-24 mt-1 bg-white dark:bg-slate-700/50 border-slate-300 dark:border-slate-600 focus:ring-primary-500 focus:border-primary-500 rounded-md shadow sm:text-sm text-slate-900 dark:text-slate-200"
                         />
                     </div>
                 </div>
@@ -179,7 +180,7 @@ const FieldCard: React.FC<FieldCardProps> = ({ field, index, total, updateField,
                         <select
                             value={field.condition?.sourceFieldId || ''}
                             onChange={(e) => handleConditionChange(e.target.value)}
-                            className="flex-grow bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded-md shadow-sm sm:text-sm text-slate-900 dark:text-slate-100"
+                            className="flex-grow bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded-md shadow sm:text-sm text-slate-900 dark:text-slate-100 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                         >
                             <option value="" disabled>Choisir une question...</option>
                             {possibleSources.map(src => <option key={src.id} value={src.id}>{src.label}</option>)}
@@ -189,7 +190,7 @@ const FieldCard: React.FC<FieldCardProps> = ({ field, index, total, updateField,
                             <select
                                 value={field.condition?.sourceFieldValue || ''}
                                 onChange={(e) => updateField(field.id, { condition: { ...field.condition!, sourceFieldValue: e.target.value } })}
-                                className="flex-grow bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded-md shadow-sm sm:text-sm text-slate-900 dark:text-slate-100"
+                                className="flex-grow bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded-md shadow sm:text-sm text-slate-900 dark:text-slate-100 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                             >
                                 {sourceField.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                             </select>
@@ -234,6 +235,68 @@ const Inserter: React.FC<{ onAdd: () => void }> = ({ onAdd }) => (
     </div>
 );
 
+const renderFormFieldPreview = (field: FormField) => {
+    const commonClasses = "mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md disabled:opacity-70 disabled:cursor-not-allowed";
+    const radioCheckboxClasses = "h-4 w-4 text-primary-600 border-slate-300 dark:border-slate-500 bg-slate-200 dark:bg-slate-700 disabled:opacity-70 disabled:cursor-not-allowed";
+    
+    switch (field.type) {
+      case 'text': return <input type="text" disabled className={commonClasses}/>;
+      case 'textarea': return <textarea rows={2} disabled className={commonClasses}/>;
+      case 'number': return <input type="number" disabled className={commonClasses}/>;
+      case 'choice':
+        return <div className="mt-2 space-y-2">{field.options?.map(option => (<div key={option} className="flex items-center"><input type="radio" disabled className={radioCheckboxClasses}/><label className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300">{option}</label></div>))}</div>;
+       case 'checkbox':
+        return <div className="mt-2 space-y-2">{field.options?.map(option => (<div key={option} className="flex items-center"><input type="checkbox" disabled className={`${radioCheckboxClasses} rounded`}/><label className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300">{option}</label></div>))}</div>;
+      case 'date': return <input type="date" disabled className={commonClasses}/>;
+      case 'range':
+        return <div className="mt-2 flex items-center space-x-4"><span className="text-sm font-medium">{field.min ?? 0}</span><input type="range" min={field.min ?? 0} max={field.max ?? 100} disabled className="w-full h-2 bg-slate-300 dark:bg-slate-600 rounded-lg appearance-none cursor-not-allowed" /><span className="text-sm font-medium">{field.max ?? 100}</span></div>;
+      case 'note':
+        return (
+          <div className="mt-6 mb-2 pt-2 border-b border-slate-300 dark:border-slate-600">
+            <h3 className="text-lg font-semibold text-primary-700 dark:text-primary-300">{field.label}</h3>
+          </div>
+        );
+      default: return null;
+    }
+};
+
+const PreviewModal: React.FC<{
+    form: Form;
+    onClose: () => void;
+}> = ({ form, onClose }) => {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <header className="p-4 border-b border-slate-200 dark:border-slate-700">
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">Aperçu : {form.title}</h3>
+                </header>
+                <main className="p-6 space-y-4 overflow-y-auto">
+                    <p className="mb-4 text-slate-600 dark:text-slate-400">{form.description}</p>
+                    <div className="space-y-6">
+                        {form.schema.map(field => {
+                            const sourceField = field.condition ? form.schema.find(f => f.id === field.condition?.sourceFieldId) : null;
+                            return (
+                                <div key={field.id}>
+                                    {field.type !== 'note' && <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{field.label}</label>}
+                                    {renderFormFieldPreview(field)}
+                                    {sourceField && (
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 pl-1">
+                                            S'affiche si '{sourceField.label}' est '{field.condition?.sourceFieldValue}'
+                                        </p>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </main>
+                <footer className="flex justify-end p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-lg">
+                    <Button onClick={onClose} variant="secondary">Fermer</Button>
+                </footer>
+            </div>
+        </div>
+    );
+};
+
 
 const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValidate, onCancel, userId }) => {
   const [form, setForm] = useState<Form>(initialForm ? JSON.parse(JSON.stringify(initialForm)) : newFormTemplate(userId));
@@ -242,6 +305,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
   const newlyAddedFieldId = useRef<string | null>(null);
   const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
   const [insertionIndex, setInsertionIndex] = useState<number | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (newlyAddedFieldId.current) {
@@ -576,7 +640,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
 
   return (
     <>
-      <div className="space-y-6 max-w-4xl mx-auto">
+      <div className="space-y-6 max-w-4xl mx-auto pb-24">
         <div className="pt-3">
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white">
             {initialForm ? 'Modifier le formulaire' : 'Créer un formulaire'}
@@ -594,7 +658,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
                 type="text"
                 value={form.title}
                 onChange={(e) => updateFormAndHistory(prev => ({ ...prev, title: e.target.value }))}
-                className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md"
+                className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
               />
             </div>
             <div>
@@ -603,7 +667,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
                 rows={3}
                 value={form.description}
                 onChange={(e) => updateFormAndHistory(prev => ({ ...prev, description: e.target.value }))}
-                className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md"
+                className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
               />
             </div>
           </div>
@@ -639,40 +703,60 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
            <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 p-4" onClick={() => setIsTypePickerOpen(false)}>
               <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-2xl" onClick={e => e.stopPropagation()}>
                   <header className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-700">
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Choisir un type de question</h3>
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Ajouter un type de question</h3>
                       <button onClick={() => setIsTypePickerOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
                   </header>
-                  <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {fieldTypes.map(ft => (
-                          <div key={ft.type} className="relative group">
-                              <button onClick={() => addField(ft.type)} className="w-full h-full p-4 flex flex-col items-center justify-center text-center rounded-lg bg-slate-50 dark:bg-slate-700 hover:bg-primary-100 dark:hover:bg-primary-900/50 hover:text-primary-700 dark:hover:text-primary-300 transition-colors">
-                                  <span className="text-primary-600 dark:text-primary-400">{ft.icon}</span>
-                                  <span className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-200">{ft.label}</span>
-                              </button>
-                              <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-max max-w-xs bg-slate-800 dark:bg-slate-900 text-white text-xs rounded-md p-2 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity invisible group-hover:visible z-10 pointer-events-none">
-                                  {ft.description}
-                              </div>
-                          </div>
-                      ))}
-                  </div>
+                  <main className="p-6">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {fieldTypes.map(ft => (
+                          <button 
+                            key={ft.type} 
+                            onClick={() => addField(ft.type)}
+                            className="text-left p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:shadow-md hover:border-primary-300 dark:hover:border-primary-700 border border-transparent transition-all transform hover:-translate-y-1"
+                          >
+                            <div className="text-primary-600 dark:text-primary-400">{ft.icon}</div>
+                            <h4 className="font-semibold text-slate-800 dark:text-slate-200 mt-2">{ft.label}</h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{ft.description}</p>
+                          </button>
+                        ))}
+                      </div>
+                  </main>
               </div>
            </div>
         )}
-
-        <div className="sticky bottom-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm p-4 rounded-t-xl border-t border-slate-200 dark:border-slate-700 flex justify-between items-center space-x-4">
-            <Button onClick={handleUndo} variant="secondary" disabled={history.length === 0}>
-                <UndoIcon className="w-5 h-5 mr-2" />
-                Annuler la dernière modification
-            </Button>
-            <div className="flex items-center space-x-4">
-                <Button onClick={onCancel} variant="secondary">Quitter l'éditeur</Button>
+        
+        <div className="fixed bottom-0 left-0 lg:left-64 right-0 z-30 flex flex-col sm:flex-row justify-between items-center gap-4 p-4 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border-t border-slate-200 dark:border-slate-700 shadow-[0_-4px_15px_-5px_rgba(0,0,0,0.1)]">
+            <Button onClick={onCancel} variant="secondary">Annuler</Button>
+            <div className="flex items-center space-x-2 pr-20">
+                <Button
+                    onClick={handleUndo}
+                    disabled={history.length === 0}
+                    variant="secondary"
+                    className="flex items-center"
+                    title="Annuler la dernière action"
+                >
+                    <UndoIcon className="w-5 h-5" />
+                    <span className="hidden sm:inline sm:ml-2">Défaire</span>
+                </Button>
                 <Button onClick={() => onSave(form)} variant="secondary">Enregistrer le brouillon</Button>
-                {!form.validated && <Button onClick={handleValidateClick}>Valider le formulaire ({validationCost} Coins)</Button>}
+                <Button onClick={handleValidateClick}>
+                    Valider ({validationCost} Coins)
+                </Button>
             </div>
         </div>
       </div>
+      
+      <button
+        onClick={() => setIsPreviewOpen(true)}
+        className="fixed bottom-24 right-6 z-40 bg-primary-600 text-white rounded-full p-4 shadow-lg hover:bg-primary-700 transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+        title="Aperçu du formulaire"
+      >
+        <EyeIcon className="w-8 h-8" />
+      </button>
+
+      {isPreviewOpen && <PreviewModal form={form} onClose={() => setIsPreviewOpen(false)} />}
       {confirmation && <ConfirmationModal {...confirmation} />}
     </>
   );

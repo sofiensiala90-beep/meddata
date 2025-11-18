@@ -151,7 +151,7 @@ const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNoti
     );
   };
 
-  const inputClasses = "block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md";
+  const inputClasses = "block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500";
 
   return (
     <div className="space-y-6">
@@ -244,7 +244,7 @@ const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNoti
                         value={notifyAllMessage}
                         onChange={(e) => setNotifyAllMessage(e.target.value)}
                         placeholder="Votre message ici..."
-                        className="w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md"
+                        className="w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                     />
                 </main>
                 <footer className="flex justify-end space-x-3 p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-lg">

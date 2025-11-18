@@ -211,11 +211,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Adresse e-mail</label>
-                <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+                <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
             </div>
             <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mot de passe</label>
-                <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+                <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
             </div>
             {loginError && <p className="text-sm text-red-500">{loginError}</p>}
             <Button type="submit" className="w-full" disabled={isLoading}>{isLoading ? 'Connexion...' : 'Se connecter'}</Button>
@@ -271,34 +271,34 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nom complet</label>
-                    <input type="text" name="name" value={signupData.name} onChange={handleSignupChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" disabled={isCompletingGoogleSignup} />
+                    <input type="text" name="name" value={signupData.name} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled={isCompletingGoogleSignup} />
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Adresse e-mail</label>
-                    <input type="email" name="email" value={signupData.email} onChange={handleSignupChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" disabled={isCompletingGoogleSignup}/>
+                    <input type="email" name="email" value={signupData.email} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled={isCompletingGoogleSignup}/>
                 </div>
             </div>
             {!isCompletingGoogleSignup && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mot de passe</label>
-                  <input type="password" name="password" value={signupData.password} onChange={handleSignupChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+                  <input type="password" name="password" value={signupData.password} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">8 caractères minimum.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Confirmez le mot de passe</label>
-                  <input type="password" name="confirmPassword" value={signupData.confirmPassword} onChange={handleSignupChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+                  <input type="password" name="confirmPassword" value={signupData.confirmPassword} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
                 </div>
               </div>
             )}
              <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Université (Faculté)</label>
-                <input type="text" name="university" value={signupData.university} onChange={handleSignupChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+                <input type="text" name="university" value={signupData.university} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Filière</label>
-                     <select name="field" value={signupData.field} onChange={handleSignupChange} className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md">
+                     <select name="field" value={signupData.field} onChange={handleSignupChange} className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500">
                         <option value={MedicalField.Medicine}>Médecine</option>
                         <option value={MedicalField.Pharmacy}>Pharmacie</option>
                         <option value={MedicalField.Dentistry}>Dentaire</option>
@@ -306,12 +306,12 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Année d'étude</label>
-                    <input type="number" name="studyYear" value={signupData.studyYear} onChange={handleSignupChange} min="1" max="10" required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+                    <input type="number" name="studyYear" value={signupData.studyYear} onChange={handleSignupChange} min="1" max="10" required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
                 </div>
             </div>
              <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Numéro de téléphone</label>
-                <input type="tel" name="phoneNumber" value={signupData.phoneNumber} onChange={handleSignupChange} required className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md" />
+                <input type="tel" name="phoneNumber" value={signupData.phoneNumber} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
             </div>
             <div className="pt-2">
               <label className="flex items-start">

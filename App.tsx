@@ -93,7 +93,9 @@ const App: React.FC = () => {
         } else {
             setCurrentUser(null);
             setIsLoading(false);
-            // Clear all data on logout
+            // Clear all data and reset state on logout
+            setCurrentPage('tableau-de-bord');
+            setAnalysisContext(null);
             setUsers([]);
             setForms([]);
             setResponses([]);
@@ -135,14 +137,21 @@ const App: React.FC = () => {
         const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
         const monthlyFee = PLATFORM_FEES.MONTHLY;
 
-        const lastFeeQuery = await db.collection('transactions')
+        // Fetch all transactions for the user to avoid a composite index query.
+        const userTransactionsQuery = await db.collection('transactions')
             .where('userId', '==', student.id)
-            .where('reason', '==', TransactionReason.MonthlyFee)
-            .orderBy('createdAt', 'desc')
-            .limit(1)
             .get();
 
-        let lastFeeDate = lastFeeQuery.empty ? new Date(student.createdAt) : new Date(lastFeeQuery.docs[0].data().createdAt);
+        // Filter and sort client-side.
+        const monthlyFeeTransactions = userTransactionsQuery.docs
+            .map(doc => doc.data() as Transaction)
+            .filter(tx => tx.reason === TransactionReason.MonthlyFee);
+        
+        monthlyFeeTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        const lastFeeTransaction = monthlyFeeTransactions.length > 0 ? monthlyFeeTransactions[0] : null;
+        
+        let lastFeeDate = lastFeeTransaction ? new Date(lastFeeTransaction.createdAt) : new Date(student.createdAt);
         
         const now = new Date();
         let nextDueDate = new Date(lastFeeDate.getTime() + thirtyDaysInMs);

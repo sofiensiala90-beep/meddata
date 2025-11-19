@@ -96,8 +96,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, tr
 
     // Student Dashboard
     const totalResponses = responses.length;
-    const validatedForms = forms.filter(f => f.validated).length;
-    const draftForms = forms.length - validatedForms;
+    const validatedForms = forms.filter(f => f.status === 'validated').length;
+    const draftForms = forms.filter(f => f.status === 'draft').length;
     const isSuspended = user.status.startsWith('suspended');
 
     return (

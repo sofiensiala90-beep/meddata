@@ -166,7 +166,6 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
             }
         };
 
-        // FIX: Made function async to await the onTransaction call.
         const proceedWithTransactionAndAnalysis = async () => {
              const transactionContext = {
                 formIds: formsToAnalyze.map(f => f.id),
@@ -190,7 +189,6 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                         <p>Un coût total de <strong className="font-bold">{cost} coins</strong> sera déduit de votre solde. Une fois débloquée, l'analyse sur ce(s) formulaire(s) sera gratuite à l'avenir.</p>
                     </div>
                 ),
-                // FIX: Made onConfirm async to await the transaction and analysis.
                 onConfirm: async () => {
                     setConfirmation(null);
                     await proceedWithTransactionAndAnalysis();
@@ -200,7 +198,6 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                 confirmText: `Payer ${cost} coins et analyser`,
             });
         } else {
-            // FIX: Awaited the async function call.
             await proceedWithTransactionAndAnalysis();
         }
     };
@@ -258,7 +255,6 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
         let chartImageHtml = '';
         if (analysisResult.chartData && chartCanvasRef.current) {
             try {
-                // Get the chart as a base64 encoded PNG image
                 const chartImage = chartCanvasRef.current.toDataURL('image/png');
                 chartImageHtml = `
                     <h2>Visualisation Graphique</h2>
@@ -412,7 +408,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                                 className="mt-1 block w-full pl-3 pr-10 py-2 text-base shadow border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
                             >
                                 <option value="" disabled>Choisissez un formulaire validé</option>
-                                {forms.filter(f => f.validated).map(form => (
+                                {forms.filter(f => f.status === 'validated').map(form => (
                                     <option key={form.id} value={form.id}>
                                         {form.title}
                                     </option>

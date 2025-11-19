@@ -16,6 +16,7 @@ interface StudentsProps {
   onSendNotification: (userId: string, message: string, showAlert?: boolean) => void;
   onUpdateUserStatus: (userId: string, status: User['status']) => void;
   onAdminCoinAdjustment: (userId: string, amount: number, type: TransactionType) => void;
+  onUnvalidateForm: (formId: string) => void;
 }
 
 const translateField = (field: MedicalField) => {
@@ -40,7 +41,7 @@ const getStatusInfo = (status: User['status']) => {
     }
 };
 
-const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment }) => {
+const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment, onUnvalidateForm }) => {
   const [filters, setFilters] = useState({ name: '', university: '', field: '', studyYear: '' });
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [isNotifyAllModalOpen, setIsNotifyAllModalOpen] = useState(false);
@@ -229,6 +230,7 @@ const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNoti
           onSendNotification={onSendNotification}
           onUpdateUserStatus={onUpdateUserStatus}
           onAdminCoinAdjustment={onAdminCoinAdjustment}
+          onUnvalidateForm={onUnvalidateForm}
         />
       )}
 

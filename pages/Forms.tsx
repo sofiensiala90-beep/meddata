@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User, Form, FormResponse, FormField, PurchasedForm } from '../types';
 import Card from '../components/Card';
 import Button from '../components/Button';
@@ -24,6 +24,8 @@ interface FormsProps {
   publishForm: (formId: string, price: number, pricePerResponse: number) => void;
   users: User[];
   onNavigate: (page: string, context?: any) => void;
+  handleRequestFormModification: (form: Form, reason: string) => void;
+  onModificationDecision: (formId: string, keepResponses: boolean) => void;
 }
 
 const PublishModal: React.FC<{
@@ -53,7 +55,7 @@ const PublishModal: React.FC<{
                 </div>
                 <div className="flex justify-between items-center text-sm text-green-600 dark:text-green-400">
                     <span>Votre gain par vente</span>
-                    <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{LIBRARY_PRICES.DEFAULT_FORM_PRICE * COMMISSION_RATES.CREATOR_FORM_SALE}</span>
+                    <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{Math.round(LIBRARY_PRICES.DEFAULT_FORM_PRICE * COMMISSION_RATES.CREATOR_FORM_SALE)}</span>
                 </div>
                 <div className="border-t border-slate-200 dark:border-slate-600 !my-2"></div>
                  <div className="flex justify-between items-center">
@@ -62,7 +64,7 @@ const PublishModal: React.FC<{
                 </div>
                 <div className="flex justify-between items-center text-sm text-green-600 dark:text-green-400">
                     <span>Votre gain par réponse</span>
-                    <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE * COMMISSION_RATES.CREATOR_RESPONSE_SALE}</span>
+                    <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{Math.round(LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE * COMMISSION_RATES.CREATOR_RESPONSE_SALE)}</span>
                 </div>
             </div>
 
@@ -79,10 +81,98 @@ const PublishModal: React.FC<{
   );
 };
 
+const ModificationRequestModal: React.FC<{
+  form: Form;
+  onClose: () => void;
+  onSubmit: (form: Form, reason: string) => void;
+}> = ({ form, onClose, onSubmit }) => {
+  const [reason, setReason] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate }) => {
+  const handleSubmit = () => {
+    if (!reason.trim()) {
+      alert("Veuillez fournir une raison pour votre demande.");
+      return;
+    }
+    setIsSubmitting(true);
+    setTimeout(() => {
+        onSubmit(form, reason);
+        setIsSubmitting(false);
+        onClose(); 
+    }, 500);
+  };
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <header className="p-4 border-b border-slate-200 dark:border-slate-700">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Demande de modification pour "{form.title}"</h3>
+        </header>
+        <main className="p-6">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+            Expliquez à l'administrateur pourquoi vous devez modifier ce formulaire. S'il approuve, la validation sera annulée et le formulaire retournera à l'état de brouillon. La re-validation sera gratuite.
+          </p>
+          <textarea
+            rows={5}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ex: J'ai oublié d'ajouter une option importante dans la question X..."
+            className="w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+            disabled={isSubmitting}
+          />
+        </main>
+        <footer className="flex justify-end space-x-3 p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-lg">
+          <Button onClick={onClose} variant="secondary" disabled={isSubmitting}>Annuler</Button>
+          <Button onClick={handleSubmit} disabled={isSubmitting || !reason.trim()}>
+            {isSubmitting ? 'Envoi...' : 'Envoyer la demande'}
+          </Button>
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+const ModificationDecisionModal: React.FC<{
+  form: Form;
+  responseCount: number;
+  onClose: () => void;
+  onDecision: (formId: string, keepResponses: boolean) => void;
+}> = ({ form, responseCount, onClose, onDecision }) => {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <header className="p-4 border-b border-slate-200 dark:border-slate-700">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Modifier le formulaire "{form.title}"</h3>
+        </header>
+        <main className="p-6 space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Votre demande de modification a été approuvée. Ce formulaire a <strong className="font-semibold">{responseCount}</strong> réponse(s) existante(s).
+          </p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Que souhaitez-vous faire de ces réponses avant de commencer vos modifications ?
+          </p>
+          <div className="space-y-3 pt-2">
+            <Button onClick={() => onDecision(form.id, true)} className="w-full !justify-start !p-4 !text-left">
+              <h4 className="font-bold">Conserver les réponses</h4>
+              <p className="text-xs font-normal mt-1">Idéal pour des corrections mineures (fautes de frappe, clarifications).</p>
+            </Button>
+            <Button onClick={() => onDecision(form.id, false)} variant="secondary" className="w-full !justify-start !p-4 !text-left">
+              <h4 className="font-bold">Supprimer les réponses</h4>
+              <p className="text-xs font-normal mt-1">Recommandé si vos modifications rendent les anciennes données incompatibles. <strong className="text-red-500">Cette action est irréversible.</strong></p>
+            </Button>
+          </div>
+        </main>
+        <footer className="flex justify-end p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-lg">
+          <Button onClick={onClose} variant="secondary">Annuler</Button>
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
-  const [activeTab, setActiveTab] = useState<'my_forms' | 'my_purchases'>(user.role === 'admin' ? 'my_forms' : 'my_forms');
+  const [activeTab, setActiveTab] = useState<'my_creations' | 'data_purchases'>(user.role === 'admin' ? 'my_creations' : 'my_creations');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
   const [selectedResponse, setSelectedResponse] = useState<FormResponse | null>(null);
   const [selectedPurchase, setSelectedPurchase] = useState<PurchasedForm | null>(null);
@@ -92,9 +182,28 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   const [selectedFormIds, setSelectedFormIds] = useState<string[]>([]);
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [formToPublish, setFormToPublish] = useState<Form | null>(null);
+  const [formToAction, setFormToAction] = useState<Form | null>(null);
+  const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
+  const actionMenuRef = useRef<Record<string, HTMLDivElement | null>>({});
+
 
   const isSuspended = user.role === 'student' && user.status.startsWith('suspended');
   
+  const myCreationsAndCopies = useMemo(() => forms.filter(f => f.userId === user.id), [forms, user.id]);
+  const myDataPurchases = useMemo(() => purchasedForms.filter(p => p.withResponses), [purchasedForms]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openActionMenu && actionMenuRef.current[openActionMenu] && !actionMenuRef.current[openActionMenu]!.contains(event.target as Node)) {
+        setOpenActionMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [openActionMenu]);
+
   const highlightMatch = (text: string, term: string) => {
     if (!term.trim()) {
       return text;
@@ -123,7 +232,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
 
   const filteredForms = useMemo(() => {
     if (user.role !== 'admin') {
-      return forms;
+      return myCreationsAndCopies;
     }
     return forms.filter(form => {
       const studentMatch = filters.studentId ? form.userId === filters.studentId : true;
@@ -140,7 +249,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
 
       return studentMatch && searchTermMatch && publicationStatusMatch;
     });
-  }, [forms, filters, user.role]);
+  }, [forms, filters, user.role, myCreationsAndCopies]);
 
   const handleStartFilling = (form: Form) => {
     setSelectedForm(form);
@@ -227,10 +336,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     const sourceFieldValueFromData = currentData[sourceFieldId];
 
     if (Array.isArray(sourceFieldValueFromData)) {
-      // Checkbox case
       return sourceFieldValueFromData.includes(sourceFieldValue);
     }
-    // Radio or other types
     return sourceFieldValueFromData === sourceFieldValue;
   };
 
@@ -241,7 +348,6 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
 
     for (const field of visibleFields) {
       if (field.type !== 'note' && !formData[field.id]) {
-         // For range, if no value is set, default it to min value
         if (field.type === 'range') {
           formData[field.id] = field.min != null ? field.min : 0;
         } else {
@@ -279,9 +385,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   
     const cleanedData = { ...newData };
   
-    // Check all fields in the schema
     for (const field of selectedForm.schema) {
-      // If a field is not visible with the new data, remove its value
       if (!isFieldVisible(field, cleanedData)) {
         delete cleanedData[field.id];
       }
@@ -432,23 +536,27 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   };
 
   const getResponseCountForForm = (formId: string) => responses.filter(r => r.formId === formId).length;
+  
+  const getStatusBadge = (status: Form['status']) => {
+    switch (status) {
+        case 'draft': return { text: 'Brouillon', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' };
+        case 'validated': return { text: 'Validé', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' };
+        case 'awaiting_modification_decision': return { text: 'En attente de décision', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
+        default: return { text: 'Inconnu', className: 'bg-slate-100 text-slate-800' };
+    }
+  };
 
-  // New render functions for viewing responses
   const renderResponseListView = () => {
     if (!selectedForm) return null;
     const formResponses = responses
       .filter(r => {
         if (r.formId !== selectedForm.id) return false;
-        // If viewing a purchased form
         if (selectedPurchase) {
-          // If responses were NOT purchased, only show user's own.
           if (!selectedPurchase.withResponses) {
             return r.userId === user.id;
           }
-          // Otherwise, show all (purchased + user's own).
           return true;
         }
-        // If viewing one of their own forms, show all.
         return true;
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -466,7 +574,6 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                     firstAnswer = response.data[firstAnswerableQuestion.id];
                 }
 
-                // Handle different data types for display
                 const displayAnswer = Array.isArray(firstAnswer) 
                   ? firstAnswer.join(', ') 
                   : (firstAnswer || '');
@@ -595,7 +702,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Gérez vos formulaires créés, les copies de formulaires achetés, et les ensembles de données que vous avez acquis.</p>
             )}
           </div>
-          {user.role === 'student' && activeTab === 'my_forms' && <Button onClick={handleStartCreating} disabled={isSuspended} className="w-full sm:w-auto">+ Créer un formulaire</Button>}
+          {user.role === 'student' && activeTab === 'my_creations' && <Button onClick={handleStartCreating} disabled={isSuspended} className="w-full sm:w-auto">+ Créer un formulaire</Button>}
           {user.role === 'admin' && (
              <Button onClick={handleStartMultiFormAnalysis} disabled={selectedFormIds.length === 0} className="w-full sm:w-auto">
                 Analyse IA ({selectedFormIds.length})
@@ -606,8 +713,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
         {user.role === 'student' && (
             <div className="border-b border-slate-200 dark:border-slate-700">
                 <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                    <button onClick={() => setActiveTab('my_forms')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_forms' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Créations & Copies</button>
-                    <button onClick={() => setActiveTab('my_purchases')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_purchases' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Achats de Données</button>
+                    <button onClick={() => setActiveTab('my_creations')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_creations' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Créations & Copies</button>
+                    <button onClick={() => setActiveTab('data_purchases')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'data_purchases' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Achats de Données</button>
                 </nav>
             </div>
         )}
@@ -623,7 +730,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
             </div>
         )}
         
-        {activeTab === 'my_forms' && (
+        {activeTab === 'my_creations' && (
             <>
                 {user.role === 'admin' && (
                 <Card title="Filtres">
@@ -648,6 +755,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                     const creator = users.find(u => u.id === form.userId);
                     const responseCount = getResponseCountForForm(form.id);
                     const matchingQuestions = form.schema.filter(q => filters.searchTerm.trim() && q.label.toLowerCase().includes(filters.searchTerm.trim().toLowerCase())).map(q => q.label);
+                    const statusInfo = getStatusBadge(form.status);
 
                     return (
                         <Card key={form.id} className="flex flex-col relative">
@@ -659,7 +767,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                 <p className="text-slate-600 dark:text-slate-400 mt-1">{highlightMatch(form.description, filters.searchTerm)}</p>
                             </div>
                             <div className="flex flex-col items-end space-y-2 flex-shrink-0 ml-4">
-                                <span className={`px-3 py-1 text-xs font-semibold rounded-full ${form.validated ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'}`}>{form.validated ? 'Validé' : 'Brouillon'}</span>
+                                <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusInfo.className}`}>{statusInfo.text}</span>
                                 {form.isPublic && <span className="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Publié</span>}
                                 {form.origin === 'purchased' && <span className="mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">Copie Achetée</span>}
                             </div>
@@ -669,13 +777,13 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                             {matchingQuestions.length > 0 && (<div className="mt-3 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700 pt-2"><p className="font-semibold">Correspondance dans les questions :</p><ul className="list-disc list-inside ml-2 mt-1">{matchingQuestions.map((label, index) => (<li key={index} className="truncate" title={label}>{highlightMatch(label, filters.searchTerm)}</li>))}</ul></div>)}
                             <div className="mt-4 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
                             <span>Créé le : {new Date(form.createdAt).toLocaleDateString()}</span>
-                            {user.role === 'student' && form.validated ? (<button onClick={() => responseCount > 0 && handleViewResponses(form)} disabled={responseCount === 0} className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default">{responseCount} {responseCount > 1 ? 'réponses' : 'réponse'}</button>) : (<span>{responseCount} {responseCount > 1 ? 'réponses' : 'réponse'}</span>)}
+                            {user.role === 'student' && form.status === 'validated' ? (<button onClick={() => responseCount > 0 && handleViewResponses(form)} disabled={responseCount === 0} className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default">{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</button>) : (<span>{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</span>)}
                             </div>
                         </div>
                         <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-3">
                             {user.role === 'student' && (
                                 <>
-                                    {!form.validated ? (
+                                    {form.status === 'draft' && (
                                         <div className="w-full flex items-center space-x-3">
                                             <Button onClick={() => handleStartEditing(form)} variant="secondary" className="flex-grow" disabled={isSuspended}>Modifier</Button>
                                             <Button 
@@ -688,38 +796,46 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                                 <TrashIcon className="w-5 h-5" />
                                             </Button>
                                         </div>
-                                    ) : form.isPublic ? (
-                                        <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses</Button>
-                                    ) : (
+                                    )}
+                                    {form.status === 'validated' && !form.isPublic && (
                                         <div className="w-full flex items-center space-x-3">
                                             <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
                                                 <PlusIcon className="w-4 h-4 mr-2 inline-block" />
                                                 Ajouter une réponse
                                             </Button>
-                                            <Button 
-                                                onClick={() => { setFormToPublish(form); setIsPublishModalOpen(true); }} 
-                                                variant="secondary"
-                                                className="!px-3 !py-2 text-sm"
-                                                title="Publier le formulaire"
-                                                disabled={isSuspended}
-                                            >
-                                                Publier
-                                            </Button>
+                                            <div className="relative flex-shrink-0" ref={(el) => (actionMenuRef.current[form.id] = el)}>
+                                                <Button 
+                                                    onClick={() => setOpenActionMenu(openActionMenu === form.id ? null : form.id)}
+                                                    variant="secondary"
+                                                    className="!px-3 !py-2 text-sm flex items-center"
+                                                    disabled={isSuspended}
+                                                >
+                                                    Actions
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                </Button>
+                                                <div className={`absolute right-0 bottom-full mb-2 w-56 bg-white dark:bg-slate-800 rounded-md shadow-lg border dark:border-slate-700 z-20 transition-opacity ${openActionMenu === form.id ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+                                                    <div className="py-1">
+                                                        <button onClick={() => { setFormToPublish(form); setIsPublishModalOpen(true); setOpenActionMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700" disabled={isSuspended}>Publier</button>
+                                                        <button onClick={() => { setFormToAction(form); setOpenActionMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700" disabled={isSuspended}>Demander une modification</button>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
+                                    )}
+                                    {form.status === 'validated' && form.isPublic && (
+                                        <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses</Button>
+                                    )}
+                                     {form.status === 'awaiting_modification_decision' && (
+                                        <Button onClick={() => setFormToAction(form)} className="w-full" disabled={isSuspended}>
+                                            Reprendre la modification
+                                        </Button>
                                     )}
                                 </>
                             )}
                             {user.role === 'admin' && (
-                                !form.validated ? (
+                                form.status === 'draft' ? (
                                     <div className="w-full flex justify-end">
-                                         <Button 
-                                            onClick={() => handleDeleteFormClick(form)} 
-                                            variant="danger"
-                                            className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
-                                            title="Supprimer le formulaire"
-                                        >
-                                            <TrashIcon className="w-5 h-5" />
-                                        </Button>
+                                         <Button onClick={() => handleDeleteFormClick(form)} variant="danger" className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700" title="Supprimer le formulaire"><TrashIcon className="w-5 h-5" /></Button>
                                     </div>
                                 ) : (
                                     <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses ({responseCount})</Button>
@@ -736,10 +852,10 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
             </>
         )}
 
-        {activeTab === 'my_purchases' && (
-            purchasedForms.length > 0 ? (
+        {activeTab === 'data_purchases' && (
+            myDataPurchases.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {purchasedForms.map(purchase => {
+                {myDataPurchases.map(purchase => {
                     const form = allForms.find(f => f.id === purchase.formId);
                     if (!form) return null;
                     const creator = users.find(u => u.id === form.userId);
@@ -764,11 +880,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                 </div>
                             </div>
                             <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700">
-                                <Button 
-                                    onClick={() => handleStartFilling(form)} 
-                                    className="w-full"
-                                    disabled={isSuspended}
-                                >
+                                <Button onClick={() => handleStartFilling(form)} className="w-full" disabled={isSuspended}>
                                      <PlusIcon className="w-4 h-4 mr-2 inline-block" />
                                     Ajouter une réponse
                                 </Button>
@@ -785,6 +897,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
       </div>
       {confirmation && <ConfirmationModal {...confirmation} />}
       {isPublishModalOpen && formToPublish && <PublishModal form={formToPublish} onClose={() => setIsPublishModalOpen(false)} onConfirm={handleConfirmPublish} />}
+      {formToAction?.status === 'validated' && <ModificationRequestModal form={formToAction} onClose={() => setFormToAction(null)} onSubmit={handleRequestFormModification} />}
+      {formToAction?.status === 'awaiting_modification_decision' && <ModificationDecisionModal form={formToAction} responseCount={getResponseCountForForm(formToAction.id)} onClose={() => setFormToAction(null)} onDecision={onModificationDecision} />}
     </>
   );
 };

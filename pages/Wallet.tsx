@@ -81,28 +81,22 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
     setError('');
     const transferAmount = parseInt(amount, 10);
 
-    // Client-side validation
+    // Basic client-side validation
     if (!recipientEmail.trim() || !amount.trim()) {
       setError("Veuillez remplir l'e-mail du destinataire et le montant.");
       return;
     }
-    if (isNaN(transferAmount) || transferAmount < 100) {
-      setError("Le montant minimum pour un transfert est de 100 coins.");
-      return;
-    }
-    if (user.coinBalance < transferAmount) {
-      setError("Votre solde est insuffisant pour ce transfert.");
+    if (isNaN(transferAmount) || transferAmount <= 0) {
+      setError("Veuillez entrer un montant valide.");
       return;
     }
     
+    // Find recipient for confirmation message
     const recipient = users.find(u => u.email.toLowerCase() === recipientEmail.toLowerCase().trim() && u.role === 'student');
     if (!recipient) {
+      // The backend will check this again, but it's good UX to check here.
       setError("Aucun étudiant trouvé avec cette adresse e-mail.");
       return;
-    }
-    if (recipient.id === user.id) {
-        setError("Vous ne pouvez pas vous envoyer de coins à vous-même.");
-        return;
     }
 
     // Show confirmation modal
@@ -114,8 +108,8 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
           Êtes-vous sûr de vouloir transférer <strong className="font-bold">{transferAmount} coins</strong> à <strong className="font-bold">{recipient.name}</strong> ({recipient.email}) ?
         </p>
       ),
-      // FIX: Made function async to await the result of the transfer.
       onConfirm: async () => {
+        // The core logic is now in App.tsx
         const success = await onCoinTransfer(recipientEmail.trim(), transferAmount);
         if (success) {
           setRecipientEmail('');

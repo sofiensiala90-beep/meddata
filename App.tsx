@@ -45,9 +45,13 @@ const App: React.FC = () => {
   
   const listenersRef = useRef<(() => void)[]>([]);
 
+  const updateLocalUserState = (userId: string, updates: Partial<User>) => {
+    setCurrentUser(prev => (prev?.id === userId ? { ...prev, ...updates } : prev));
+    setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, ...updates } : u));
+  };
+
   useEffect(() => {
     const authUnsubscribe = auth.onAuthStateChanged(async (user) => {
-        // Detach previous listeners
         listenersRef.current.forEach(unsubscribe => unsubscribe());
         listenersRef.current = [];
 
@@ -58,27 +62,43 @@ const App: React.FC = () => {
                 setCurrentUser(userData);
                 setIsLoading(false);
 
-                // Attach new listeners
-                const collections = ['users', 'forms', 'responses', 'transactions', 'analysisHistory', 'purchasedForms', 'activities', 'unlockedAnalysis'];
+                // Collections with generic listeners
+                const genericCollections = ['users', 'responses', 'transactions', 'analysisHistory', 'purchasedForms', 'activities', 'unlockedAnalysis'];
                 const setters:any = {
                     users: setUsers,
-                    forms: setForms,
                     responses: setResponses,
                     transactions: setTransactions,
-                    notifications: setNotifications, // special handling
                     analysisHistory: setAnalysisHistory,
                     purchasedForms: setPurchasedForms,
                     activities: setActivities,
                     unlockedAnalysis: setUnlockedAnalysis
                 };
 
-                collections.forEach(collection => {
+                genericCollections.forEach(collection => {
                   const unsubscribe = db.collection(collection).onSnapshot(snapshot => {
                       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                       setters[collection](data);
                   });
                   listenersRef.current.push(unsubscribe);
                 });
+
+                // Special listener for 'forms' to handle data migration
+                const formsUnsubscribe = db.collection('forms').onSnapshot(snapshot => {
+                    const formsData = snapshot.docs.map(doc => {
+                        const data: any = doc.data();
+                        // Compatibility layer: If 'status' is missing, infer from old 'validated' field.
+                        if (!data.status && typeof data.validated === 'boolean') {
+                            data.status = data.validated ? 'validated' : 'draft';
+                        }
+                        // Default to 'draft' if status is still missing, for safety.
+                        if (!data.status) {
+                            data.status = 'draft';
+                        }
+                        return { id: doc.id, ...data } as Form;
+                    });
+                    setForms(formsData);
+                });
+                listenersRef.current.push(formsUnsubscribe);
 
                 // Notifications listener (user-specific)
                 const notifUnsubscribe = db.collection('notifications').where('userId', '==', user.uid).onSnapshot(snapshot => {
@@ -87,13 +107,11 @@ const App: React.FC = () => {
                 });
                 listenersRef.current.push(notifUnsubscribe);
             } else {
-                 // User exists in Auth but not in Firestore, log them out.
                 await auth.signOut();
             }
         } else {
             setCurrentUser(null);
             setIsLoading(false);
-            // Clear all data and reset state on logout
             setCurrentPage('tableau-de-bord');
             setAnalysisContext(null);
             setUsers([]);
@@ -124,8 +142,6 @@ const App: React.FC = () => {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // This is a simulation of a server-side cron job.
-  // In a real application, this logic should be in a Firebase Cloud Function.
   useEffect(() => {
     const runMonthlyFeeCheck = async (student: User) => {
         if (student.role !== 'student') return;
@@ -137,12 +153,10 @@ const App: React.FC = () => {
         const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
         const monthlyFee = PLATFORM_FEES.MONTHLY;
 
-        // Fetch all transactions for the user to avoid a composite index query.
         const userTransactionsQuery = await db.collection('transactions')
             .where('userId', '==', student.id)
             .get();
 
-        // Filter and sort client-side.
         const monthlyFeeTransactions = userTransactionsQuery.docs
             .map(doc => doc.data() as Transaction)
             .filter(tx => tx.reason === TransactionReason.MonthlyFee);
@@ -169,11 +183,11 @@ const App: React.FC = () => {
             const batch = db.batch();
             const userRef = db.collection('users').doc(student.id);
 
-            batch.update(userRef, { coinBalance: firebase.firestore.FieldValue.increment(-totalDebit) });
-
+            const userUpdates: Partial<User> = { coinBalance: firebase.firestore.FieldValue.increment(-totalDebit) as any };
             if (finalBalance < 0 && student.status === 'active') {
-                batch.update(userRef, { status: 'suspended_payment' });
+                userUpdates.status = 'suspended_payment';
             }
+            batch.update(userRef, userUpdates);
 
             missedPayments.forEach(dueDate => {
                 const newTransaction: Omit<Transaction, 'id'> = {
@@ -188,7 +202,6 @@ const App: React.FC = () => {
                 batch.set(txRef, newTransaction);
             });
 
-            // Send one summary notification
             const newNotification: Omit<Notification, 'id'> = {
                 userId: student.id,
                 message: `${missedPayments.length} frais mensuel(s) (total: ${totalDebit} coins) ont été prélevés.`,
@@ -199,6 +212,13 @@ const App: React.FC = () => {
             batch.set(notifRef, newNotification);
 
             await batch.commit();
+
+            // Update local state for instant UI change
+            const localUpdates: Partial<User> = { coinBalance: finalBalance };
+            if (finalBalance < 0 && student.status === 'active') {
+              localUpdates.status = 'suspended_payment';
+            }
+            updateLocalUserState(student.id, localUpdates);
         }
     };
 
@@ -223,7 +243,6 @@ const App: React.FC = () => {
   };
 
   const handleLogin = (user: User) => {
-    // This is now handled by onAuthStateChanged
     setCurrentPage('tableau-de-bord');
   };
 
@@ -240,7 +259,6 @@ const App: React.FC = () => {
     const user = users.find(u => u.id === userId);
     if (!user || user.role === 'admin') return true;
     
-    // Status check remains the same
     if (user.status.startsWith('suspended')) {
         alert("Votre compte est suspendu. Vous ne pouvez pas effectuer cette action.");
         return false;
@@ -250,7 +268,6 @@ const App: React.FC = () => {
     let details = '';
     let formsToUnlock: string[] = [];
 
-    // Cost calculation logic remains the same
     switch(reason) {
       case TransactionReason.FormValidation:
         cost = context?.form?.origin === 'purchased' ? COIN_COSTS.VALIDATE_PURCHASED_FORM : COIN_COSTS.VALIDATE_FORM;
@@ -276,7 +293,6 @@ const App: React.FC = () => {
       return false;
     }
 
-    // Firestore write operations
     const batch = db.batch();
     const userRef = db.collection('users').doc(userId);
     batch.update(userRef, { coinBalance: firebase.firestore.FieldValue.increment(-cost) });
@@ -297,6 +313,7 @@ const App: React.FC = () => {
     }
     
     await batch.commit();
+    updateLocalUserState(userId, { coinBalance: user.coinBalance - cost });
     return true;
   };
 
@@ -339,8 +356,8 @@ const App: React.FC = () => {
         return;
     }
 
-    if (formToDelete.validated) {
-        alert("Impossible de supprimer un formulaire qui a été validé.");
+    if (formToDelete.status !== 'draft') {
+        alert("Impossible de supprimer un formulaire qui n'est pas en brouillon.");
         return;
     }
 
@@ -354,25 +371,32 @@ const App: React.FC = () => {
     }
   };
 
-
   const handleSaveAndValidateForm = async (formToValidate: Form) => {
     if (!currentUser) return;
-    if (!await handleTransaction(currentUser.id, TransactionReason.FormValidation, { form: formToValidate })) return;
+
+    const isFree = formToValidate.revalidationFree === true;
+
+    if (!isFree) {
+        if (!await handleTransaction(currentUser.id, TransactionReason.FormValidation, { form: formToValidate })) return;
+    }
 
     const { id, ...formData } = formToValidate;
     const formRef = db.collection('forms').doc(id);
     
-    // Use a transaction to ensure atomicity
-    await db.runTransaction(async (transaction) => {
-        const doc = await transaction.get(formRef);
-        if (doc.exists) {
-            transaction.update(formRef, { ...formData, validated: true });
-        } else {
-            transaction.set(formRef, { ...formData, validated: true });
-        }
-    });
+    const updates = { 
+        ...formData, 
+        status: 'validated' as Form['status'], 
+        revalidationFree: false 
+    };
 
-    await handleAddActivity(ActivityType.FORM_VALIDATED, currentUser.id, `Le formulaire "${formToValidate.title}" a été validé.`, formToValidate.id);
+    const isNew = !forms.some(f => f.id === id);
+    if (isNew) {
+        await formRef.set(updates);
+    } else {
+        await formRef.update(updates);
+    }
+
+    await handleAddActivity(ActivityType.FORM_VALIDATED, currentUser.id, `Le formulaire "${formToValidate.title}" a été validé${isFree ? ' gratuitement' : ''}.`, formToValidate.id);
   };
   
   const handlePublishForm = async (formId: string, price: number, pricePerResponse: number) => {
@@ -386,61 +410,190 @@ const App: React.FC = () => {
   };
 
   const handlePurchaseForm = async (formToBuy: Form, withResponses: boolean): Promise<boolean> => {
-    if (!currentUser) return false;
-    // Calculation logic remains similar
-    const totalCost = formToBuy.price + (withResponses ? (responses.filter(r => r.formId === formToBuy.id).length * formToBuy.pricePerResponse) : 0);
+    if (!currentUser || currentUser.role !== 'student') return false;
+    const seller = users.find(u => u.id === formToBuy.userId);
+    const admin = users.find(u => u.role === 'admin');
+
+    if (!seller || !admin) {
+        alert("Erreur: Le vendeur ou l'administrateur n'a pas pu être trouvé.");
+        return false;
+    }
+
+    const formResponses = responses.filter(r => r.formId === formToBuy.id);
+    const responseCount = formResponses.length;
+    
+    const formCost = formToBuy.price;
+    const responsesCost = withResponses ? responseCount * formToBuy.pricePerResponse : 0;
+    const totalCost = formCost + responsesCost;
+
     if (currentUser.coinBalance < totalCost) {
         setInsufficientFundsInfo({ required: totalCost, balance: currentUser.coinBalance });
         return false;
     }
 
-    const batch = db.batch();
-    const buyerRef = db.collection('users').doc(currentUser.id);
-    batch.update(buyerRef, { coinBalance: firebase.firestore.FieldValue.increment(-totalCost) });
-    
-    // More logic for commissions etc.
-    // ...
-    // Simplified for now. A full implementation requires more details.
-    
-    if (withResponses) {
-        const newPurchase: Omit<PurchasedForm, 'id'> = {
-            userId: currentUser.id,
-            formId: formToBuy.id,
-            purchasedAt: new Date().toISOString(),
-            withResponses: true,
-            purchasePrice: totalCost,
+    const creatorFormCommission = formCost * COMMISSION_RATES.CREATOR_FORM_SALE;
+    const creatorResponsesCommission = responsesCost * COMMISSION_RATES.CREATOR_RESPONSE_SALE;
+    const creatorTotalCommission = creatorFormCommission + creatorResponsesCommission;
+    const platformCommission = totalCost - creatorTotalCommission;
+
+    try {
+        const batch = db.batch();
+
+        const buyerRef = db.collection('users').doc(currentUser.id);
+        batch.update(buyerRef, { coinBalance: firebase.firestore.FieldValue.increment(-totalCost) });
+        
+        const sellerRef = db.collection('users').doc(seller.id);
+        batch.update(sellerRef, { coinBalance: firebase.firestore.FieldValue.increment(creatorTotalCommission) });
+        
+        const adminRef = db.collection('users').doc(admin.id);
+        batch.update(adminRef, { coinBalance: firebase.firestore.FieldValue.increment(platformCommission) });
+
+        const buyerTx: Omit<Transaction, 'id'> = {
+            userId: currentUser.id, type: TransactionType.Debit, amount: totalCost,
+            reason: withResponses ? TransactionReason.ResponseBundlePurchase : TransactionReason.FormPurchase,
+            details: `Achat du formulaire "${formToBuy.title}"${withResponses ? ' avec réponses' : ''}.`,
+            createdAt: new Date().toISOString()
         };
-        const purchaseRef = db.collection('purchasedForms').doc();
-        batch.set(purchaseRef, newPurchase);
-    } else {
-        const newFormCopy: Omit<Form, 'id'> = {
-            userId: currentUser.id,
-            title: `${formToBuy.title} (Copie)`,
-            description: formToBuy.description,
-            schema: formToBuy.schema,
-            validated: false,
-            createdAt: new Date().toISOString(),
-            isPublic: false,
-            price: 0,
-            pricePerResponse: 0,
-            origin: 'purchased'
+        batch.set(db.collection('transactions').doc(), buyerTx);
+
+        const sellerTx: Omit<Transaction, 'id'> = {
+            userId: seller.id, type: TransactionType.Credit, amount: creatorTotalCommission,
+            reason: TransactionReason.FormSaleCommission,
+            details: `Commission sur la vente de "${formToBuy.title}" à ${currentUser.name}.`,
+            createdAt: new Date().toISOString()
         };
-        const newFormRef = db.collection('forms').doc(`form-copy-${Date.now()}`);
-        batch.set(newFormRef, newFormCopy);
+        batch.set(db.collection('transactions').doc(), sellerTx);
+        
+        const platformTx: Omit<Transaction, 'id'> = {
+            userId: admin.id, type: TransactionType.Credit, amount: platformCommission,
+            reason: TransactionReason.PlatformCommission,
+            details: `Commission de la plateforme sur la vente de "${formToBuy.title}".`,
+            createdAt: new Date().toISOString()
+        };
+        batch.set(db.collection('transactions').doc(), platformTx);
+        
+        if (withResponses) {
+            const newPurchase: Omit<PurchasedForm, 'id'> = {
+                userId: currentUser.id, formId: formToBuy.id, purchasedAt: new Date().toISOString(),
+                withResponses: true, purchasePrice: totalCost,
+            };
+            batch.set(db.collection('purchasedForms').doc(), newPurchase);
+        } else {
+            const newFormCopy: Omit<Form, 'id'> = {
+                userId: currentUser.id, title: `${formToBuy.title} (Copie)`, description: formToBuy.description,
+                schema: formToBuy.schema, status: 'draft', createdAt: new Date().toISOString(),
+                isPublic: false, price: 0, pricePerResponse: 0, origin: 'purchased'
+            };
+            batch.set(db.collection('forms').doc(), newFormCopy);
+        }
+        
+        const buyerNotif: Omit<Notification, 'id'> = {
+            userId: currentUser.id, message: `Achat de "${formToBuy.title}" réussi pour ${totalCost} coins !`,
+            read: false, createdAt: new Date().toISOString(),
+        };
+        batch.set(db.collection('notifications').doc(), buyerNotif);
+        
+        const sellerNotif: Omit<Notification, 'id'> = {
+            userId: seller.id,
+            message: `Félicitations ! ${currentUser.name} a acheté votre formulaire "${formToBuy.title}". Vous avez gagné ${Math.round(creatorTotalCommission)} coins.`,
+            read: false, createdAt: new Date().toISOString(),
+        };
+        batch.set(db.collection('notifications').doc(), sellerNotif);
+
+        await batch.commit();
+
+        updateLocalUserState(currentUser.id, { coinBalance: currentUser.coinBalance - totalCost });
+        updateLocalUserState(seller.id, { coinBalance: seller.coinBalance + creatorTotalCommission });
+
+        await handleAddActivity(ActivityType.FORM_PURCHASED, currentUser.id, `Le formulaire "${formToBuy.title}" a été acheté pour ${totalCost} coins.`, formToBuy.id);
+        alert("Achat réussi !");
+        return true;
+    } catch (error) {
+        console.error("Form purchase failed:", error);
+        alert("Une erreur est survenue lors de l'achat. Votre solde n'a pas été modifié.");
+        return false;
     }
-
-    await batch.commit();
-
-    await handleSendNotification(currentUser.id, `Achat de "${formToBuy.title}" réussi !`, false);
-    await handleAddActivity(ActivityType.FORM_PURCHASED, currentUser.id, `Le formulaire "${formToBuy.title}" a été acheté.`, formToBuy.id);
-    alert("Achat réussi !");
-    return true;
   };
 
+  const handleRequestFormModification = async (form: Form, reason: string) => {
+    if (!currentUser) return;
+    const admin = users.find(u => u.role === 'admin');
+    if (!admin) {
+        alert("Erreur: Administrateur non trouvé. La demande ne peut pas être envoyée.");
+        return;
+    }
+
+    const message = `L'étudiant ${currentUser.name} (${currentUser.email}) demande une modification pour le formulaire "${form.title}".\n\nRaison : "${reason}"\n\nPour approuver, allez dans la gestion de l'étudiant et cliquez sur "Annuler la validation" pour ce formulaire.`;
+    await handleSendNotification(admin.id, message, false);
+    
+    alert('Votre demande a été envoyée à l\'administrateur.');
+  };
+
+  const handleUnvalidateForm = async (formId: string) => {
+    if (!currentUser || currentUser.role !== 'admin') {
+        alert("Action non autorisée.");
+        return;
+    }
+    const formToUpdate = forms.find(f => f.id === formId);
+    if (!formToUpdate) {
+        alert("Erreur: Formulaire introuvable.");
+        return;
+    }
+
+    try {
+        await db.collection('forms').doc(formId).update({ 
+            status: 'awaiting_modification_decision',
+            revalidationFree: true 
+        });
+
+        const student = users.find(u => u.id === formToUpdate.userId);
+        if(student) {
+             const message = `Votre demande de modification pour "${formToUpdate.title}" a été approuvée.\n\n` +
+                             `⚠️ Attention : Les modifications ne doivent pas être majeures, sinon votre formulaire risque d'être supprimé pour éviter toute fraude.\n\n` +
+                             `Vous devrez choisir de conserver ou supprimer les réponses existantes avant de pouvoir le modifier à nouveau.`;
+             await handleSendNotification(student.id, message, false);
+        }
+
+        await handleAddActivity(ActivityType.FORM_VALIDATION_CANCELLED, currentUser.id, `A annulé la validation du formulaire "${formToUpdate.title}" pour l'étudiant ${student?.name || 'inconnu'}.`, formId);
+        
+        alert("La validation du formulaire a été annulée. L'étudiant a été notifié.");
+
+    } catch (error) {
+        console.error("Error un-validating form: ", error);
+        alert("Une erreur est survenue lors de l'annulation de la validation.");
+    }
+  };
+
+  const handleModificationDecision = async (formId: string, keepResponses: boolean) => {
+    if (!currentUser) return;
+    const form = forms.find(f => f.id === formId);
+    if (!form || form.status !== 'awaiting_modification_decision') {
+      alert("Action non valide ou formulaire non trouvé.");
+      return;
+    }
+
+    const batch = db.batch();
+
+    if (!keepResponses) {
+      const responsesToDelete = await db.collection('responses').where('formId', '==', formId).get();
+      responsesToDelete.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+    }
+
+    const formRef = db.collection('forms').doc(formId);
+    batch.update(formRef, { status: 'draft' });
+    
+    await batch.commit();
+
+    const notifMessage = `Vous pouvez maintenant modifier votre formulaire "${form.title}". Les réponses existantes ont été ${keepResponses ? 'conservées' : 'supprimées'} comme demandé.`;
+    await handleSendNotification(currentUser.id, notifMessage, false);
+
+    alert("Vous pouvez maintenant modifier votre formulaire.");
+  };
 
   const handleUpdateProfile = async (updatedUser: User) => {
     const { id, ...profileData } = updatedUser;
-    // Don't update fields that shouldn't be user-editable in this form
     const dataToUpdate = {
         name: profileData.name,
         university: profileData.university,
@@ -479,7 +632,7 @@ const App: React.FC = () => {
     if (!user) return;
     await db.collection('users').doc(userId).update({ status });
     const statusText = status.startsWith('suspended') ? 'suspendu' : 'réactivé';
-    await handleAddActivity(ActivityType.USER_STATUS_CHANGED, 'user-2', `Le compte de ${user.name} a été ${statusText}.`, userId);
+    await handleAddActivity(ActivityType.USER_STATUS_CHANGED, currentUser!.id, `Le compte de ${user.name} a été ${statusText}.`, userId);
   };
 
   const handleAdminCoinAdjustment = async (userId: string, amount: number, type: TransactionType) => {
@@ -500,37 +653,31 @@ const App: React.FC = () => {
 
       const batch = db.batch();
 
-      // Update user balance
       batch.update(userRef, { coinBalance: firebase.firestore.FieldValue.increment(increment) });
       
-      // Create transaction record for history
       const newTransaction: Omit<Transaction, 'id'> = {
-          userId,
-          type,
-          amount,
-          reason: TransactionReason.AdminAdjustment,
+          userId, type, amount, reason: TransactionReason.AdminAdjustment,
           details: `Ajustement de ${actionTextPast} par l'administrateur ${currentUser.name}.`,
           createdAt: new Date().toISOString(),
       };
       const txRef = db.collection('transactions').doc();
       batch.set(txRef, newTransaction);
 
-      // Create notification for the student
       const newNotification: Omit<Notification, 'id'> = {
-          userId,
-          message: `Un administrateur a ${actionText} ${amount} coins sur votre compte.`,
-          read: false,
-          createdAt: new Date().toISOString(),
+          userId, message: `Un administrateur a ${actionText} ${amount} coins sur votre compte.`,
+          read: false, createdAt: new Date().toISOString(),
       };
       const notifRef = db.collection('notifications').doc();
       batch.set(notifRef, newNotification);
 
-      // Create activity log
+      await batch.commit();
+      
       const details = `A ${actionText} ${amount} coins sur le compte de ${user.name}.`;
       await handleAddActivity(ActivityType.ADMIN_COIN_ADJUSTMENT, currentUser.id, details, userId);
 
-      await batch.commit();
-      
+      const finalBalance = user.coinBalance + increment;
+      updateLocalUserState(userId, { coinBalance: finalBalance });
+
       alert("Ajustement des coins effectué !");
   };
 
@@ -566,8 +713,16 @@ const App: React.FC = () => {
 
   const handleCoinTransfer = async (recipientEmail: string, amount: number): Promise<boolean> => {
     if (!currentUser) return false;
-    // Logic for checks remains the same
-    // ...
+
+    if (amount < 100) {
+      alert("Le montant minimum pour un transfert est de 100 coins.");
+      return false;
+    }
+    if (currentUser.coinBalance < amount) {
+      alert("Votre solde est insuffisant pour ce transfert.");
+      return false;
+    }
+
     const recipientQuery = await db.collection('users').where('email', '==', recipientEmail.toLowerCase()).limit(1).get();
     if (recipientQuery.empty) {
         alert("Aucun étudiant trouvé avec cette adresse e-mail.");
@@ -575,16 +730,69 @@ const App: React.FC = () => {
     }
     const recipient = { id: recipientQuery.docs[0].id, ...recipientQuery.docs[0].data() } as User;
 
-    // Firestore transaction for atomicity
-    await db.runTransaction(async (transaction) => {
-        const senderRef = db.collection('users').doc(currentUser.id);
-        const recipientRef = db.collection('users').doc(recipient.id);
-        transaction.update(senderRef, { coinBalance: firebase.firestore.FieldValue.increment(-amount) });
-        transaction.update(recipientRef, { coinBalance: firebase.firestore.FieldValue.increment(amount) });
-    });
+    if (recipient.id === currentUser.id) {
+        alert("Vous ne pouvez pas vous envoyer de coins à vous-même.");
+        return false;
+    }
 
-    alert("Transfert effectué avec succès !");
-    return true;
+    try {
+      await db.runTransaction(async (transaction) => {
+          const senderRef = db.collection('users').doc(currentUser.id);
+          const recipientRef = db.collection('users').doc(recipient.id);
+          transaction.update(senderRef, { coinBalance: firebase.firestore.FieldValue.increment(-amount) });
+          transaction.update(recipientRef, { coinBalance: firebase.firestore.FieldValue.increment(amount) });
+
+          const senderTxRef = db.collection('transactions').doc();
+          const senderTx: Omit<Transaction, 'id'> = {
+              userId: currentUser.id, type: TransactionType.Debit, amount: amount,
+              reason: TransactionReason.COIN_TRANSFER_SENT,
+              details: `Transfert de ${amount} coins à ${recipient.name}.`,
+              createdAt: new Date().toISOString(),
+          };
+          transaction.set(senderTxRef, senderTx);
+
+          const recipientTxRef = db.collection('transactions').doc();
+          const recipientTx: Omit<Transaction, 'id'> = {
+              userId: recipient.id, type: TransactionType.Credit, amount: amount,
+              reason: TransactionReason.COIN_TRANSFER_RECEIVED,
+              details: `Reçu ${amount} coins de ${currentUser.name}.`,
+              createdAt: new Date().toISOString(),
+          };
+          transaction.set(recipientTxRef, recipientTx);
+      });
+
+      updateLocalUserState(currentUser.id, { coinBalance: currentUser.coinBalance - amount });
+      updateLocalUserState(recipient.id, { coinBalance: recipient.coinBalance + amount });
+
+      const batch = db.batch();
+      const senderNotif: Omit<Notification, 'id'> = {
+          userId: currentUser.id,
+          message: `Vous avez transféré avec succès ${amount} coins à ${recipient.name}.`,
+          read: false, createdAt: new Date().toISOString(),
+      };
+      batch.set(db.collection('notifications').doc(), senderNotif);
+
+      const recipientNotif: Omit<Notification, 'id'> = {
+          userId: recipient.id,
+          message: `Vous avez reçu ${amount} coins de la part de ${currentUser.name}.`,
+          read: false, createdAt: new Date().toISOString(),
+      };
+      batch.set(db.collection('notifications').doc(), recipientNotif);
+      await batch.commit();
+
+      await handleAddActivity(
+          ActivityType.COIN_TRANSFER, currentUser.id,
+          `A transféré ${amount} coins à ${recipient.name}.`, recipient.id
+      );
+
+      alert("Transfert effectué avec succès !");
+      return true;
+
+    } catch (error) {
+        console.error("Coin transfer transaction failed: ", error);
+        alert("Une erreur est survenue pendant le transfert. Votre solde n'a pas été modifié. Veuillez réessayer.");
+        return false;
+    }
   };
 
 
@@ -601,38 +809,25 @@ const App: React.FC = () => {
     switch (currentPage) {
       case 'tableau-de-bord':
         return <Dashboard 
-                  user={currentUser} 
-                  forms={userForms} 
-                  responses={userResponses}
-                  users={users}
-                  transactions={transactions}
-                  onNavigate={handleNavigate}
+                  user={currentUser} forms={userForms} responses={userResponses}
+                  users={users} transactions={transactions} onNavigate={handleNavigate}
                />;
       case 'formulaires':
         return <Forms 
-                  user={currentUser} 
-                  forms={userForms}
-                  allForms={forms}
-                  responses={responses} 
-                  purchasedForms={userPurchasedForms}
-                  addFormResponse={handleAddFormResponse}
-                  deleteFormResponse={handleDeleteFormResponse}
-                  createForm={handleCreateForm}
-                  updateForm={handleUpdateForm}
-                  deleteForm={handleDeleteForm}
-                  saveAndValidateForm={handleSaveAndValidateForm}
-                  publishForm={handlePublishForm}
-                  users={users}
-                  onNavigate={handleNavigate}
+                  user={currentUser} forms={userForms} allForms={forms}
+                  responses={responses} purchasedForms={userPurchasedForms}
+                  addFormResponse={handleAddFormResponse} deleteFormResponse={handleDeleteFormResponse}
+                  createForm={handleCreateForm} updateForm={handleUpdateForm}
+                  deleteForm={handleDeleteForm} saveAndValidateForm={handleSaveAndValidateForm}
+                  publishForm={handlePublishForm} users={users} onNavigate={handleNavigate}
+                  handleRequestFormModification={handleRequestFormModification}
+                  onModificationDecision={handleModificationDecision}
                />;
       case 'bibliotheque':
         return <Library
-                  currentUser={currentUser}
-                  publicForms={forms.filter(f => f.isPublic)}
-                  purchasedForms={userPurchasedForms}
-                  responses={responses}
-                  users={users}
-                  onPurchase={handlePurchaseForm}
+                  currentUser={currentUser} publicForms={forms.filter(f => f.isPublic)}
+                  purchasedForms={userPurchasedForms} responses={responses}
+                  users={users} onPurchase={handlePurchaseForm}
                 />;
       case 'analyse':
         const purchasedFormObjects = userPurchasedForms
@@ -642,40 +837,30 @@ const App: React.FC = () => {
         const analyzableForms = [...new Map([...userForms, ...purchasedFormObjects].map(item => [item['id'], item])).values()];
 
         return <Analysis 
-                  user={currentUser} 
-                  forms={analyzableForms} 
-                  responses={responses} 
-                  onTransaction={handleTransaction} 
-                  analysisContext={analysisContext} 
-                  onNavigate={handleNavigate} 
-                  analysisHistory={userAnalysisHistory}
+                  user={currentUser} forms={analyzableForms} responses={responses} 
+                  onTransaction={handleTransaction} analysisContext={analysisContext} 
+                  onNavigate={handleNavigate} analysisHistory={userAnalysisHistory}
                   saveAnalysisToHistory={handleSaveAnalysisToHistory}
                   deleteAnalysisHistory={handleDeleteAnalysisHistory}
                   unlockedAnalysis={unlockedAnalysis}
                 />;
       case 'portefeuille':
         return <Wallet 
-                    user={currentUser} 
-                    transactions={userTransactions}
-                    users={users}
-                    onCoinTransfer={handleCoinTransfer}
+                    user={currentUser} transactions={userTransactions}
+                    users={users} onCoinTransfer={handleCoinTransfer}
                 />;
       case 'profil':
         return <Profile 
-                  user={currentUser} 
-                  onUpdateProfile={handleUpdateProfile}
+                  user={currentUser} onUpdateProfile={handleUpdateProfile}
                />;
       case 'notifications':
         return <NotificationsPage notifications={userNotifications} />;
       // Admin pages
       case 'etudiants':
         return <Students 
-          users={users} 
-          forms={forms}
-          responses={responses}
-          onSendNotification={handleSendNotification}
-          onUpdateUserStatus={handleUpdateUserStatus}
-          onAdminCoinAdjustment={handleAdminCoinAdjustment}
+          users={users} forms={forms} responses={responses}
+          onSendNotification={handleSendNotification} onUpdateUserStatus={handleUpdateUserStatus}
+          onAdminCoinAdjustment={handleAdminCoinAdjustment} onUnvalidateForm={handleUnvalidateForm}
         />;
       case 'finances':
         return <Finance transactions={transactions} users={users}/>;
@@ -712,15 +897,10 @@ const App: React.FC = () => {
       />
       <div className="flex-1 flex flex-col overflow-hidden lg:ml-64">
         <Header 
-          user={currentUser} 
-          onLogout={handleLogout} 
-          currentPage={currentPage}
-          notifications={userNotifications}
-          onMarkNotificationsRead={() => handleMarkNotificationsRead(currentUser.id)}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          onNavigate={handleNavigate}
-          setIsSidebarOpen={setIsSidebarOpen}
+          user={currentUser} onLogout={handleLogout} currentPage={currentPage}
+          notifications={userNotifications} onMarkNotificationsRead={() => handleMarkNotificationsRead(currentUser.id)}
+          theme={theme} onToggleTheme={handleToggleTheme}
+          onNavigate={handleNavigate} setIsSidebarOpen={setIsSidebarOpen}
         />
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 pb-24 lg:pb-6">
           {renderPage()}

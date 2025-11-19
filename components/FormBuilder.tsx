@@ -33,7 +33,7 @@ const newFormTemplate = (userId: string): Form => ({
   title: 'Nouveau Formulaire',
   description: '',
   schema: [],
-  validated: false,
+  status: 'draft',
   createdAt: new Date().toISOString(),
   isPublic: false,
   price: 0,
@@ -568,7 +568,8 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
   };
 
   const validationCost = form.origin === 'purchased' ? COIN_COSTS.VALIDATE_PURCHASED_FORM : COIN_COSTS.VALIDATE_FORM;
-  
+  const isFreeValidation = form.revalidationFree === true;
+
   const handleValidateClick = () => {
     if (!form.title.trim()) {
       setConfirmation({
@@ -615,7 +616,11 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
             <p>Vous êtes sur le point de valider ce formulaire.</p>
             <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 text-yellow-800 dark:text-yellow-300 rounded-r-lg">
                 <p>• Vous ne pourrez <strong>plus le modifier</strong>.</p>
-                <p>• Un frais de <strong>{validationCost} coins</strong> sera facturé.</p>
+                {isFreeValidation ? (
+                    <p className="font-semibold text-green-700 dark:text-green-300">• Cette re-validation est gratuite.</p>
+                ) : (
+                    <p>• Un frais de <strong>{validationCost} coins</strong> sera facturé.</p>
+                )}
             </div>
             <p className="text-slate-600 dark:text-slate-400">
                 Vous pouvez l'enregistrer en tant que <strong>brouillon gratuitement</strong> pour le modifier plus tard.
@@ -628,7 +633,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
       },
       onClose: () => setConfirmation(null),
       variant: 'primary',
-      confirmText: 'Valider et Payer',
+      confirmText: isFreeValidation ? 'Valider Gratuitement' : 'Valider et Payer',
       cancelText: 'Retourner à l\'édition'
     });
   };
@@ -742,7 +747,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
                 </Button>
                 <Button onClick={() => onSave(form)} variant="secondary">Enregistrer le brouillon</Button>
                 <Button onClick={handleValidateClick}>
-                    Valider ({validationCost} Coins)
+                    {isFreeValidation ? "Valider (Gratuit)" : `Valider (${validationCost} Coins)`}
                 </Button>
             </div>
         </div>

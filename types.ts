@@ -40,7 +40,8 @@ export interface Form {
   title: string;
   description: string;
   schema: FormField[];
-  validated: boolean;
+  status: 'draft' | 'validated' | 'awaiting_modification_decision';
+  revalidationFree?: boolean;
   createdAt: string;
   isPublic: boolean;
   price: number;
@@ -118,6 +119,7 @@ export enum ActivityType {
   FORM_CREATED = 'FORM_CREATED',
   FORM_DELETED = 'FORM_DELETED',
   FORM_VALIDATED = 'FORM_VALIDATED',
+  FORM_VALIDATION_CANCELLED = 'FORM_VALIDATION_CANCELLED',
   FORM_PUBLISHED = 'FORM_PUBLISHED',
   FORM_PURCHASED = 'FORM_PURCHASED',
   AI_ANALYSIS_PERFORMED = 'AI_ANALYSIS_PERFORMED',

@@ -13,6 +13,7 @@ interface ModalProps {
     onSendNotification: (userId: string, message: string) => void;
     onUpdateUserStatus: (userId: string, status: User['status']) => void;
     onAdminCoinAdjustment: (userId: string, amount: number, type: TransactionType) => void;
+    onUnvalidateForm: (formId: string) => void;
 }
 
 const translateField = (field: MedicalField) => {
@@ -30,7 +31,7 @@ const TabButton: React.FC<{ label: string; isActive: boolean; onClick: () => voi
     </button>
 );
 
-const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, responses, onClose, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment }) => {
+const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, responses, onClose, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment, onUnvalidateForm }) => {
     const [activeTab, setActiveTab] = useState('info');
     const [coinAmount, setCoinAmount] = useState<string>('');
     const [notificationMessage, setNotificationMessage] = useState('');
@@ -133,6 +134,22 @@ const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, response
         onSendNotification(student.id, notificationMessage);
         setNotificationMessage('');
     };
+    
+    const handleUnvalidateClick = (formToUnvalidate: Form) => {
+        setConfirmation({
+            isOpen: true,
+            title: "Annuler la validation",
+            message: `Êtes-vous sûr de vouloir annuler la validation du formulaire "${formToUnvalidate.title}" ? L'étudiant pourra le modifier à nouveau, et une re-validation gratuite sera accordée. Les réponses existantes seront conservées pour le moment.`,
+            onConfirm: () => {
+                onUnvalidateForm(formToUnvalidate.id);
+                setConfirmation(null);
+            },
+            onClose: () => setConfirmation(null),
+            variant: 'danger',
+            confirmText: 'Oui, annuler la validation',
+            cancelText: 'Non'
+        });
+    };
 
     const renderInfoTab = () => (
         <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
@@ -181,6 +198,15 @@ const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, response
         if (viewingFormResponses) {
             return renderFormResponsesView(viewingFormResponses);
         }
+        
+        const getStatusText = (status: Form['status']) => {
+            switch (status) {
+                case 'draft': return 'Brouillon';
+                case 'validated': return 'Validé';
+                case 'awaiting_modification_decision': return 'En attente de décision';
+                default: return 'Inconnu';
+            }
+        };
 
         return (
             <div className="space-y-4 max-h-96 overflow-y-auto">
@@ -191,14 +217,23 @@ const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, response
                             <div className="flex justify-between items-start">
                                 <div className="flex-grow">
                                     <p className="font-semibold text-slate-900 dark:text-white">{form.title}</p>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400">{form.description}</p>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">Statut: {getStatusText(form.status)}</p>
                                 </div>
                                 <div className="text-right ml-4 flex-shrink-0">
                                     <p className="font-bold text-lg text-slate-900 dark:text-white">{responseCount}</p>
                                     <p className="text-xs text-slate-500 dark:text-slate-400">Réponses</p>
                                 </div>
                             </div>
-                             <div className="mt-2 text-right">
+                             <div className="mt-2 text-right flex items-center justify-end space-x-2">
+                                {form.status === 'validated' && !form.isPublic && (
+                                    <Button 
+                                        onClick={() => handleUnvalidateClick(form)}
+                                        variant="danger"
+                                        className="!py-1 !px-3 !text-xs !bg-yellow-500 hover:!bg-yellow-600 !text-white"
+                                    >
+                                        Annuler la validation
+                                    </Button>
+                                )}
                                 <Button onClick={() => setViewingFormResponses(form)} variant="secondary" className="!py-1 !px-3 !text-xs">Voir les réponses</Button>
                             </div>
                         </div>

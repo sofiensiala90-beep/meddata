@@ -140,7 +140,7 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
               <CoinIcon className="w-16 h-16 text-yellow-400 dark:text-yellow-300" />
               <div>
                 <p className="text-slate-500 dark:text-slate-400">Solde Actuel</p>
-                <p className="text-5xl font-bold text-slate-900 dark:text-white">
+                <p className={`text-5xl font-bold ${user.coinBalance < 0 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
                   {user.role === 'admin' ? '∞' : user.coinBalance.toLocaleString()} Coins
                 </p>
               </div>

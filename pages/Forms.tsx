@@ -7,6 +7,7 @@ import ConfirmationModal, { ConfirmationModalProps } from '../components/Confirm
 import { COIN_COSTS, LIBRARY_PRICES, COMMISSION_RATES } from '../constants';
 import PlusIcon from '../components/icons/PlusIcon';
 import CoinIcon from '../components/icons/CoinIcon';
+import TrashIcon from '../components/icons/TrashIcon';
 
 interface FormsProps {
   user: User;
@@ -18,6 +19,7 @@ interface FormsProps {
   deleteFormResponse: (responseId: string) => void;
   createForm: (form: Form) => void;
   updateForm: (form: Form) => void;
+  deleteForm: (formId: string) => void;
   saveAndValidateForm: (form: Form) => void;
   publishForm: (formId: string, price: number, pricePerResponse: number) => void;
   users: User[];
@@ -78,7 +80,7 @@ const PublishModal: React.FC<{
 };
 
 
-const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, saveAndValidateForm, publishForm, users, onNavigate }) => {
+const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
   const [activeTab, setActiveTab] = useState<'my_forms' | 'my_purchases'>(user.role === 'admin' ? 'my_forms' : 'my_forms');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
@@ -199,6 +201,22 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   const handleValidateAndSaveFormWrapper = (form: Form) => {
     saveAndValidateForm(form);
     setView('list');
+  };
+
+  const handleDeleteFormClick = (form: Form) => {
+    setConfirmation({
+        isOpen: true,
+        title: "Confirmer la suppression",
+        message: `Êtes-vous sûr de vouloir supprimer le formulaire "${form.title}" ? Cette action est irréversible.`,
+        onConfirm: () => {
+            deleteForm(form.id);
+            setConfirmation(null);
+        },
+        onClose: () => setConfirmation(null),
+        variant: 'danger',
+        confirmText: 'Supprimer',
+        cancelText: 'Annuler'
+    });
   };
 
   const isFieldVisible = (field: FormField, currentData: Record<string, any>): boolean => {
@@ -571,7 +589,12 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     <>
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{user.role === 'admin' ? 'Tous les formulaires' : 'Gestion des Formulaires'}</h2>
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{user.role === 'admin' ? 'Tous les formulaires' : 'Gestion des Formulaires'}</h2>
+            {user.role === 'student' && (
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Gérez vos formulaires créés, les copies de formulaires achetés, et les ensembles de données que vous avez acquis.</p>
+            )}
+          </div>
           {user.role === 'student' && activeTab === 'my_forms' && <Button onClick={handleStartCreating} disabled={isSuspended} className="w-full sm:w-auto">+ Créer un formulaire</Button>}
           {user.role === 'admin' && (
              <Button onClick={handleStartMultiFormAnalysis} disabled={selectedFormIds.length === 0} className="w-full sm:w-auto">
@@ -583,8 +606,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
         {user.role === 'student' && (
             <div className="border-b border-slate-200 dark:border-slate-700">
                 <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                    <button onClick={() => setActiveTab('my_forms')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_forms' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Formulaires</button>
-                    <button onClick={() => setActiveTab('my_purchases')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_purchases' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Achats</button>
+                    <button onClick={() => setActiveTab('my_forms')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_forms' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Créations & Copies</button>
+                    <button onClick={() => setActiveTab('my_purchases')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_purchases' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Achats de Données</button>
                 </nav>
             </div>
         )}
@@ -638,6 +661,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                             <div className="flex flex-col items-end space-y-2 flex-shrink-0 ml-4">
                                 <span className={`px-3 py-1 text-xs font-semibold rounded-full ${form.validated ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'}`}>{form.validated ? 'Validé' : 'Brouillon'}</span>
                                 {form.isPublic && <span className="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Publié</span>}
+                                {form.origin === 'purchased' && <span className="mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">Copie Achetée</span>}
                             </div>
                             </div>
 
@@ -652,7 +676,18 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                             {user.role === 'student' && (
                                 <>
                                     {!form.validated ? (
-                                        <Button onClick={() => handleStartEditing(form)} variant="secondary" className="w-full" disabled={isSuspended}>Modifier</Button>
+                                        <div className="w-full flex items-center space-x-3">
+                                            <Button onClick={() => handleStartEditing(form)} variant="secondary" className="flex-grow" disabled={isSuspended}>Modifier</Button>
+                                            <Button 
+                                                onClick={() => handleDeleteFormClick(form)} 
+                                                variant="danger"
+                                                className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                                title="Supprimer le formulaire"
+                                                disabled={isSuspended}
+                                            >
+                                                <TrashIcon className="w-5 h-5" />
+                                            </Button>
+                                        </div>
                                     ) : form.isPublic ? (
                                         <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses</Button>
                                     ) : (
@@ -674,7 +709,22 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                     )}
                                 </>
                             )}
-                            {user.role === 'admin' && (<Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses ({responseCount})</Button>)}
+                            {user.role === 'admin' && (
+                                !form.validated ? (
+                                    <div className="w-full flex justify-end">
+                                         <Button 
+                                            onClick={() => handleDeleteFormClick(form)} 
+                                            variant="danger"
+                                            className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                            title="Supprimer le formulaire"
+                                        >
+                                            <TrashIcon className="w-5 h-5" />
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses ({responseCount})</Button>
+                                )
+                            )}
                         </div>
                         </Card>
                     );
@@ -728,7 +778,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                 })}
                 </div>
             ) : (
-                <Card><div className="text-center py-12"><h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun achat</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Vous n'avez encore acheté aucun formulaire. Explorez la bibliothèque !</p><div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Aller à la Bibliothèque</Button></div></div></Card>
+                <Card><div className="text-center py-12"><h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun achat de données</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Vous n'avez encore acheté aucun formulaire avec ses réponses. Explorez la bibliothèque !</p><div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Aller à la Bibliothèque</Button></div></div></Card>
             )
         )}
 

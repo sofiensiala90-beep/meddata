@@ -97,7 +97,7 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notificati
           {user.role === 'student' && (
             <div className="hidden sm:flex items-center space-x-2 bg-slate-100 dark:bg-slate-700/50 px-3 py-1.5 rounded-full text-sm font-medium text-slate-700 dark:text-slate-200" title="Votre solde de Coins">
                 <CoinIcon className="w-5 h-5 text-yellow-500 dark:text-yellow-400" />
-                <span className="font-semibold">{user.coinBalance.toLocaleString()}</span>
+                <span className={`font-semibold ${user.coinBalance < 0 ? 'text-red-500' : ''}`}>{user.coinBalance.toLocaleString()}</span>
             </div>
           )}
 

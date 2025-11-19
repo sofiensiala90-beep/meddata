@@ -122,41 +122,81 @@ const App: React.FC = () => {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // The monthly fee check can remain as-is, since it reads from and writes to the state,
-  // which is now managed by Firestore listeners. However, writes should now go to Firestore.
-  // This is too complex for a single change, so I'll simplify it for now. A proper implementation
-  // would use a Cloud Function triggered on a schedule (cron job).
-  // The current implementation is a good-enough simulation for the frontend.
-  // I'll adapt it to write to firestore instead of local state.
+  // This is a simulation of a server-side cron job.
+  // In a real application, this logic should be in a Firebase Cloud Function.
   useEffect(() => {
-    // This is a simulation of a server-side cron job.
-    // In a real application, this logic should be in a Firebase Cloud Function.
-    const runMonthlyFeeCheck = async () => {
-        const today = new Date();
+    const runMonthlyFeeCheck = async (student: User) => {
+        if (student.role !== 'student') return;
+
+        const sessionKey = `monthly_fee_check_v4_${student.id}`;
+        if (sessionStorage.getItem(sessionKey)) return;
+        sessionStorage.setItem(sessionKey, 'true');
+
         const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
         const monthlyFee = PLATFORM_FEES.MONTHLY;
 
-        const students = users.filter(u => u.role === 'student');
+        const lastFeeQuery = await db.collection('transactions')
+            .where('userId', '==', student.id)
+            .where('reason', '==', TransactionReason.MonthlyFee)
+            .orderBy('createdAt', 'desc')
+            .limit(1)
+            .get();
+
+        let lastFeeDate = lastFeeQuery.empty ? new Date(student.createdAt) : new Date(lastFeeQuery.docs[0].data().createdAt);
         
-        const batch = db.batch();
+        const now = new Date();
+        let nextDueDate = new Date(lastFeeDate.getTime() + thirtyDaysInMs);
 
-        for (const student of students) {
-            if (student.status !== 'active') continue;
-
-            const firstBillDueDate = new Date(new Date(student.createdAt).getTime() + thirtyDaysInMs);
-            if (today < firstBillDueDate) continue;
-            
-            // This logic is complex and query-heavy for a client. 
-            // I'll keep it simple: check if the last fee was more than 30 days ago.
-            // This logic is not perfect but demonstrates the capability without backend code.
+        const missedPayments: Date[] = [];
+        while (nextDueDate < now) {
+            missedPayments.push(new Date(nextDueDate));
+            nextDueDate = new Date(nextDueDate.getTime() + thirtyDaysInMs);
         }
-        // console.log("Monthly fee check would run here.");
+
+        if (missedPayments.length > 0) {
+            const totalDebit = missedPayments.length * monthlyFee;
+            const finalBalance = student.coinBalance - totalDebit;
+
+            const batch = db.batch();
+            const userRef = db.collection('users').doc(student.id);
+
+            batch.update(userRef, { coinBalance: firebase.firestore.FieldValue.increment(-totalDebit) });
+
+            if (finalBalance < 0 && student.status === 'active') {
+                batch.update(userRef, { status: 'suspended_payment' });
+            }
+
+            missedPayments.forEach(dueDate => {
+                const newTransaction: Omit<Transaction, 'id'> = {
+                    userId: student.id,
+                    type: TransactionType.Debit,
+                    amount: monthlyFee,
+                    reason: TransactionReason.MonthlyFee,
+                    details: `Frais mensuels pour la période se terminant le ${dueDate.toLocaleDateString('fr-FR')}.`,
+                    createdAt: dueDate.toISOString(),
+                };
+                const txRef = db.collection('transactions').doc();
+                batch.set(txRef, newTransaction);
+            });
+
+            // Send one summary notification
+            const newNotification: Omit<Notification, 'id'> = {
+                userId: student.id,
+                message: `${missedPayments.length} frais mensuel(s) (total: ${totalDebit} coins) ont été prélevés.`,
+                read: false,
+                createdAt: now.toISOString(),
+            };
+            const notifRef = db.collection('notifications').doc();
+            batch.set(notifRef, newNotification);
+
+            await batch.commit();
+        }
     };
 
-    if (users.length > 0) {
-      // runMonthlyFeeCheck();
+    if (currentUser && currentUser.role === 'student') {
+        runMonthlyFeeCheck(currentUser);
     }
-  }, [users.length]); // Re-run if the number of users changes significantly
+  }, [currentUser]);
 
   const handleAddActivity = async (type: ActivityType, userId: string, details: string, targetId?: string) => {
     const newActivity: Omit<Activity, 'id'> = {
@@ -280,6 +320,31 @@ const App: React.FC = () => {
       const { id, ...formData } = updatedForm;
       await db.collection('forms').doc(id).update(formData);
   };
+
+  const handleDeleteForm = async (formId: string) => {
+    if (!currentUser) return;
+    const formToDelete = forms.find(f => f.id === formId);
+    if (!formToDelete) {
+        console.error("Form to delete not found");
+        alert("Erreur: formulaire introuvable.");
+        return;
+    }
+
+    if (formToDelete.validated) {
+        alert("Impossible de supprimer un formulaire qui a été validé.");
+        return;
+    }
+
+    try {
+        await db.collection('forms').doc(formId).delete();
+        await handleAddActivity(ActivityType.FORM_DELETED, currentUser.id, `Le formulaire en brouillon "${formToDelete.title}" a été supprimé.`, formId);
+        alert("Formulaire supprimé avec succès.");
+    } catch (error) {
+        console.error("Error deleting form: ", error);
+        alert("Une erreur est survenue lors de la suppression du formulaire.");
+    }
+  };
+
 
   const handleSaveAndValidateForm = async (formToValidate: Form) => {
     if (!currentUser) return;
@@ -545,6 +610,7 @@ const App: React.FC = () => {
                   deleteFormResponse={handleDeleteFormResponse}
                   createForm={handleCreateForm}
                   updateForm={handleUpdateForm}
+                  deleteForm={handleDeleteForm}
                   saveAndValidateForm={handleSaveAndValidateForm}
                   publishForm={handlePublishForm}
                   users={users}

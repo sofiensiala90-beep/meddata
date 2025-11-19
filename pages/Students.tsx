@@ -198,7 +198,7 @@ const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNoti
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{translateField(student.field)} ({student.studyYear}e année)</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{student.phoneNumber}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-slate-500 dark:text-slate-400">{student.coinBalance.toLocaleString()}</td>
+                      <td className={`px-6 py-4 whitespace-nowrap text-right text-sm font-semibold ${student.coinBalance < 0 ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>{student.coinBalance.toLocaleString()}</td>
                        <td className="px-6 py-4 whitespace-nowrap text-center">
                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusInfo.className}`}>
                           {statusInfo.text}

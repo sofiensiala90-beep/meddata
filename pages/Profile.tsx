@@ -2,13 +2,8 @@ import React, { useState } from 'react';
 import { User, MedicalField } from '../types';
 import Card from '../components/Card';
 import Button from '../components/Button';
-import { db } from '../services/firebase';
-
-interface ProfileProps {
-  user: User;
-  onUpdateProfile: (updatedUser: User) => void;
-  onUpdatePassword?: (userId: string, currentPass: string, newPass: string) => { success: boolean, message: string };
-}
+import { useAuth } from '../contexts/AuthContext';
+import { useData } from '../contexts/DataContext';
 
 // Helper to translate field enum to French
 const translateField = (field: MedicalField) => {
@@ -20,10 +15,20 @@ const translateField = (field: MedicalField) => {
   }
 };
 
-const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePassword }) => {
+const Profile: React.FC = () => {
+  const { currentUser: user } = useAuth();
+  const { handleUpdateProfile } = useData();
+
+  // Alias for compatibility
+  const onUpdateProfile = handleUpdateProfile;
+  // Placeholder for password update, not yet in context
+  const onUpdatePassword = async () => ({ success: false, message: "Not implemented" });
+
+  if (!user) return null;
+
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<User>(user);
-  
+
   // State for admin password change
   const [passwordData, setPasswordData] = useState({ current: '', newPass: '', confirmPass: '' });
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'error' | 'success' | ''; text: string }>({ type: '', text: '' });
@@ -32,7 +37,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
-  
+
   const handleYearChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value, 10);
     setFormData(prev => ({ ...prev, studyYear: isNaN(value) ? 0 : value }));
@@ -54,33 +59,33 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
       <dd className="mt-1 text-sm text-slate-900 dark:text-white">{value}</dd>
     </div>
   );
-  
+
   const renderEditableField = (label: string, name: keyof User, type = 'text') => {
-      const value = formData[name];
-      return (
-         <div>
-          <label htmlFor={name as string} className="block text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
-          <input
-            type={type}
-            name={name as string}
-            id={name as string}
-            value={String(value != null ? value : '')}
-            onChange={name === 'studyYear' ? handleYearChange : handleInputChange}
-            className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-          />
-        </div>
-      );
+    const value = formData[name];
+    return (
+      <div>
+        <label htmlFor={name as string} className="block text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
+        <input
+          type={type}
+          name={name as string}
+          id={name as string}
+          value={String(value != null ? value : '')}
+          onChange={name === 'studyYear' ? handleYearChange : handleInputChange}
+          className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+        />
+      </div>
+    );
   }
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPasswordData({ ...passwordData, [e.target.name]: e.target.value });
     if (passwordMessage.text) setPasswordMessage({ type: '', text: '' });
   };
-  
+
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordMessage({ type: '', text: '' });
-    
+
     // Firebase password change requires re-authentication, which is more complex.
     // This is a placeholder for a future, more secure implementation.
     alert("La fonctionnalité de changement de mot de passe sera bientôt disponible.");
@@ -99,20 +104,20 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
             {renderField("Statut", "Actif")}
           </dl>
         </Card>
-        
+
         <Card title="Changer le mot de passe">
           <form onSubmit={handlePasswordSubmit} className="space-y-4 max-w-lg">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mot de passe actuel</label>
-              <input type="password" name="current" value={passwordData.current} onChange={handlePasswordChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled/>
+              <input type="password" name="current" value={passwordData.current} onChange={handlePasswordChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nouveau mot de passe</label>
-              <input type="password" name="newPass" value={passwordData.newPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled/>
+              <input type="password" name="newPass" value={passwordData.newPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Confirmer le nouveau mot de passe</label>
-              <input type="password" name="confirmPass" value={passwordData.confirmPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled/>
+              <input type="password" name="confirmPass" value={passwordData.confirmPass} onChange={handlePasswordChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled />
             </div>
             {passwordMessage.text && (
               <p className={`text-sm ${passwordMessage.type === 'error' ? 'text-red-500' : 'text-green-500'}`}>
@@ -168,8 +173,8 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
                 <option value={MedicalField.Dentistry}>Dentaire</option>
               </select>
             </div>
-             {renderEditableField("Année d'étude", "studyYear", "number")}
-             {renderEditableField("Numéro de téléphone", "phoneNumber")}
+            {renderEditableField("Année d'étude", "studyYear", "number")}
+            {renderEditableField("Numéro de téléphone", "phoneNumber")}
 
             <div className="flex justify-end space-x-4 pt-4">
               <Button onClick={handleCancel} variant="secondary">Annuler</Button>

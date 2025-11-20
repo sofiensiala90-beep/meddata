@@ -12,21 +12,9 @@ import DoughnutChartIcon from '../components/icons/DoughnutChartIcon';
 import HistoryIcon from '../components/icons/HistoryIcon';
 import ConfirmationModal, { ConfirmationModalProps } from '../components/ConfirmationModal';
 import { COIN_COSTS } from '../constants';
-
-
-interface AnalysisProps {
-  user: User;
-  forms: Form[];
-  responses: FormResponse[];
-  // FIX: Updated prop type to handle async function returning a Promise.
-  onTransaction: (userId: string, reason: TransactionReason, context?: { formIds?: string[], formTitles?: string[] }) => Promise<boolean>;
-  analysisContext?: { formIds: string[] } | null;
-  onNavigate: (page: string) => void;
-  analysisHistory: AnalysisHistory[];
-  saveAnalysisToHistory: (formIds: string[], formTitles: string[], userPrompt: string, analysisResult: any) => void;
-  deleteAnalysisHistory: (historyId: string) => void;
-  unlockedAnalysis: {userId: string; formId: string}[];
-}
+import { useAuth } from '../contexts/AuthContext';
+import { useData } from '../contexts/DataContext';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const isValidHex = (color: string | undefined | null): color is string => {
     if (!color) return false;
@@ -38,18 +26,39 @@ const ChartTypeButton: React.FC<{ icon: React.ReactNode; label: string; isActive
     <button
         onClick={onClick}
         title={`Afficher en graphique ${label.toLowerCase()}`}
-        className={`flex items-center space-x-2 px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${
-            isActive
+        className={`flex items-center space-x-2 px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${isActive
             ? 'bg-white dark:bg-slate-800 text-primary-600 dark:text-primary-400 shadow-sm'
             : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-600/50'
-        }`}
+            }`}
     >
         {icon}
         <span>{label}</span>
     </button>
 );
 
-const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransaction, analysisContext, onNavigate, analysisHistory, saveAnalysisToHistory, deleteAnalysisHistory, unlockedAnalysis }) => {
+const Analysis: React.FC = () => {
+    const { currentUser: user } = useAuth();
+    const {
+        forms,
+        responses,
+        handleTransaction,
+        analysisHistory,
+        handleSaveAnalysisToHistory,
+        handleDeleteAnalysisHistory,
+        unlockedAnalysis
+    } = useData();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const analysisContext = location.state as { formIds?: string[] } | undefined;
+
+    // Aliases for compatibility
+    const onTransaction = handleTransaction;
+    const onNavigate = navigate;
+    const saveAnalysisToHistory = handleSaveAnalysisToHistory;
+    const deleteAnalysisHistory = handleDeleteAnalysisHistory;
+
+    if (!user) return null;
+
     const [selectedFormId, setSelectedFormId] = useState<string>('');
     const [userPrompt, setUserPrompt] = useState<string>('');
     const [analysisResult, setAnalysisResult] = useState<any>(null);
@@ -61,7 +70,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
     const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
     const analysisContinuationRef = useRef<{ relevantFieldIds: string[] } | null>(null);
 
-    
+
     const isMultiFormMode = user.role === 'admin' && !!analysisContext?.formIds && analysisContext.formIds.length > 0;
     const [selectedFormsForAnalysis, setSelectedFormsForAnalysis] = useState<Form[]>([]);
     const isSuspended = user.role === 'student' && user.status.startsWith('suspended');
@@ -87,7 +96,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
     const executeSampledAnalysis = async () => {
         const formsToAnalyze = getFormsToAnalyze();
         if (formsToAnalyze.length === 0 || !analysisContinuationRef.current) return;
-        
+
         setIsLoading(true);
         setError('');
         setAnalysisResult(null);
@@ -96,7 +105,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
             const result = await performSampledAnalysis(formsToAnalyze, responses, userPrompt, analysisContinuationRef.current.relevantFieldIds);
             setAnalysisResult(result);
             if (result.chartData) setDisplayedChartType(result.chartData.type);
-            saveAnalysisToHistory(formsToAnalyze.map(f=>f.id), formsToAnalyze.map(f=>f.title), userPrompt, result);
+            saveAnalysisToHistory(formsToAnalyze.map(f => f.id), formsToAnalyze.map(f => f.title), userPrompt, result);
             setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
         } catch (e) {
             setError('Une erreur est survenue lors de l\'analyse de l\'échantillon. Veuillez réessayer.');
@@ -119,7 +128,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
             return;
         }
 
-        const formsToUnlock = formsToAnalyze.filter(form => 
+        const formsToUnlock = formsToAnalyze.filter(form =>
             !unlockedAnalysis.some(ua => ua.userId === user.id && ua.formId === form.id)
         );
         const cost = formsToUnlock.length * COIN_COSTS.AI_ANALYSIS;
@@ -132,7 +141,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
 
             try {
                 const result = await getAnalysis(formsToAnalyze, responses, userPrompt);
-                
+
                 if (result.requiresConfirmation) {
                     analysisContinuationRef.current = { relevantFieldIds: result.relevantFieldIds };
                     setConfirmation({
@@ -155,7 +164,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                 } else {
                     setAnalysisResult(result);
                     if (result.chartData) setDisplayedChartType(result.chartData.type);
-                    saveAnalysisToHistory(formsToAnalyze.map(f=>f.id), formsToAnalyze.map(f=>f.title), userPrompt, result);
+                    saveAnalysisToHistory(formsToAnalyze.map(f => f.id), formsToAnalyze.map(f => f.title), userPrompt, result);
                     setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
                     setIsLoading(false);
                 }
@@ -167,7 +176,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
         };
 
         const proceedWithTransactionAndAnalysis = async () => {
-             const transactionContext = {
+            const transactionContext = {
                 formIds: formsToAnalyze.map(f => f.id),
                 formTitles: formsToAnalyze.map(f => f.title),
             };
@@ -206,26 +215,26 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
     const handleLoadHistory = (historyItem: AnalysisHistory) => {
         setError('');
         setIsLoading(false);
-        
+
         setAnalysisResult(historyItem.analysisResult);
         setUserPrompt(historyItem.userPrompt);
-    
+
         if (isMultiFormMode) {
-          const selected = forms.filter(f => historyItem.formIds.includes(f.id));
-          setSelectedFormsForAnalysis(selected);
+            const selected = forms.filter(f => historyItem.formIds.includes(f.id));
+            setSelectedFormsForAnalysis(selected);
         } else {
-          setSelectedFormId(historyItem.formIds[0] || '');
+            setSelectedFormId(historyItem.formIds[0] || '');
         }
-        
+
         if (historyItem.analysisResult.chartData) {
-          setDisplayedChartType(historyItem.analysisResult.chartData.type);
+            setDisplayedChartType(historyItem.analysisResult.chartData.type);
         } else {
-          setDisplayedChartType(null);
+            setDisplayedChartType(null);
         }
-    
+
         setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     };
-    
+
     const handleDeleteHistoryClick = (item: AnalysisHistory) => {
         setConfirmation({
             isOpen: true,
@@ -285,10 +294,10 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                     </thead>
                     <tbody>
                         ${labels.map((label: string, index: number) => {
-                            const color = isValidHex(dataset.backgroundColor?.[index]) 
-                                ? dataset.backgroundColor![index] 
-                                : defaultColors[index % defaultColors.length];
-                            return `
+                const color = isValidHex(dataset.backgroundColor?.[index])
+                    ? dataset.backgroundColor![index]
+                    : defaultColors[index % defaultColors.length];
+                return `
                             <tr>
                                 <td style="padding: 8px; border: 1px solid #ddd;">${label}</td>
                                 <td style="padding: 8px; border: 1px solid #ddd;">${dataset.data[index]}</td>
@@ -339,7 +348,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
     };
-    
+
     const chartDataForRenderer = useMemo(() => {
         if (!analysisResult?.chartData || !displayedChartType) return null;
         return {
@@ -351,7 +360,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
 
     if (isSuspended) {
         return (
-             <div className="space-y-6">
+            <div className="space-y-6">
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Analyse IA</h2>
                 <Card className="!bg-red-50 dark:!bg-red-900/20 border border-red-200 dark:border-red-800">
                     <div className="flex items-center">
@@ -365,10 +374,10 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                             ) : (
                                 <>
                                     <p className="text-red-700 dark:text-red-300 text-sm mt-1">
-                                        L'analyse IA est désactivée car votre compte est suspendu. 
+                                        L'analyse IA est désactivée car votre compte est suspendu.
                                         Veuillez recharger votre portefeuille pour y accéder à nouveau.
                                     </p>
-                                    <Button variant="danger" className="!bg-red-500 hover:!bg-red-600 mt-3 !py-1.5 !px-3 !text-sm" onClick={() => onNavigate('portefeuille')}>
+                                    <Button variant="danger" className="!bg-red-500 hover:!bg-red-600 mt-3 !py-1.5 !px-3 !text-sm" onClick={() => navigate('/portefeuille')}>
                                         Aller au Portefeuille
                                     </Button>
                                 </>
@@ -387,7 +396,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                 <div className="space-y-4">
                     {isMultiFormMode ? (
                         <div>
-                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                                 1. Formulaires sélectionnés pour l'analyse
                             </label>
                             <div className="mt-1 p-3 bg-slate-100 dark:bg-slate-700/50 rounded-md">
@@ -420,7 +429,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
 
                     <div>
                         <label htmlFor="prompt-input" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                           2. Décrivez votre besoin d'analyse
+                            2. Décrivez votre besoin d'analyse
                         </label>
                         <textarea
                             id="prompt-input"
@@ -430,13 +439,13 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                             placeholder="Ex: Donne-moi l'âge moyen des patients et crée un graphique à barres des symptômes."
                             className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                         />
-                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             Coût : 500 coins pour débloquer l'analyse illimitée sur un formulaire. Les analyses suivantes sur le même formulaire sont gratuites.
                         </p>
                     </div>
 
-                    <Button 
-                        onClick={handleAnalysis} 
+                    <Button
+                        onClick={handleAnalysis}
                         disabled={isLoading || (isMultiFormMode ? selectedFormsForAnalysis.length === 0 : !selectedFormId) || !userPrompt.trim()}
                     >
                         {isLoading ? <Spinner /> : `Lancer l'analyse`}
@@ -472,7 +481,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                             </Button>
                         </div>
                         <div className="prose dark:prose-invert max-w-none prose-p:whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: analysisResult.analysisText.replace(/\n/g, '<br />') }} />
-                        
+
                         {analysisResult.chartData && (
                             <div className="flex justify-between items-center mb-4 mt-6">
                                 <h4 className="text-base font-semibold text-slate-800 dark:text-slate-200">
@@ -502,9 +511,9 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                         )}
 
                         {chartDataForRenderer && (
-                        <div className="mt-4">
-                            <ChartRenderer ref={chartCanvasRef} chartData={chartDataForRenderer} />
-                        </div>
+                            <div className="mt-4">
+                                <ChartRenderer ref={chartCanvasRef} chartData={chartDataForRenderer} />
+                            </div>
                         )}
                     </Card>
                 </div>
@@ -535,9 +544,9 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                                     <Button onClick={() => handleLoadHistory(item)} variant="secondary" className="!text-xs !py-1.5 !px-3">
                                         Revoir
                                     </Button>
-                                    <Button 
-                                        onClick={() => handleDeleteHistoryClick(item)} 
-                                        variant="secondary" 
+                                    <Button
+                                        onClick={() => handleDeleteHistoryClick(item)}
+                                        variant="secondary"
                                         className="!text-xs !py-1.5 !px-3 !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
                                         title="Supprimer l'analyse"
                                     >
@@ -553,7 +562,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                     )}
                 </div>
             </Card>
-             {confirmation && <ConfirmationModal {...confirmation} />}
+            {confirmation && <ConfirmationModal {...confirmation} />}
         </div>
     );
 };

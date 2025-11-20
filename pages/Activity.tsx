@@ -1,11 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import Card from '../components/Card';
 import { Activity, ActivityType, User } from '../types';
-
-interface ActivityProps {
-    activities: Activity[];
-    users: User[];
-}
+import { useData } from '../contexts/DataContext';
 
 const translateActivityType = (type: ActivityType): string => {
     const translations: Record<string, string> = {
@@ -40,7 +36,9 @@ const ActivityIcon: React.FC<{ type: ActivityType }> = ({ type }) => {
 };
 
 
-const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
+const ActivityPage: React.FC = () => {
+    const { activities, users } = useData();
+
     const [filters, setFilters] = useState({
         userId: '',
         activityType: '',
@@ -58,7 +56,7 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
         return activities.filter(activity => {
             if (filters.userId && activity.userId !== filters.userId) return false;
             if (filters.activityType && activity.type !== filters.activityType) return false;
-            
+
             const activityDate = new Date(activity.createdAt);
             if (filters.startDate) {
                 const startDate = new Date(filters.startDate);
@@ -82,7 +80,7 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
     return (
         <div className="space-y-6">
             <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Journal d'Activité</h2>
-            
+
             <Card title="Filtres">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <select name="userId" value={filters.userId} onChange={handleFilterChange} className={inputClasses}>
@@ -129,7 +127,7 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
                             ))}
                         </tbody>
                     </table>
-                     {filteredActivities.length === 0 && (
+                    {filteredActivities.length === 0 && (
                         <div className="text-center py-12">
                             <p className="text-slate-500 dark:text-slate-400">Aucune activité ne correspond aux filtres.</p>
                         </div>

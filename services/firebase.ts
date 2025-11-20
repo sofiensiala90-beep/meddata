@@ -16,7 +16,7 @@ import 'firebase/compat/firestore';
 //
 // ====================================================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyB2JSL4iJUd2yvMPkpZUfCSeB0NVBcm1Hg",
+  apiKey: "AIzaSyAWB3NXtWYRMIFQlnmYp9620c4Gtty_C-s",
   authDomain: "medata-ai-2.firebaseapp.com",
   projectId: "medata-ai-2",
   storageBucket: "medata-ai-2.firebasestorage.app",

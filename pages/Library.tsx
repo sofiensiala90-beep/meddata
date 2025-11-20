@@ -5,6 +5,8 @@ import Button from '../components/Button';
 import CoinIcon from '../components/icons/CoinIcon';
 import CheckSquareIcon from '../components/icons/CheckSquareIcon';
 import FormsIcon from '../components/icons/FormsIcon';
+import { useAuth } from '../contexts/AuthContext';
+import { useData } from '../contexts/DataContext';
 
 interface PurchaseModalProps {
     form: Form;
@@ -46,14 +48,13 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, responseCount, curr
         <button
             onClick={onClick}
             disabled={disabled}
-            className={`w-full text-left p-4 border-2 rounded-lg transition-all duration-200 relative ${
-                isSelected 
-                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 shadow-md' 
-                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700/50 hover:border-primary-400 dark:hover:border-primary-500'
-            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`w-full text-left p-4 border-2 rounded-lg transition-all duration-200 relative ${isSelected
+                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 shadow-md'
+                    : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700/50 hover:border-primary-400 dark:hover:border-primary-500'
+                } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
             {isRecommended && (
-                 <span className="absolute -top-2.5 right-3 text-xs font-semibold bg-primary-600 text-white px-2 py-0.5 rounded-full">Recommandé</span>
+                <span className="absolute -top-2.5 right-3 text-xs font-semibold bg-primary-600 text-white px-2 py-0.5 rounded-full">Recommandé</span>
             )}
             <div className="flex items-start space-x-4">
                 <div className={`flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-lg ${isSelected ? 'bg-primary-100 dark:bg-primary-900/50' : 'bg-slate-100 dark:bg-slate-700'}`}>
@@ -81,7 +82,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, responseCount, curr
                 </header>
                 <main className="p-6 space-y-4 overflow-y-auto">
                     <p className="text-sm text-slate-600 dark:text-slate-400">Choisissez une option d'achat :</p>
-                    
+
                     <div className="space-y-3">
                         <OptionCard
                             title="Formulaire Seul"
@@ -91,7 +92,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, responseCount, curr
                             isSelected={purchaseOption === 'form_only'}
                             onClick={() => setPurchaseOption('form_only')}
                         />
-                         <OptionCard
+                        <OptionCard
                             title={`Formulaire + ${responseCount} Réponses`}
                             description="Obtenez la structure ET toutes les réponses pour une analyse IA plus riche."
                             cost={formWithResponsesCost}
@@ -111,7 +112,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, responseCount, curr
                     <div className="text-sm">
                         <span className="text-slate-500 dark:text-slate-400">Total : </span>
                         {purchaseOption ? (
-                             <span className={`font-bold text-lg ml-2 ${canAfford ? 'text-primary-600 dark:text-primary-400' : 'text-red-500'}`}>
+                            <span className={`font-bold text-lg ml-2 ${canAfford ? 'text-primary-600 dark:text-primary-400' : 'text-red-500'}`}>
                                 {totalCost} Coins
                             </span>
                         ) : (
@@ -134,65 +135,64 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, responseCount, curr
 const renderFormFieldPreview = (field: FormField) => {
     const commonClasses = "mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md disabled:opacity-70 disabled:cursor-not-allowed";
     const radioCheckboxClasses = "h-4 w-4 text-primary-600 border-slate-300 dark:border-slate-500 bg-slate-200 dark:bg-slate-700 disabled:opacity-70 disabled:cursor-not-allowed";
-    
+
     switch (field.type) {
-      case 'text': return <input type="text" disabled className={commonClasses}/>;
-      case 'textarea': return <textarea rows={2} disabled className={commonClasses}/>;
-      case 'number': return <input type="number" disabled className={commonClasses}/>;
-      case 'choice':
-        return <div className="mt-2 space-y-2">{field.options?.map(option => (<div key={option} className="flex items-center"><input type="radio" disabled className={radioCheckboxClasses}/><label className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300">{option}</label></div>))}</div>;
-       case 'checkbox':
-        return <div className="mt-2 space-y-2">{field.options?.map(option => (<div key={option} className="flex items-center"><input type="checkbox" disabled className={`${radioCheckboxClasses} rounded`}/><label className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300">{option}</label></div>))}</div>;
-      case 'date': return <input type="date" disabled className={commonClasses}/>;
-      case 'range':
-        return <div className="mt-2 flex items-center space-x-4"><span className="text-sm font-medium">{field.min ?? 0}</span><input type="range" min={field.min ?? 0} max={field.max ?? 100} disabled className="w-full h-2 bg-slate-300 dark:bg-slate-600 rounded-lg appearance-none cursor-not-allowed" /><span className="text-sm font-medium">{field.max ?? 100}</span></div>;
-      case 'note':
-        return (
-          <div className="mt-6 mb-2 pt-2 border-b border-slate-300 dark:border-slate-600">
-            <h3 className="text-lg font-semibold text-primary-700 dark:text-primary-300">{field.label}</h3>
-          </div>
-        );
-      default: return null;
+        case 'text': return <input type="text" disabled className={commonClasses} />;
+        case 'textarea': return <textarea rows={2} disabled className={commonClasses} />;
+        case 'number': return <input type="number" disabled className={commonClasses} />;
+        case 'choice':
+            return <div className="mt-2 space-y-2">{field.options?.map(option => (<div key={option} className="flex items-center"><input type="radio" disabled className={radioCheckboxClasses} /><label className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300">{option}</label></div>))}</div>;
+        case 'checkbox':
+            return <div className="mt-2 space-y-2">{field.options?.map(option => (<div key={option} className="flex items-center"><input type="checkbox" disabled className={`${radioCheckboxClasses} rounded`} /><label className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300">{option}</label></div>))}</div>;
+        case 'date': return <input type="date" disabled className={commonClasses} />;
+        case 'range':
+            return <div className="mt-2 flex items-center space-x-4"><span className="text-sm font-medium">{field.min ?? 0}</span><input type="range" min={field.min ?? 0} max={field.max ?? 100} disabled className="w-full h-2 bg-slate-300 dark:bg-slate-600 rounded-lg appearance-none cursor-not-allowed" /><span className="text-sm font-medium">{field.max ?? 100}</span></div>;
+        case 'note':
+            return (
+                <div className="mt-6 mb-2 pt-2 border-b border-slate-300 dark:border-slate-600">
+                    <h3 className="text-lg font-semibold text-primary-700 dark:text-primary-300">{field.label}</h3>
+                </div>
+            );
+        default: return null;
     }
 };
 
-const PreviewModal: React.FC<{form: Form; onClose: () => void; onPurchaseClick: () => void}> = ({ form, onClose, onPurchaseClick }) => (
+const PreviewModal: React.FC<{ form: Form; onClose: () => void; onPurchaseClick: () => void }> = ({ form, onClose, onPurchaseClick }) => (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <header className="p-4 border-b border-slate-200 dark:border-slate-700">
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Aperçu : {form.title}</h3>
-        </header>
-        <main className="p-6 space-y-4 overflow-y-auto">
-            <p className="mb-4 text-slate-600 dark:text-slate-400">{form.description}</p>
-            <div className="space-y-6">
-            {form.schema.map(field => (
-              <div key={field.id}>
-                {field.type !== 'note' && <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{field.label}</label>}
-                {renderFormFieldPreview(field)}
-              </div>
-            ))}
-          </div>
-        </main>
-        <footer className="flex justify-end space-x-3 p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-lg">
-            <Button onClick={onClose} variant="secondary">Fermer</Button>
-            <Button onClick={onPurchaseClick}>Acheter ce formulaire</Button>
-        </footer>
-      </div>
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <header className="p-4 border-b border-slate-200 dark:border-slate-700">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Aperçu : {form.title}</h3>
+            </header>
+            <main className="p-6 space-y-4 overflow-y-auto">
+                <p className="mb-4 text-slate-600 dark:text-slate-400">{form.description}</p>
+                <div className="space-y-6">
+                    {form.schema.map(field => (
+                        <div key={field.id}>
+                            {field.type !== 'note' && <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{field.label}</label>}
+                            {renderFormFieldPreview(field)}
+                        </div>
+                    ))}
+                </div>
+            </main>
+            <footer className="flex justify-end space-x-3 p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-lg">
+                <Button onClick={onClose} variant="secondary">Fermer</Button>
+                <Button onClick={onPurchaseClick}>Acheter ce formulaire</Button>
+            </footer>
+        </div>
     </div>
 );
 
 
-interface LibraryProps {
-    currentUser: User;
-    publicForms: Form[];
-    purchasedForms: PurchasedForm[];
-    responses: FormResponse[];
-    users: User[];
-    // FIX: Updated prop type to handle async function returning a Promise.
-    onPurchase: (form: Form, withResponses: boolean) => Promise<boolean | void>;
-}
+const Library: React.FC = () => {
+    const { currentUser: user } = useAuth();
+    const { publicForms, purchasedForms, responses, users, handlePurchaseForm } = useData();
 
-const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedForms, responses, users, onPurchase }) => {
+    // Alias for compatibility
+    const currentUser = user;
+    const onPurchase = handlePurchaseForm;
+
+    if (!currentUser) return null;
+
     const [filters, setFilters] = useState({ searchTerm: '' });
     const [formToBuy, setFormToBuy] = useState<Form | null>(null);
     const [formToPreview, setFormToPreview] = useState<Form | null>(null);
@@ -216,7 +216,7 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
 
     return (
         <div className="space-y-6">
-             <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center">
                 <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Bibliothèque Publique</h2>
             </div>
             <Card>
@@ -244,7 +244,7 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
                                     <div className="mt-4 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
                                         <span>{responseCount} réponses disponibles</span>
                                         <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center">
-                                            <CoinIcon className="w-4 h-4 mr-1 text-yellow-500"/> {form.price}
+                                            <CoinIcon className="w-4 h-4 mr-1 text-yellow-500" /> {form.price}
                                         </span>
                                     </div>
                                 </div>
@@ -263,10 +263,10 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
             ) : (
                 <Card>
                     <div className="text-center py-12">
-                    <h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun formulaire public trouvé</h3>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                        Aucun formulaire ne correspond à votre recherche, ou aucun étudiant n'a encore publié de formulaire.
-                    </p>
+                        <h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun formulaire public trouvé</h3>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                            Aucun formulaire ne correspond à votre recherche, ou aucun étudiant n'a encore publié de formulaire.
+                        </p>
                     </div>
                 </Card>
             )}

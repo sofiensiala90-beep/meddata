@@ -107,7 +107,12 @@ const App: React.FC = () => {
                 });
                 listenersRef.current.push(notifUnsubscribe);
             } else {
-                await auth.signOut();
+                // This is a new user who has authenticated but does not have a user profile
+                // in Firestore yet. The AuthPage component is responsible for creating it.
+                // We must NOT sign them out. We just finish loading so the AuthPage can
+                // continue the signup process.
+                setCurrentUser(null);
+                setIsLoading(false);
             }
         } else {
             setCurrentUser(null);

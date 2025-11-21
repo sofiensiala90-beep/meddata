@@ -72,6 +72,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         // New user: Pre-fill signup form and prompt to complete profile
         setSignupData(prev => ({
           ...prev,
+          password: '',
+          confirmPassword: '',
           name: user.displayName || '',
           email: user.email || '',
         }));
@@ -177,6 +179,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               createdAt: new Date().toISOString(),
           };
           await db.collection('activities').add(newActivity);
+
+          // A page reload will trigger onAuthStateChanged which will now find the user 
+          // document and log the user in correctly.
+          window.location.reload();
       }
     } catch (error: any) {
         console.error("Erreur lors de la création du compte:", error);

@@ -67,14 +67,7 @@ As you mentioned, Vercel is a great option for deploying this static application
 1.  Push the code to a Git repository (e.g., GitHub, GitLab).
 2.  Create a new project on [Vercel](https://vercel.com/) and import your Git repository.
 3.  Vercel will automatically detect it as a static site. No special build commands are needed.
-4.  **Crucially**, go to your project's settings in Vercel, navigate to the "Environment Variables" section, and add the following variables:
-    - `VITE_FIREBASE_API_KEY`
-    - `VITE_FIREBASE_AUTH_DOMAIN`
-    - `VITE_FIREBASE_PROJECT_ID`
-    - `VITE_FIREBASE_STORAGE_BUCKET`
-    - `VITE_FIREBASE_MESSAGING_SENDER_ID`
-    - `VITE_FIREBASE_APP_ID`
-    - `GEMINI_API_KEY` (if you are using Gemini features)
-    
-    **Value:** Paste the corresponding values from your Firebase project settings (or your local `.env.local` file).
+4.  **Crucially**, go to your project's settings in Vercel, navigate to the "Environment Variables" section, and add a new variable:
+    - **Name:** `API_KEY`
+    - **Value:** Paste your Google Gemini API key here.
 5.  Deploy the project. Your MedataAI application will now be live with full AI functionality.

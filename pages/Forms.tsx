@@ -8,10 +8,25 @@ import { COIN_COSTS, LIBRARY_PRICES, COMMISSION_RATES } from '../constants';
 import PlusIcon from '../components/icons/PlusIcon';
 import CoinIcon from '../components/icons/CoinIcon';
 import TrashIcon from '../components/icons/TrashIcon';
-import { useAuth } from '../contexts/AuthContext';
-import { useData } from '../contexts/DataContext';
-import { useNavigate } from 'react-router-dom';
 
+interface FormsProps {
+  user: User;
+  forms: Form[]; // User's own forms
+  allForms: Form[]; // All forms in the app, needed for purchases
+  responses: FormResponse[];
+  purchasedForms: PurchasedForm[];
+  addFormResponse: (formId: string, data: Record<string, any>) => void;
+  deleteFormResponse: (responseId: string) => void;
+  createForm: (form: Form) => void;
+  updateForm: (form: Form) => void;
+  deleteForm: (formId: string) => void;
+  saveAndValidateForm: (form: Form) => void;
+  publishForm: (formId: string, price: number, pricePerResponse: number) => void;
+  users: User[];
+  onNavigate: (page: string, context?: any) => void;
+  handleRequestFormModification: (form: Form, reason: string) => void;
+  onModificationDecision: (formId: string, keepResponses: boolean) => void;
+}
 
 const PublishModal: React.FC<{
   form: Form;
@@ -28,38 +43,38 @@ const PublishModal: React.FC<{
     <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
       <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <header className="p-4 border-b border-slate-200 dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Publier "{form.title}"</h3>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Publier "{form.title}"</h3>
         </header>
         <main className="p-6 space-y-4 overflow-y-auto">
-          <p className="text-sm text-slate-600 dark:text-slate-400">En publiant votre formulaire dans la bibliothèque, vous acceptez de céder à MedataAI le droit non exclusif de le diffuser à d’autres utilisateurs. Vous restez le propriétaire intellectuel du contenu et percevrez une rémunération pour chaque achat.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">En publiant votre formulaire dans la bibliothèque, vous acceptez de céder à MedataAI le droit non exclusif de le diffuser à d’autres utilisateurs. Vous restez le propriétaire intellectuel du contenu et percevrez une rémunération pour chaque achat.</p>
+            
+            <div className="p-4 bg-slate-100 dark:bg-slate-700/50 rounded-lg space-y-3">
+                <div className="flex justify-between items-center">
+                    <span className="font-medium text-slate-800 dark:text-slate-200">Prix de vente du formulaire</span>
+                    <span className="font-semibold text-slate-900 dark:text-white flex items-center"><CoinIcon className="w-4 h-4 mr-1 text-yellow-500" />{LIBRARY_PRICES.DEFAULT_FORM_PRICE}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm text-green-600 dark:text-green-400">
+                    <span>Votre gain par vente</span>
+                    <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{Math.round(LIBRARY_PRICES.DEFAULT_FORM_PRICE * COMMISSION_RATES.CREATOR_FORM_SALE)}</span>
+                </div>
+                <div className="border-t border-slate-200 dark:border-slate-600 !my-2"></div>
+                 <div className="flex justify-between items-center">
+                    <span className="font-medium text-slate-800 dark:text-slate-200">Prix de vente par réponse</span>
+                    <span className="font-semibold text-slate-900 dark:text-white flex items-center"><CoinIcon className="w-4 h-4 mr-1 text-yellow-500" />{LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm text-green-600 dark:text-green-400">
+                    <span>Votre gain par réponse</span>
+                    <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{Math.round(LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE * COMMISSION_RATES.CREATOR_RESPONSE_SALE)}</span>
+                </div>
+            </div>
 
-          <div className="p-4 bg-slate-100 dark:bg-slate-700/50 rounded-lg space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="font-medium text-slate-800 dark:text-slate-200">Prix de vente du formulaire</span>
-              <span className="font-semibold text-slate-900 dark:text-white flex items-center"><CoinIcon className="w-4 h-4 mr-1 text-yellow-500" />{LIBRARY_PRICES.DEFAULT_FORM_PRICE}</span>
+            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 text-yellow-800 dark:text-yellow-300 rounded-r-lg text-sm">
+                <p>La publication est gratuite. Une fois publié, vous ne pourrez plus modifier le formulaire ni y ajouter de réponses. Les prix sont fermes et gérés par la plateforme.</p>
             </div>
-            <div className="flex justify-between items-center text-sm text-green-600 dark:text-green-400">
-              <span>Votre gain par vente</span>
-              <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{Math.round(LIBRARY_PRICES.DEFAULT_FORM_PRICE * COMMISSION_RATES.CREATOR_FORM_SALE)}</span>
-            </div>
-            <div className="border-t border-slate-200 dark:border-slate-600 !my-2"></div>
-            <div className="flex justify-between items-center">
-              <span className="font-medium text-slate-800 dark:text-slate-200">Prix de vente par réponse</span>
-              <span className="font-semibold text-slate-900 dark:text-white flex items-center"><CoinIcon className="w-4 h-4 mr-1 text-yellow-500" />{LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE}</span>
-            </div>
-            <div className="flex justify-between items-center text-sm text-green-600 dark:text-green-400">
-              <span>Votre gain par réponse</span>
-              <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{Math.round(LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE * COMMISSION_RATES.CREATOR_RESPONSE_SALE)}</span>
-            </div>
-          </div>
-
-          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 text-yellow-800 dark:text-yellow-300 rounded-r-lg text-sm">
-            <p>La publication est gratuite. Une fois publié, vous ne pourrez plus modifier le formulaire ni y ajouter de réponses. Les prix sont fermes et gérés par la plateforme.</p>
-          </div>
         </main>
         <footer className="flex justify-end space-x-3 p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-lg">
-          <Button onClick={onClose} variant="secondary">Annuler</Button>
-          <Button onClick={handleConfirm}>Confirmer et Publier</Button>
+            <Button onClick={onClose} variant="secondary">Annuler</Button>
+            <Button onClick={handleConfirm}>Confirmer et Publier</Button>
         </footer>
       </div>
     </div>
@@ -81,12 +96,12 @@ const ModificationRequestModal: React.FC<{
     }
     setIsSubmitting(true);
     setTimeout(() => {
-      onSubmit(form, reason);
-      setIsSubmitting(false);
-      onClose();
+        onSubmit(form, reason);
+        setIsSubmitting(false);
+        onClose(); 
     }, 500);
   };
-
+  
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
       <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
@@ -155,32 +170,7 @@ const ModificationDecisionModal: React.FC<{
   );
 };
 
-const Forms: React.FC = () => {
-  const { currentUser: user } = useAuth();
-  const {
-    forms,
-    allForms,
-    responses,
-    purchasedForms,
-    users,
-    addFormResponse,
-    deleteFormResponse,
-    createForm,
-    updateForm,
-    deleteForm,
-    saveAndValidateForm,
-    publishForm,
-    requestFormModification,
-    decideOnModification
-  } = useData();
-  const navigate = useNavigate();
-
-  // Alias for compatibility with existing code
-  const handleRequestFormModification = requestFormModification;
-  const onModificationDecision = decideOnModification;
-
-  if (!user) return null;
-
+const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
   const [activeTab, setActiveTab] = useState<'my_creations' | 'data_purchases'>(user.role === 'admin' ? 'my_creations' : 'my_creations');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
@@ -198,7 +188,7 @@ const Forms: React.FC = () => {
 
 
   const isSuspended = user.role === 'student' && user.status.startsWith('suspended');
-
+  
   const myCreationsAndCopies = useMemo(() => forms.filter(f => f.userId === user.id), [forms, user.id]);
   const myDataPurchases = useMemo(() => purchasedForms.filter(p => p.withResponses), [purchasedForms]);
 
@@ -254,8 +244,8 @@ const Forms: React.FC = () => {
         : true;
       const publicationStatusMatch =
         filters.publicationStatus === 'all' ? true
-          : filters.publicationStatus === 'public' ? form.isPublic
-            : !form.isPublic;
+        : filters.publicationStatus === 'public' ? form.isPublic
+        : !form.isPublic;
 
       return studentMatch && searchTermMatch && publicationStatusMatch;
     });
@@ -307,7 +297,7 @@ const Forms: React.FC = () => {
     setSelectedResponse(null);
     setView('viewing_responses_list');
   };
-
+  
   const handleSaveForm = (form: Form) => {
     if (selectedForm || forms.find(f => f.id === form.id)) { // It's an update
       updateForm(form);
@@ -324,17 +314,17 @@ const Forms: React.FC = () => {
 
   const handleDeleteFormClick = (form: Form) => {
     setConfirmation({
-      isOpen: true,
-      title: "Confirmer la suppression",
-      message: `Êtes-vous sûr de vouloir supprimer le formulaire "${form.title}" ? Cette action est irréversible.`,
-      onConfirm: () => {
-        deleteForm(form.id);
-        setConfirmation(null);
-      },
-      onClose: () => setConfirmation(null),
-      variant: 'danger',
-      confirmText: 'Supprimer',
-      cancelText: 'Annuler'
+        isOpen: true,
+        title: "Confirmer la suppression",
+        message: `Êtes-vous sûr de vouloir supprimer le formulaire "${form.title}" ? Cette action est irréversible.`,
+        onConfirm: () => {
+            deleteForm(form.id);
+            setConfirmation(null);
+        },
+        onClose: () => setConfirmation(null),
+        variant: 'danger',
+        confirmText: 'Supprimer',
+        cancelText: 'Annuler'
     });
   };
 
@@ -366,41 +356,41 @@ const Forms: React.FC = () => {
         }
       }
     }
-
+    
     addFormResponse(selectedForm.id, formData);
     handleBackToList();
   };
-
-  const handleDeleteResponse = (responseId: string) => {
-    setConfirmation({
-      isOpen: true,
-      title: "Confirmer la suppression",
-      message: "Êtes-vous sûr de vouloir supprimer cette réponse ? Cette action est irréversible.",
-      onConfirm: () => {
-        deleteFormResponse(responseId);
-        handleBackToResponseList();
-        setConfirmation(null);
-      },
-      onClose: () => setConfirmation(null),
-      variant: 'danger',
-      confirmText: 'Supprimer'
-    });
-  };
+  
+    const handleDeleteResponse = (responseId: string) => {
+        setConfirmation({
+            isOpen: true,
+            title: "Confirmer la suppression",
+            message: "Êtes-vous sûr de vouloir supprimer cette réponse ? Cette action est irréversible.",
+            onConfirm: () => {
+                deleteFormResponse(responseId);
+                handleBackToResponseList();
+                setConfirmation(null);
+            },
+            onClose: () => setConfirmation(null),
+            variant: 'danger',
+            confirmText: 'Supprimer'
+        });
+    };
 
   const updateFormData = (newData: Record<string, any>) => {
     if (!selectedForm) {
       setFormData(newData);
       return;
     }
-
+  
     const cleanedData = { ...newData };
-
+  
     for (const field of selectedForm.schema) {
       if (!isFieldVisible(field, cleanedData)) {
         delete cleanedData[field.id];
       }
     }
-
+  
     setFormData(cleanedData);
   };
 
@@ -412,23 +402,23 @@ const Forms: React.FC = () => {
     const existingValues: string[] = formData[fieldId] || [];
     let newValues: string[];
     if (isChecked) {
-      newValues = [...existingValues, option];
+        newValues = [...existingValues, option];
     } else {
-      newValues = existingValues.filter(v => v !== option);
+        newValues = existingValues.filter(v => v !== option);
     }
     updateFormData({ ...formData, [fieldId]: newValues });
   };
-
+  
   const handleToggleFormSelection = (formId: string) => {
-    setSelectedFormIds(prev =>
-      prev.includes(formId)
-        ? prev.filter(id => id !== formId)
+    setSelectedFormIds(prev => 
+      prev.includes(formId) 
+        ? prev.filter(id => id !== formId) 
         : [...prev, formId]
     );
   };
-
+  
   const handleStartMultiFormAnalysis = () => {
-    navigate('/analyse', { state: { formIds: selectedFormIds } });
+    onNavigate('analyse', { formIds: selectedFormIds });
   };
 
   const handleConfirmPublish = (formId: string, price: number, pricePerResponse: number) => {
@@ -439,14 +429,14 @@ const Forms: React.FC = () => {
   const renderFormField = (field: FormField, data: Record<string, any>, isReadOnly = false) => {
     const commonClasses = "mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500 disabled:opacity-70 disabled:bg-slate-200 dark:disabled:bg-slate-600 disabled:text-slate-700 dark:disabled:text-slate-300";
     const radioCheckboxClasses = "focus:ring-primary-500 h-4 w-4 text-primary-600 border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-700 disabled:opacity-70";
-
+    
     switch (field.type) {
       case 'text':
-        return <input type="text" id={field.id} value={data[field.id] || ''} onChange={(e) => !isReadOnly && handleInputChange(field.id, e.target.value)} disabled={isReadOnly} className={commonClasses} />;
+        return <input type="text" id={field.id} value={data[field.id] || ''} onChange={(e) => !isReadOnly && handleInputChange(field.id, e.target.value)} disabled={isReadOnly} className={commonClasses}/>;
       case 'textarea':
-        return <textarea id={field.id} rows={4} value={data[field.id] || ''} onChange={(e) => !isReadOnly && handleInputChange(field.id, e.target.value)} disabled={isReadOnly} className={commonClasses} />;
+        return <textarea id={field.id} rows={4} value={data[field.id] || ''} onChange={(e) => !isReadOnly && handleInputChange(field.id, e.target.value)} disabled={isReadOnly} className={commonClasses}/>;
       case 'number':
-        return <input type="number" id={field.id} value={data[field.id] || ''} onChange={(e) => !isReadOnly && handleInputChange(field.id, e.target.valueAsNumber)} disabled={isReadOnly} className={commonClasses} />;
+        return <input type="number" id={field.id} value={data[field.id] || ''} onChange={(e) => !isReadOnly && handleInputChange(field.id, e.target.valueAsNumber)} disabled={isReadOnly} className={commonClasses}/>;
       case 'choice':
         if (isReadOnly) {
           return (
@@ -456,7 +446,7 @@ const Forms: React.FC = () => {
                 return (
                   <div key={option} className={`p-3 rounded-md transition-colors ${isSelected ? 'bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-700' : 'bg-slate-100 dark:bg-slate-700/50'}`}>
                     <div className="flex items-center">
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center border mr-3 ${isSelected ? 'border-primary-600 dark:border-primary-400 bg-transparent' : 'border-slate-400 dark:border-slate-500'}`}>
+                       <div className={`w-4 h-4 rounded-full flex items-center justify-center border mr-3 ${isSelected ? 'border-primary-600 dark:border-primary-400 bg-transparent' : 'border-slate-400 dark:border-slate-500'}`}>
                         {isSelected && <div className="w-2 h-2 bg-primary-600 dark:bg-primary-400 rounded-full"></div>}
                       </div>
                       <span className={`block text-sm ${isSelected ? 'font-semibold text-primary-800 dark:text-primary-200' : 'text-slate-700 dark:text-slate-300'}`}>{option}</span>
@@ -471,13 +461,13 @@ const Forms: React.FC = () => {
           <div className="mt-2 space-y-2">
             {field.options?.map(option => (
               <div key={option} className="flex items-center">
-                <input id={`${field.id}-${option}`} name={field.id} type="radio" value={option} checked={data[field.id] === option} onChange={(e) => !isReadOnly && handleInputChange(field.id, e.target.value)} disabled={isReadOnly} className={radioCheckboxClasses} />
+                <input id={`${field.id}-${option}`} name={field.id} type="radio" value={option} checked={data[field.id] === option} onChange={(e) => !isReadOnly && handleInputChange(field.id, e.target.value)} disabled={isReadOnly} className={radioCheckboxClasses}/>
                 <label htmlFor={`${field.id}-${option}`} className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300">{option}</label>
               </div>
             ))}
           </div>
         );
-      case 'checkbox':
+       case 'checkbox':
         if (isReadOnly) {
           return (
             <div className="mt-2 space-y-2">
@@ -501,14 +491,14 @@ const Forms: React.FC = () => {
           <div className="mt-2 space-y-2">
             {field.options?.map(option => (
               <div key={option} className="flex items-center">
-                <input id={`${field.id}-${option}`} name={`${field.id}-${option}`} type="checkbox" checked={(data[field.id] || []).includes(option)} onChange={(e) => !isReadOnly && handleCheckboxChange(field.id, option, e.target.checked)} disabled={isReadOnly} className={`${radioCheckboxClasses} rounded`} />
+                <input id={`${field.id}-${option}`} name={`${field.id}-${option}`} type="checkbox" checked={(data[field.id] || []).includes(option)} onChange={(e) => !isReadOnly && handleCheckboxChange(field.id, option, e.target.checked)} disabled={isReadOnly} className={`${radioCheckboxClasses} rounded`}/>
                 <label htmlFor={`${field.id}-${option}`} className="ml-3 block text-sm font-medium text-slate-700 dark:text-slate-300">{option}</label>
               </div>
             ))}
           </div>
         );
       case 'date':
-        return <input type="date" id={field.id} value={data[field.id] || ''} onChange={(e) => !isReadOnly && handleInputChange(field.id, e.target.value)} disabled={isReadOnly} className={commonClasses} />;
+        return <input type="date" id={field.id} value={data[field.id] || ''} onChange={(e) => !isReadOnly && handleInputChange(field.id, e.target.value)} disabled={isReadOnly} className={commonClasses}/>;
       case 'range':
         const currentValue = data[field.id] != null ? data[field.id] : (field.min != null ? field.min : 0);
         return (
@@ -546,13 +536,13 @@ const Forms: React.FC = () => {
   };
 
   const getResponseCountForForm = (formId: string) => responses.filter(r => r.formId === formId).length;
-
+  
   const getStatusBadge = (status: Form['status']) => {
     switch (status) {
-      case 'draft': return { text: 'Brouillon', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' };
-      case 'validated': return { text: 'Validé', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' };
-      case 'awaiting_modification_decision': return { text: 'En attente de décision', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
-      default: return { text: 'Inconnu', className: 'bg-slate-100 text-slate-800' };
+        case 'draft': return { text: 'Brouillon', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' };
+        case 'validated': return { text: 'Validé', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' };
+        case 'awaiting_modification_decision': return { text: 'En attente de décision', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
+        default: return { text: 'Inconnu', className: 'bg-slate-100 text-slate-800' };
     }
   };
 
@@ -581,11 +571,11 @@ const Forms: React.FC = () => {
                 const firstAnswerableQuestion = selectedForm.schema.find(q => q.type !== 'note');
                 let firstAnswer: any = null;
                 if (firstAnswerableQuestion) {
-                  firstAnswer = response.data[firstAnswerableQuestion.id];
+                    firstAnswer = response.data[firstAnswerableQuestion.id];
                 }
 
-                const displayAnswer = Array.isArray(firstAnswer)
-                  ? firstAnswer.join(', ')
+                const displayAnswer = Array.isArray(firstAnswer) 
+                  ? firstAnswer.join(', ') 
                   : (firstAnswer || '');
 
                 return (
@@ -595,20 +585,20 @@ const Forms: React.FC = () => {
                     className="w-full text-left p-3 rounded-md bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                   >
                     <div className="flex justify-between items-center space-x-4">
-                      <div className="flex-grow min-w-0">
-                        <p className="font-medium text-slate-800 dark:text-slate-200 truncate" title={String(displayAnswer)}>
-                          {displayAnswer ? String(displayAnswer) : `Soumission #${response.id.slice(-5)}`}
-                        </p>
-                        {firstAnswerableQuestion && displayAnswer && (
-                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                            {firstAnswerableQuestion.label}
-                          </p>
-                        )}
-                      </div>
-                      <div className="text-sm text-slate-600 dark:text-slate-300 flex-shrink-0 text-right">
-                        <div>{new Date(response.createdAt).toLocaleDateString()}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{new Date(response.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                      </div>
+                        <div className="flex-grow min-w-0">
+                            <p className="font-medium text-slate-800 dark:text-slate-200 truncate" title={String(displayAnswer)}>
+                                {displayAnswer ? String(displayAnswer) : `Soumission #${response.id.slice(-5)}`}
+                            </p>
+                            {firstAnswerableQuestion && displayAnswer && (
+                               <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                {firstAnswerableQuestion.label}
+                               </p>
+                            )}
+                        </div>
+                        <div className="text-sm text-slate-600 dark:text-slate-300 flex-shrink-0 text-right">
+                            <div>{new Date(response.createdAt).toLocaleDateString()}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{new Date(response.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        </div>
                     </div>
                   </button>
                 );
@@ -632,10 +622,10 @@ const Forms: React.FC = () => {
     return (
       <div className="space-y-6 max-w-4xl mx-auto">
         <div className="flex justify-between items-center">
-          <Button onClick={handleBackToResponseList} variant="secondary">← Retour aux réponses</Button>
-          {user.role === 'student' && selectedResponse.userId === user.id && (
-            <Button onClick={() => handleDeleteResponse(selectedResponse.id)} variant="danger">Supprimer cette réponse</Button>
-          )}
+            <Button onClick={handleBackToResponseList} variant="secondary">← Retour aux réponses</Button>
+            {user.role === 'student' && selectedResponse.userId === user.id && (
+                <Button onClick={() => handleDeleteResponse(selectedResponse.id)} variant="danger">Supprimer cette réponse</Button>
+            )}
         </div>
         <Card title={`Réponse du ${new Date(selectedResponse.createdAt).toLocaleString()}`}>
           <p className="mb-6 text-slate-600 dark:text-slate-400">{selectedForm.description}</p>
@@ -670,18 +660,18 @@ const Forms: React.FC = () => {
         <Card title={`Remplir : ${selectedForm.title}`}>
           <p className="mb-6 text-slate-600 dark:text-slate-400">{selectedForm.description}</p>
           <div className="space-y-6">
-            {visibleFields.map(field =>
-            (
-              <div key={field.id}>
-                {field.type !== 'note' && <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{field.label}</label>}
-                {renderFormField(field, formData)}
-              </div>
-            )
+            {visibleFields.map(field => 
+              (
+                <div key={field.id}>
+                  {field.type !== 'note' && <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{field.label}</label>}
+                  {renderFormField(field, formData)}
+                </div>
+              )
             )}
           </div>
           <div className="flex justify-end mt-6">
             <Button onClick={handleSubmitResponse}>
-              Soumettre la réponse {user.role !== 'admin' && `(${COIN_COSTS.ADD_RESPONSE} Coins)`}
+                Soumettre la réponse {user.role !== 'admin' && `(${COIN_COSTS.ADD_RESPONSE} Coins)`}
             </Button>
           </div>
         </Card>
@@ -694,12 +684,12 @@ const Forms: React.FC = () => {
   }
 
   if (view === 'viewing_single_response') {
-    return (
-      <>
-        {renderSingleResponseView()}
-        {confirmation && <ConfirmationModal {...confirmation} />}
-      </>
-    );
+     return (
+        <>
+            {renderSingleResponseView()}
+            {confirmation && <ConfirmationModal {...confirmation} />}
+        </>
+     );
   }
 
   return ( // view === 'list'
@@ -714,194 +704,194 @@ const Forms: React.FC = () => {
           </div>
           {user.role === 'student' && activeTab === 'my_creations' && <Button onClick={handleStartCreating} disabled={isSuspended} className="w-full sm:w-auto">+ Créer un formulaire</Button>}
           {user.role === 'admin' && (
-            <Button onClick={handleStartMultiFormAnalysis} disabled={selectedFormIds.length === 0} className="w-full sm:w-auto">
-              Analyse IA ({selectedFormIds.length})
-            </Button>
+             <Button onClick={handleStartMultiFormAnalysis} disabled={selectedFormIds.length === 0} className="w-full sm:w-auto">
+                Analyse IA ({selectedFormIds.length})
+             </Button>
           )}
         </div>
 
         {user.role === 'student' && (
-          <div className="border-b border-slate-200 dark:border-slate-700">
-            <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-              <button onClick={() => setActiveTab('my_creations')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_creations' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Créations & Copies</button>
-              <button onClick={() => setActiveTab('data_purchases')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'data_purchases' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Achats de Données</button>
-            </nav>
-          </div>
+            <div className="border-b border-slate-200 dark:border-slate-700">
+                <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+                    <button onClick={() => setActiveTab('my_creations')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_creations' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Créations & Copies</button>
+                    <button onClick={() => setActiveTab('data_purchases')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'data_purchases' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Achats de Données</button>
+                </nav>
+            </div>
         )}
 
         {isSuspended && (
-          <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 text-yellow-800 dark:text-yellow-300 rounded-r-lg">
-            <h4 className="font-bold">Fonctionnalités limitées</h4>
-            {user.status === 'suspended_manual' ? (
-              <p className="text-sm">Votre compte a été suspendu par un administrateur. Vous ne pouvez pas créer de nouveaux formulaires ni ajouter de réponses. Veuillez contacter le support.</p>
-            ) : (
-              <p className="text-sm">Votre compte est suspendu. Vous ne pouvez pas créer de nouveaux formulaires ni ajouter de réponses. Veuillez recharger votre portefeuille.</p>
-            )}
-          </div>
+            <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 text-yellow-800 dark:text-yellow-300 rounded-r-lg">
+                <h4 className="font-bold">Fonctionnalités limitées</h4>
+                {user.status === 'suspended_manual' ? (
+                    <p className="text-sm">Votre compte a été suspendu par un administrateur. Vous ne pouvez pas créer de nouveaux formulaires ni ajouter de réponses. Veuillez contacter le support.</p>
+                ) : (
+                    <p className="text-sm">Votre compte est suspendu. Vous ne pouvez pas créer de nouveaux formulaires ni ajouter de réponses. Veuillez recharger votre portefeuille.</p>
+                )}
+            </div>
         )}
-
+        
         {activeTab === 'my_creations' && (
-          <>
-            {user.role === 'admin' && (
-              <Card title="Filtres">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input name="searchTerm" value={filters.searchTerm} onChange={handleFilterChange} placeholder="Rechercher par mot-clé (diabète, symptôme...)" className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
-                  <select name="studentId" value={filters.studentId} onChange={handleFilterChange} className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500">
-                    <option value="">Tous les étudiants</option>
-                    {users.filter(u => u.role === 'student').sort((a, b) => a.name.localeCompare(b.name)).map(student => (<option key={student.id} value={student.id}>{student.name}</option>))}
-                  </select>
-                  <select name="publicationStatus" value={filters.publicationStatus} onChange={handleFilterChange} className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500">
-                    <option value="all">Tous les statuts</option>
-                    <option value="public">Publiés uniquement</option>
-                    <option value="private">Non publiés</option>
-                  </select>
-                </div>
-              </Card>
-            )}
+            <>
+                {user.role === 'admin' && (
+                <Card title="Filtres">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input name="searchTerm" value={filters.searchTerm} onChange={handleFilterChange} placeholder="Rechercher par mot-clé (diabète, symptôme...)" className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"/>
+                    <select name="studentId" value={filters.studentId} onChange={handleFilterChange} className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500">
+                        <option value="">Tous les étudiants</option>
+                        {users.filter(u => u.role === 'student').sort((a,b) => a.name.localeCompare(b.name)).map(student => (<option key={student.id} value={student.id}>{student.name}</option>))}
+                    </select>
+                    <select name="publicationStatus" value={filters.publicationStatus} onChange={handleFilterChange} className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500">
+                        <option value="all">Tous les statuts</option>
+                        <option value="public">Publiés uniquement</option>
+                        <option value="private">Non publiés</option>
+                    </select>
+                    </div>
+                </Card>
+                )}
 
-            {filteredForms.length > 0 ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {filteredForms.map(form => {
-                  const creator = users.find(u => u.id === form.userId);
-                  const responseCount = getResponseCountForForm(form.id);
-                  const matchingQuestions = form.schema.filter(q => filters.searchTerm.trim() && q.label.toLowerCase().includes(filters.searchTerm.trim().toLowerCase())).map(q => q.label);
-                  const statusInfo = getStatusBadge(form.status);
+                {filteredForms.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {filteredForms.map(form => {
+                    const creator = users.find(u => u.id === form.userId);
+                    const responseCount = getResponseCountForForm(form.id);
+                    const matchingQuestions = form.schema.filter(q => filters.searchTerm.trim() && q.label.toLowerCase().includes(filters.searchTerm.trim().toLowerCase())).map(q => q.label);
+                    const statusInfo = getStatusBadge(form.status);
 
-                  return (
-                    <Card key={form.id} className="flex flex-col relative">
-                      {user.role === 'admin' && (<div className="absolute top-4 right-4 z-10 bg-white dark:bg-slate-800 p-1 rounded-full"><input type="checkbox" checked={selectedFormIds.includes(form.id)} onChange={() => handleToggleFormSelection(form.id)} className="h-5 w-5 rounded-full border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-700 text-primary-600 focus:ring-primary-500" aria-label={`Sélectionner le formulaire ${form.title}`} /></div>)}
-                      <div className="flex-grow p-4 sm:p-6">
-                        <div className="flex justify-between items-start">
-                          <div className="pr-12">
-                            <h3 className="text-xl font-bold text-slate-900 dark:text-white">{highlightMatch(form.title, filters.searchTerm)}</h3>
-                            <p className="text-slate-600 dark:text-slate-400 mt-1">{highlightMatch(form.description, filters.searchTerm)}</p>
-                          </div>
-                          <div className="flex flex-col items-end space-y-2 flex-shrink-0 ml-4">
-                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusInfo.className}`}>{statusInfo.text}</span>
-                            {form.isPublic && <span className="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Publié</span>}
-                            {form.origin === 'purchased' && <span className="mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">Copie Achetée</span>}
-                          </div>
-                        </div>
-
-                        {user.role === 'admin' && creator && (<p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Créé par : <span className="font-medium">{creator.name}</span></p>)}
-                        {matchingQuestions.length > 0 && (<div className="mt-3 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700 pt-2"><p className="font-semibold">Correspondance dans les questions :</p><ul className="list-disc list-inside ml-2 mt-1">{matchingQuestions.map((label, index) => (<li key={index} className="truncate" title={label}>{highlightMatch(label, filters.searchTerm)}</li>))}</ul></div>)}
-                        <div className="mt-4 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
-                          <span>Créé le : {new Date(form.createdAt).toLocaleDateString()}</span>
-                          {user.role === 'student' && form.status === 'validated' ? (<button onClick={() => responseCount > 0 && handleViewResponses(form)} disabled={responseCount === 0} className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default">{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</button>) : (<span>{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</span>)}
-                        </div>
-                      </div>
-                      <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-3">
-                        {user.role === 'student' && (
-                          <>
-                            {form.status === 'draft' && (
-                              <div className="w-full flex items-center space-x-3">
-                                <Button onClick={() => handleStartEditing(form)} variant="secondary" className="flex-grow" disabled={isSuspended}>Modifier</Button>
-                                <Button
-                                  onClick={() => handleDeleteFormClick(form)}
-                                  variant="danger"
-                                  className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
-                                  title="Supprimer le formulaire"
-                                  disabled={isSuspended}
-                                >
-                                  <TrashIcon className="w-5 h-5" />
-                                </Button>
-                              </div>
-                            )}
-                            {form.status === 'validated' && !form.isPublic && (
-                              <div className="w-full flex items-center space-x-3">
-                                <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
-                                  <PlusIcon className="w-4 h-4 mr-2 inline-block" />
-                                  Ajouter une réponse
-                                </Button>
-                                <div className="relative flex-shrink-0" ref={(el) => (actionMenuRef.current[form.id] = el)}>
-                                  <Button
-                                    onClick={() => setOpenActionMenu(openActionMenu === form.id ? null : form.id)}
-                                    variant="secondary"
-                                    className="!px-3 !py-2 text-sm flex items-center"
-                                    disabled={isSuspended}
-                                  >
-                                    Actions
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
-                                  </Button>
-                                  <div className={`absolute right-0 bottom-full mb-2 w-56 bg-white dark:bg-slate-800 rounded-md shadow-lg border dark:border-slate-700 z-20 transition-opacity ${openActionMenu === form.id ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
-                                    <div className="py-1">
-                                      <button onClick={() => { setFormToPublish(form); setIsPublishModalOpen(true); setOpenActionMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700" disabled={isSuspended}>Publier</button>
-                                      <button onClick={() => { setFormToAction(form); setOpenActionMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700" disabled={isSuspended}>Demander une modification</button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                            {form.status === 'validated' && form.isPublic && (
-                              <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses</Button>
-                            )}
-                            {form.status === 'awaiting_modification_decision' && (
-                              <Button onClick={() => setFormToAction(form)} className="w-full" disabled={isSuspended}>
-                                Reprendre la modification
-                              </Button>
-                            )}
-                          </>
-                        )}
-                        {user.role === 'admin' && (
-                          form.status === 'draft' ? (
-                            <div className="w-full flex justify-end">
-                              <Button onClick={() => handleDeleteFormClick(form)} variant="danger" className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700" title="Supprimer le formulaire"><TrashIcon className="w-5 h-5" /></Button>
+                    return (
+                        <Card key={form.id} className="flex flex-col relative">
+                        {user.role === 'admin' && (<div className="absolute top-4 right-4 z-10 bg-white dark:bg-slate-800 p-1 rounded-full"><input type="checkbox" checked={selectedFormIds.includes(form.id)} onChange={() => handleToggleFormSelection(form.id)} className="h-5 w-5 rounded-full border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-700 text-primary-600 focus:ring-primary-500" aria-label={`Sélectionner le formulaire ${form.title}`}/></div>)}
+                        <div className="flex-grow p-4 sm:p-6">
+                            <div className="flex justify-between items-start">
+                            <div className="pr-12">
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{highlightMatch(form.title, filters.searchTerm)}</h3>
+                                <p className="text-slate-600 dark:text-slate-400 mt-1">{highlightMatch(form.description, filters.searchTerm)}</p>
                             </div>
-                          ) : (
-                            <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses ({responseCount})</Button>
-                          )
-                        )}
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            ) : (
-              <Card><div className="text-center py-12"><h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun formulaire trouvé</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{user.role === 'admin' ? 'Aucun formulaire ne correspond à vos critères de recherche.' : 'Cliquez sur "+ Créer un formulaire" pour commencer.'}</p>{user.role !== 'admin' && (<div className="mt-6"><Button onClick={handleStartCreating} disabled={isSuspended}>Commencer mon premier formulaire</Button></div>)}</div></Card>
-            )}
-          </>
+                            <div className="flex flex-col items-end space-y-2 flex-shrink-0 ml-4">
+                                <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusInfo.className}`}>{statusInfo.text}</span>
+                                {form.isPublic && <span className="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Publié</span>}
+                                {form.origin === 'purchased' && <span className="mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">Copie Achetée</span>}
+                            </div>
+                            </div>
+
+                            {user.role === 'admin' && creator && (<p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Créé par : <span className="font-medium">{creator.name}</span></p>)}
+                            {matchingQuestions.length > 0 && (<div className="mt-3 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700 pt-2"><p className="font-semibold">Correspondance dans les questions :</p><ul className="list-disc list-inside ml-2 mt-1">{matchingQuestions.map((label, index) => (<li key={index} className="truncate" title={label}>{highlightMatch(label, filters.searchTerm)}</li>))}</ul></div>)}
+                            <div className="mt-4 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
+                            <span>Créé le : {new Date(form.createdAt).toLocaleDateString()}</span>
+                            {user.role === 'student' && form.status === 'validated' ? (<button onClick={() => responseCount > 0 && handleViewResponses(form)} disabled={responseCount === 0} className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default">{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</button>) : (<span>{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</span>)}
+                            </div>
+                        </div>
+                        <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-3">
+                            {user.role === 'student' && (
+                                <>
+                                    {form.status === 'draft' && (
+                                        <div className="w-full flex items-center space-x-3">
+                                            <Button onClick={() => handleStartEditing(form)} variant="secondary" className="flex-grow" disabled={isSuspended}>Modifier</Button>
+                                            <Button 
+                                                onClick={() => handleDeleteFormClick(form)} 
+                                                variant="danger"
+                                                className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                                title="Supprimer le formulaire"
+                                                disabled={isSuspended}
+                                            >
+                                                <TrashIcon className="w-5 h-5" />
+                                            </Button>
+                                        </div>
+                                    )}
+                                    {form.status === 'validated' && !form.isPublic && (
+                                        <div className="w-full flex items-center space-x-3">
+                                            <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
+                                                <PlusIcon className="w-4 h-4 mr-2 inline-block" />
+                                                Ajouter une réponse
+                                            </Button>
+                                            <div className="relative flex-shrink-0" ref={(el) => (actionMenuRef.current[form.id] = el)}>
+                                                <Button 
+                                                    onClick={() => setOpenActionMenu(openActionMenu === form.id ? null : form.id)}
+                                                    variant="secondary"
+                                                    className="!px-3 !py-2 text-sm flex items-center"
+                                                    disabled={isSuspended}
+                                                >
+                                                    Actions
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                </Button>
+                                                <div className={`absolute right-0 bottom-full mb-2 w-56 bg-white dark:bg-slate-800 rounded-md shadow-lg border dark:border-slate-700 z-20 transition-opacity ${openActionMenu === form.id ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+                                                    <div className="py-1">
+                                                        <button onClick={() => { setFormToPublish(form); setIsPublishModalOpen(true); setOpenActionMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700" disabled={isSuspended}>Publier</button>
+                                                        <button onClick={() => { setFormToAction(form); setOpenActionMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700" disabled={isSuspended}>Demander une modification</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {form.status === 'validated' && form.isPublic && (
+                                        <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses</Button>
+                                    )}
+                                     {form.status === 'awaiting_modification_decision' && (
+                                        <Button onClick={() => setFormToAction(form)} className="w-full" disabled={isSuspended}>
+                                            Reprendre la modification
+                                        </Button>
+                                    )}
+                                </>
+                            )}
+                            {user.role === 'admin' && (
+                                form.status === 'draft' ? (
+                                    <div className="w-full flex justify-end">
+                                         <Button onClick={() => handleDeleteFormClick(form)} variant="danger" className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700" title="Supprimer le formulaire"><TrashIcon className="w-5 h-5" /></Button>
+                                    </div>
+                                ) : (
+                                    <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses ({responseCount})</Button>
+                                )
+                            )}
+                        </div>
+                        </Card>
+                    );
+                    })}
+                </div>
+                ) : (
+                <Card><div className="text-center py-12"><h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun formulaire trouvé</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{user.role === 'admin' ? 'Aucun formulaire ne correspond à vos critères de recherche.' : 'Cliquez sur "+ Créer un formulaire" pour commencer.'}</p>{user.role !== 'admin' && (<div className="mt-6"><Button onClick={handleStartCreating} disabled={isSuspended}>Commencer mon premier formulaire</Button></div>)}</div></Card>
+                )}
+            </>
         )}
 
         {activeTab === 'data_purchases' && (
-          myDataPurchases.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {myDataPurchases.map(purchase => {
-                const form = allForms.find(f => f.id === purchase.formId);
-                if (!form) return null;
-                const creator = users.find(u => u.id === form.userId);
-                const allFormResponses = responses.filter(r => r.formId === form.id);
-                const responsesUserCanSee = allFormResponses.filter(r => purchase.withResponses || r.userId === user.id);
-
-                return (
-                  <Card key={purchase.id} className="flex flex-col !p-0">
-                    <div className="flex-grow p-4 sm:p-6">
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">{form.title}</h3>
-                      <p className="text-slate-600 dark:text-slate-400 mt-1">{form.description}</p>
-                      {creator && (<p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Par : <span className="font-medium">{creator.name}</span></p>)}
-                      <div className="mt-4 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
-                        <span>Acheté le : {new Date(purchase.purchasedAt).toLocaleDateString()}</span>
-                        <button
-                          onClick={() => responsesUserCanSee.length > 0 && handleViewPurchasedFormResponses(purchase)}
-                          disabled={responsesUserCanSee.length === 0}
-                          className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default"
-                        >
-                          {responsesUserCanSee.length} {responsesUserCanSee.length !== 1 ? 'réponses' : 'réponse'}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700">
-                      <Button onClick={() => handleStartFilling(form)} className="w-full" disabled={isSuspended}>
-                        <PlusIcon className="w-4 h-4 mr-2 inline-block" />
-                        Ajouter une réponse
-                      </Button>
-                    </div>
-                  </Card>
-                )
-              })}
-            </div>
-          ) : (
-            <Card><div className="text-center py-12"><h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun achat de données</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Vous n'avez encore acheté aucun formulaire avec ses réponses. Explorez la bibliothèque !</p><div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Aller à la Bibliothèque</Button></div></div></Card>
-          )
+            myDataPurchases.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {myDataPurchases.map(purchase => {
+                    const form = allForms.find(f => f.id === purchase.formId);
+                    if (!form) return null;
+                    const creator = users.find(u => u.id === form.userId);
+                    const allFormResponses = responses.filter(r => r.formId === form.id);
+                    const responsesUserCanSee = allFormResponses.filter(r => purchase.withResponses || r.userId === user.id);
+                    
+                    return (
+                        <Card key={purchase.id} className="flex flex-col !p-0">
+                            <div className="flex-grow p-4 sm:p-6">
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{form.title}</h3>
+                                <p className="text-slate-600 dark:text-slate-400 mt-1">{form.description}</p>
+                                {creator && (<p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Par : <span className="font-medium">{creator.name}</span></p>)}
+                                <div className="mt-4 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
+                                    <span>Acheté le : {new Date(purchase.purchasedAt).toLocaleDateString()}</span>
+                                    <button 
+                                        onClick={() => responsesUserCanSee.length > 0 && handleViewPurchasedFormResponses(purchase)} 
+                                        disabled={responsesUserCanSee.length === 0} 
+                                        className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default"
+                                    >
+                                        {responsesUserCanSee.length} {responsesUserCanSee.length !== 1 ? 'réponses' : 'réponse'}
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700">
+                                <Button onClick={() => handleStartFilling(form)} className="w-full" disabled={isSuspended}>
+                                     <PlusIcon className="w-4 h-4 mr-2 inline-block" />
+                                    Ajouter une réponse
+                                </Button>
+                            </div>
+                        </Card>
+                    )
+                })}
+                </div>
+            ) : (
+                <Card><div className="text-center py-12"><h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun achat de données</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Vous n'avez encore acheté aucun formulaire avec ses réponses. Explorez la bibliothèque !</p><div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Aller à la Bibliothèque</Button></div></div></Card>
+            )
         )}
 
       </div>

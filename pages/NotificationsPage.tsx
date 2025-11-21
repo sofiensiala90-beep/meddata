@@ -2,17 +2,18 @@ import React from 'react';
 import { Notification } from '../types';
 import Card from '../components/Card';
 import BellIcon from '../components/icons/BellIcon';
-import { useData } from '../contexts/DataContext';
 
-const NotificationsPage: React.FC = () => {
-  const { notifications } = useData();
+interface NotificationsPageProps {
+  notifications: Notification[];
+}
 
+const NotificationsPage: React.FC<NotificationsPageProps> = ({ notifications }) => {
   const sortedNotifications = [...notifications].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Notifications</h2>
-
+      
       <Card>
         {sortedNotifications.length > 0 ? (
           <div className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -22,7 +23,7 @@ const NotificationsPage: React.FC = () => {
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 h-2 w-2 bg-primary-500 rounded-full" title="Non lue"></span>
                 )}
                 <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center ${!notif.read ? 'bg-primary-100 dark:bg-primary-900/50' : 'bg-slate-100 dark:bg-slate-700'}`}>
-                  <BellIcon className={`h-6 w-6 ${!notif.read ? 'text-primary-600 dark:text-primary-300' : 'text-slate-500 dark:text-slate-400'}`} />
+                   <BellIcon className={`h-6 w-6 ${!notif.read ? 'text-primary-600 dark:text-primary-300' : 'text-slate-500 dark:text-slate-400'}`} />
                 </div>
                 <div className="flex-grow">
                   <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{notif.message}</p>

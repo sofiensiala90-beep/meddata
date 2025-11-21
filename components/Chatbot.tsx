@@ -28,6 +28,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatbotRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -51,6 +52,16 @@ const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate }) => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isOpen]);
+  
+  useEffect(() => {
+    if (isOpen) {
+      // Use a timeout to ensure the input is rendered before focusing, especially with CSS transitions.
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen]);
+
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -209,6 +220,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate }) => {
           <footer className="p-4 border-t border-slate-200 dark:border-slate-700">
             <div className="flex items-center space-x-2">
               <input
+                ref={inputRef}
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}

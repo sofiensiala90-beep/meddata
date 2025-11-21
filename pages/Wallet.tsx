@@ -4,8 +4,15 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import CoinIcon from '../components/icons/CoinIcon';
 import ConfirmationModal, { ConfirmationModalProps } from '../components/ConfirmationModal';
-import { useAuth } from '../contexts/AuthContext';
-import { useData } from '../contexts/DataContext';
+
+
+interface WalletProps {
+  user: User;
+  transactions: Transaction[];
+  users: User[];
+  // FIX: Updated prop type to handle async function returning a Promise.
+  onCoinTransfer: (recipientEmail: string, amount: number) => Promise<boolean>;
+}
 
 const translateTransactionReason = (reason: TransactionReason): string => {
   switch (reason) {
@@ -22,17 +29,17 @@ const translateTransactionReason = (reason: TransactionReason): string => {
     case TransactionReason.AdminAdjustment:
       return 'Ajustement Admin';
     case TransactionReason.FormPurchase:
-      return "Achat de formulaire";
+        return "Achat de formulaire";
     case TransactionReason.ResponseBundlePurchase:
-      return "Achat de réponses";
+        return "Achat de réponses";
     case TransactionReason.FormSaleCommission:
-      return "Commission sur vente (reçue)";
+        return "Commission sur vente (reçue)";
     case TransactionReason.PlatformCommission:
-      return "Commission plateforme";
+        return "Commission plateforme";
     case TransactionReason.COIN_TRANSFER_SENT:
-      return "Transfert de coins (envoyé)";
+        return "Transfert de coins (envoyé)";
     case TransactionReason.COIN_TRANSFER_RECEIVED:
-      return "Transfert de coins (reçu)";
+        return "Transfert de coins (reçu)";
     default:
       // FIX: Cast 'reason' to string to fix 'never' type error.
       // The switch is exhaustive, so TypeScript infers 'reason' as 'never' in the default case.
@@ -41,15 +48,7 @@ const translateTransactionReason = (reason: TransactionReason): string => {
   }
 };
 
-const Wallet: React.FC = () => {
-  const { currentUser: user } = useAuth();
-  const { transactions, users, handleCoinTransfer } = useData();
-
-  // Alias for compatibility
-  const onCoinTransfer = handleCoinTransfer;
-
-  if (!user) return null;
-
+const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransfer }) => {
   const [recipientEmail, setRecipientEmail] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -58,23 +57,23 @@ const Wallet: React.FC = () => {
 
   useEffect(() => {
     if (recipientEmail.trim() === '') {
-      setRecipientName(null);
-      return;
+        setRecipientName(null);
+        return;
     }
-
+    
     // Use a small delay to avoid checking on every keystroke
     const handler = setTimeout(() => {
-      const recipient = users.find(u => u.email.toLowerCase() === recipientEmail.toLowerCase().trim() && u.role === 'student');
+        const recipient = users.find(u => u.email.toLowerCase() === recipientEmail.toLowerCase().trim() && u.role === 'student');
 
-      if (recipient && recipient.id !== user.id) {
-        setRecipientName(recipient.name);
-      } else {
-        setRecipientName(null);
-      }
+        if (recipient && recipient.id !== user.id) {
+            setRecipientName(recipient.name);
+        } else {
+            setRecipientName(null);
+        }
     }, 300);
 
     return () => {
-      clearTimeout(handler);
+        clearTimeout(handler);
     };
   }, [recipientEmail, users, user.id]);
 
@@ -91,7 +90,7 @@ const Wallet: React.FC = () => {
       setError("Veuillez entrer un montant valide.");
       return;
     }
-
+    
     // Find recipient for confirmation message
     const recipient = users.find(u => u.email.toLowerCase() === recipientEmail.toLowerCase().trim() && u.role === 'student');
     if (!recipient) {
@@ -128,7 +127,7 @@ const Wallet: React.FC = () => {
     <>
       <div className="space-y-6">
         <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Mon Portefeuille</h2>
-
+        
         <Card>
           <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
             <div className="flex items-center space-x-6">
@@ -209,7 +208,7 @@ const Wallet: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
-                {[...transactions].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(tx => (
+                {[...transactions].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(tx => (
                   <tr key={tx.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{new Date(tx.createdAt).toLocaleString()}</td>
                     <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">

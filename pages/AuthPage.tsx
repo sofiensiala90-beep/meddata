@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, MedicalField } from '../types';
 import Card from '../components/Card';
 import Button from '../components/Button';
@@ -38,6 +38,21 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
   const [isCompletingGoogleSignup, setIsCompletingGoogleSignup] = useState(false);
 
+  // Détecter si un utilisateur est déjà authentifié mais n'a pas de profil (cas de rechargement de page pendant l'inscription Google)
+  useEffect(() => {
+    if (auth.currentUser && !isCompletingGoogleSignup) {
+        const user = auth.currentUser;
+        // Si on est sur AuthPage alors que currentUser existe, c'est que le profil Firestore est manquant (géré par App.tsx)
+        setSignupData(prev => ({
+             ...prev,
+             name: user.displayName || prev.name,
+             email: user.email || prev.email,
+        }));
+        setIsCompletingGoogleSignup(true);
+        setView('signup');
+    }
+  }, []);
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -49,7 +64,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         setLoginError('Adresse e-mail ou mot de passe incorrect.');
       } else {
-        setLoginError('Une erreur est survenue. Veuillez réessayer.');
+        setLoginError(`Une erreur est survenue : ${error.message}`);
       }
       setIsLoading(false);
     }
@@ -63,7 +78,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     try {
       const result = await auth.signInWithPopup(googleProvider);
       const user = result.user;
-      if (!user) throw new Error("User not found after Google sign-in.");
+      if (!user) throw new Error("Utilisateur non trouvé après la connexion Google.");
 
       // Check if user already exists in Firestore
       const userDoc = await db.collection('users').doc(user.uid).get();
@@ -85,8 +100,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       console.error("Google Sign-In Error:", error);
       if (error.code === 'auth/account-exists-with-different-credential') {
         setLoginError('Un compte existe déjà avec cette adresse e-mail. Veuillez vous connecter avec votre mot de passe.');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        setLoginError('La connexion a été annulée par l\'utilisateur.');
       } else {
-        setLoginError('Une erreur est survenue lors de la connexion avec Google.');
+        setLoginError(`Erreur de connexion Google : ${error.message}`);
       }
     } finally {
       setIsGoogleLoading(false);
@@ -131,7 +148,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       // If we are completing a Google signup, the user is already in Firebase Auth.
       if (isCompletingGoogleSignup) {
         user = auth.currentUser;
-        if (!user) throw new Error("Authenticated user not found.");
+        if (!user) throw new Error("Utilisateur authentifié introuvable. Veuillez réessayer de vous connecter avec Google.");
       } else {
         // Otherwise, create a new user with email and password.
         const userCredential = await auth.createUserWithEmailAndPassword(signupData.email.trim(), signupData.password);
@@ -189,7 +206,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         if (error.code === 'auth/email-already-in-use') {
             setSignupError('Cette adresse e-mail est déjà utilisée.');
         } else {
-            setSignupError(`Une erreur est survenue lors de la création du compte. Détails: ${error.message}`);
+            setSignupError(`Erreur lors de la création du compte : ${error.message}`);
         }
     } finally {
         setIsLoading(false);

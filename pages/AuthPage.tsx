@@ -59,7 +59,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     // Si l'utilisateur existe, onAuthStateChanged dans App.tsx gère la connexion automatiquement.
   };
 
-  // Gérer le retour de la redirection Google (nécessaire si le popup a échoué et qu'on a redirigé)
+  // Gérer le retour de la redirection Google
   useEffect(() => {
     const checkRedirectResult = async () => {
       try {
@@ -72,12 +72,15 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       } catch (error: any) {
         console.error("Erreur redirection Google:", error);
         setIsGoogleLoading(false);
-        if (error.code === 'auth/account-exists-with-different-credential') {
+        
+        const currentDomain = window.location.hostname;
+        if (error.code === 'auth/unauthorized-domain') {
+           setLoginError(`Domaine non autorisé. Ajoutez EXACTEMENT ce domaine dans Firebase : "${currentDomain}"`);
+        } else if (error.code === 'auth/account-exists-with-different-credential') {
            setLoginError("Un compte existe déjà avec cet email. Connectez-vous avec votre mot de passe.");
-        } else if (error.code === 'auth/operation-not-supported-in-this-environment') {
-           setLoginError("La connexion Google n'est pas supportée dans cet environnement technique (protocole non sécurisé). Veuillez utiliser l'email et le mot de passe.");
+        } else {
+           setLoginError(`Erreur de redirection : ${error.message}`);
         }
-        // On ignore les autres erreurs de redirection silencieusement pour ne pas spammer l'utilisateur
       }
     };
     checkRedirectResult();
@@ -121,49 +124,47 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     setSignupError('');
     setIsGoogleLoading(true);
 
+    // Récupération des infos de l'environnement actuel pour le débogage
+    const currentDomain = window.location.hostname;
+    const currentProtocol = window.location.protocol;
+
     try {
-      // 1. On essaie d'abord la méthode Popup (plus fluide sur Desktop)
+      // Tentative standard via Popup
       const result = await auth.signInWithPopup(googleProvider);
       if (result.user) {
         await processGoogleUser(result.user);
       }
     } catch (error: any) {
       console.error("Google Sign-In Error:", error);
-
-      // Gestion spécifique de l'environnement non supporté
-      if (error.code === 'auth/operation-not-supported-in-this-environment') {
-        setLoginError("La connexion Google n'est pas supportée dans cet environnement. Assurez-vous d'utiliser un protocole sécurisé (http:// ou https://) et que les cookies sont autorisés, ou utilisez l'email et le mot de passe.");
-        setIsGoogleLoading(false);
-        return;
+      
+      // Si le popup est bloqué, on essaie automatiquement la redirection
+      if (error.code === 'auth/popup-blocked' || error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+        try {
+             await auth.signInWithRedirect(googleProvider);
+             return; // La redirection va recharger la page, on arrête l'exécution ici.
+        } catch (redirectError: any) {
+             // Si la redirection échoue aussi (souvent à cause du domaine), on affiche l'erreur
+             setIsGoogleLoading(false);
+             if (redirectError.code === 'auth/unauthorized-domain') {
+                setLoginError(`DOMAINE NON AUTORISÉ. Vous devez ajouter "${currentDomain}" dans la console Firebase (Authentication > Settings > Authorized Domains).`);
+             } else {
+                setLoginError(`Impossible d'établir la connexion Google. Erreur : ${redirectError.message}`);
+             }
+             return;
+        }
       }
 
-      // 2. Si le popup échoue (bloqué par le navigateur, mobile, ou fermé par erreur)
-      // On bascule AUTOMATIQUEMENT vers la redirection sans embêter l'utilisateur.
-      if (
-          error.code === 'auth/popup-blocked' || 
-          error.code === 'auth/popup-closed-by-user' || 
-          error.code === 'auth/cancelled-popup-request' ||
-          error.message.includes('popup')
-      ) {
-        try {
-            await auth.signInWithRedirect(googleProvider);
-            // La page va recharger, donc on ne fait rien de plus ici
-            return; 
-        } catch (redirectError: any) {
-            console.error("Redirection failed", redirectError);
-            if (redirectError.code === 'auth/operation-not-supported-in-this-environment') {
-                setLoginError("La connexion Google via redirection n'est pas supportée dans cet environnement technique.");
-            } else {
-                setLoginError("Impossible de se connecter avec Google. Veuillez réessayer.");
-            }
-            setIsGoogleLoading(false);
-        }
+      setIsGoogleLoading(false);
+
+      // Gestion des erreurs spécifiques
+      if (error.code === 'auth/unauthorized-domain') {
+        setLoginError(`DOMAINE NON AUTORISÉ. Veuillez ajouter EXACTEMENT ce domaine : "${currentDomain}" dans la console Firebase (Authentication > Settings > Authorized Domains).`);
+      } else if (error.code === 'auth/operation-not-supported-in-this-environment') {
+        setLoginError(`Environnement non sécurisé (${currentProtocol}). Google exige HTTPS. Si vous êtes en local, utilisez localhost.`);
       } else if (error.code === 'auth/account-exists-with-different-credential') {
         setLoginError('Un compte existe déjà avec cette adresse e-mail. Veuillez utiliser votre mot de passe.');
-        setIsGoogleLoading(false);
       } else {
-        setLoginError("Une erreur est survenue lors de la connexion Google.");
-        setIsGoogleLoading(false);
+        setLoginError(`Erreur Google (${error.code}): ${error.message}`);
       }
     }
   };
@@ -249,12 +250,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               createdAt: new Date().toISOString(),
           });
 
+          // Forcer le rechargement pour être sûr que l'état est propre
           window.location.reload();
       }
     } catch (error: any) {
         console.error("Erreur création compte:", error);
         if (error.code === 'auth/email-already-in-use') {
-            setSignupError('Cette adresse e-mail est déjà utilisée.');
+            setSignupError('Cette adresse e-mail est déjà utilisée. Essayez de vous connecter.');
         } else {
             setSignupError(`Erreur : ${error.message}`);
         }
@@ -291,7 +293,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                 <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
             </div>
             {loginError && (
-                <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-md border border-red-200 dark:border-red-800">
+                <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-md border border-red-200 dark:border-red-800 break-words">
+                    <span className="font-bold block mb-1">Erreur :</span>
                     {loginError}
                 </div>
             )}

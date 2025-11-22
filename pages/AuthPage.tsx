@@ -7,6 +7,7 @@ import TermsOfUseModal from '../components/TermsOfUseModal';
 import GoogleIcon from '../components/icons/GoogleIcon';
 import { auth, db, googleProvider } from '../services/firebase';
 import { mockAdminUser } from '../data/mockData';
+import firebase from 'firebase/compat/app';
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
@@ -21,7 +22,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [showRedirectFallback, setShowRedirectFallback] = useState(false);
 
   // Signup state
   const [signupData, setSignupData] = useState({
@@ -39,19 +39,65 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
   const [isCompletingGoogleSignup, setIsCompletingGoogleSignup] = useState(false);
 
-  // Détecter si un utilisateur est déjà authentifié mais n'a pas de profil (cas de rechargement de page pendant l'inscription Google ou redirection)
-  useEffect(() => {
-    if (auth.currentUser && !isCompletingGoogleSignup) {
-        const user = auth.currentUser;
-        // Si on est sur AuthPage alors que currentUser existe, c'est que le profil Firestore est manquant (géré par App.tsx)
-        setSignupData(prev => ({
-             ...prev,
-             name: user.displayName || prev.name,
-             email: user.email || prev.email,
-        }));
-        setIsCompletingGoogleSignup(true);
-        setView('signup');
+  // Fonction utilitaire pour traiter un utilisateur Google
+  const processGoogleUser = async (user: firebase.User) => {
+    // Vérifier si l'utilisateur existe déjà dans Firestore
+    const userDoc = await db.collection('users').doc(user.uid).get();
+
+    if (!userDoc.exists) {
+      // Nouvel utilisateur : pré-remplir le formulaire
+      setSignupData(prev => ({
+        ...prev,
+        password: '',
+        confirmPassword: '',
+        name: user.displayName || '',
+        email: user.email || '',
+      }));
+      setIsCompletingGoogleSignup(true);
+      setView('signup');
     }
+    // Si l'utilisateur existe, onAuthStateChanged dans App.tsx gère la connexion automatiquement.
+  };
+
+  // Gérer le retour de la redirection Google (nécessaire si le popup a échoué et qu'on a redirigé)
+  useEffect(() => {
+    const checkRedirectResult = async () => {
+      try {
+        const result = await auth.getRedirectResult();
+        if (result && result.user) {
+          setIsGoogleLoading(true);
+          await processGoogleUser(result.user);
+          setIsGoogleLoading(false);
+        }
+      } catch (error: any) {
+        console.error("Erreur redirection Google:", error);
+        setIsGoogleLoading(false);
+        if (error.code === 'auth/account-exists-with-different-credential') {
+           setLoginError("Un compte existe déjà avec cet email. Connectez-vous avec votre mot de passe.");
+        } else if (error.code === 'auth/operation-not-supported-in-this-environment') {
+           setLoginError("La connexion Google n'est pas supportée dans cet environnement technique (protocole non sécurisé). Veuillez utiliser l'email et le mot de passe.");
+        }
+        // On ignore les autres erreurs de redirection silencieusement pour ne pas spammer l'utilisateur
+      }
+    };
+    checkRedirectResult();
+  }, []);
+
+  // Détecter si un utilisateur est déjà authentifié mais n'a pas de profil
+  useEffect(() => {
+    const timer = setTimeout(() => {
+        if (auth.currentUser && !isCompletingGoogleSignup) {
+            const user = auth.currentUser;
+            setSignupData(prev => ({
+                ...prev,
+                name: user.displayName || prev.name,
+                email: user.email || prev.email,
+            }));
+            setIsCompletingGoogleSignup(true);
+            setView('signup');
+        }
+    }, 1000);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -60,7 +106,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     setIsLoading(true);
     try {
       await auth.signInWithEmailAndPassword(loginEmail.trim(), loginPassword);
-      // onAuthStateChanged in App.tsx will handle the rest
     } catch (error: any) {
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         setLoginError('Adresse e-mail ou mot de passe incorrect.');
@@ -74,58 +119,54 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const handleGoogleSignIn = async () => {
     setLoginError('');
     setSignupError('');
-    setShowRedirectFallback(false);
     setIsGoogleLoading(true);
 
     try {
+      // 1. On essaie d'abord la méthode Popup (plus fluide sur Desktop)
       const result = await auth.signInWithPopup(googleProvider);
-      const user = result.user;
-      if (!user) throw new Error("Utilisateur non trouvé après la connexion Google.");
-
-      // Check if user already exists in Firestore
-      const userDoc = await db.collection('users').doc(user.uid).get();
-
-      if (!userDoc.exists) {
-        // New user: Pre-fill signup form and prompt to complete profile
-        setSignupData(prev => ({
-          ...prev,
-          password: '',
-          confirmPassword: '',
-          name: user.displayName || '',
-          email: user.email || '',
-        }));
-        setIsCompletingGoogleSignup(true);
-        setView('signup');
+      if (result.user) {
+        await processGoogleUser(result.user);
       }
-      // If user exists, onAuthStateChanged will handle login automatically.
     } catch (error: any) {
       console.error("Google Sign-In Error:", error);
-      if (error.code === 'auth/account-exists-with-different-credential') {
-        setLoginError('Un compte existe déjà avec cette adresse e-mail. Veuillez vous connecter avec votre mot de passe.');
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        setLoginError('La connexion a été annulée par l\'utilisateur.');
-      } else if (error.code === 'auth/popup-blocked') {
-        setLoginError("Le navigateur a bloqué la fenêtre de connexion Google. Veuillez autoriser les pop-ups pour ce site ou utiliser le bouton alternatif ci-dessous.");
-        setShowRedirectFallback(true);
-      } else if (error.code === 'auth/cancelled-popup-request') {
-        setLoginError("Une autre tentative de connexion est déjà en cours.");
-      } else {
-        setLoginError(`Erreur de connexion Google : ${error.message}`);
+
+      // Gestion spécifique de l'environnement non supporté
+      if (error.code === 'auth/operation-not-supported-in-this-environment') {
+        setLoginError("La connexion Google n'est pas supportée dans cet environnement. Assurez-vous d'utiliser un protocole sécurisé (http:// ou https://) et que les cookies sont autorisés, ou utilisez l'email et le mot de passe.");
+        setIsGoogleLoading(false);
+        return;
       }
-    } finally {
-      setIsGoogleLoading(false);
+
+      // 2. Si le popup échoue (bloqué par le navigateur, mobile, ou fermé par erreur)
+      // On bascule AUTOMATIQUEMENT vers la redirection sans embêter l'utilisateur.
+      if (
+          error.code === 'auth/popup-blocked' || 
+          error.code === 'auth/popup-closed-by-user' || 
+          error.code === 'auth/cancelled-popup-request' ||
+          error.message.includes('popup')
+      ) {
+        try {
+            await auth.signInWithRedirect(googleProvider);
+            // La page va recharger, donc on ne fait rien de plus ici
+            return; 
+        } catch (redirectError: any) {
+            console.error("Redirection failed", redirectError);
+            if (redirectError.code === 'auth/operation-not-supported-in-this-environment') {
+                setLoginError("La connexion Google via redirection n'est pas supportée dans cet environnement technique.");
+            } else {
+                setLoginError("Impossible de se connecter avec Google. Veuillez réessayer.");
+            }
+            setIsGoogleLoading(false);
+        }
+      } else if (error.code === 'auth/account-exists-with-different-credential') {
+        setLoginError('Un compte existe déjà avec cette adresse e-mail. Veuillez utiliser votre mot de passe.');
+        setIsGoogleLoading(false);
+      } else {
+        setLoginError("Une erreur est survenue lors de la connexion Google.");
+        setIsGoogleLoading(false);
+      }
     }
   };
-  
-  const handleGoogleRedirectSignIn = () => {
-      setLoginError('');
-      setIsGoogleLoading(true);
-      auth.signInWithRedirect(googleProvider).catch((error: any) => {
-          setLoginError(`Erreur lors de la redirection : ${error.message}`);
-          setIsGoogleLoading(false);
-      });
-  };
-
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -161,25 +202,22 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     setIsLoading(true);
     try {
       let user;
-      // If we are completing a Google signup, the user is already in Firebase Auth.
       if (isCompletingGoogleSignup) {
         user = auth.currentUser;
-        if (!user) throw new Error("Utilisateur authentifié introuvable. Veuillez réessayer de vous connecter avec Google.");
+        if (!user) throw new Error("Erreur de session. Veuillez réessayer.");
       } else {
-        // Otherwise, create a new user with email and password.
         const userCredential = await auth.createUserWithEmailAndPassword(signupData.email.trim(), signupData.password);
         user = userCredential.user;
       }
       
       if (user) {
           const usersCollection = db.collection('users');
-          // Check if the signing up user is the designated admin by email
           const isAdmin = signupData.email.trim().toLowerCase() === mockAdminUser.email.toLowerCase();
 
           const role = isAdmin ? 'admin' : 'student';
           const coinBalance = isAdmin ? Infinity : 500;
           const welcomeMessage = isAdmin 
-            ? 'Bienvenue, Administrateur ! Votre compte a été créé avec les droits d\'administration.'
+            ? 'Bienvenue, Administrateur !'
             : 'Bienvenue sur MedataAI ! Votre solde de départ est de 500 coins.';
 
           const newUser: Omit<User, 'id' | 'password'> = {
@@ -197,32 +235,28 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
 
           await usersCollection.doc(user.uid).set(newUser);
           
-          const welcomeNotification = {
+          await db.collection('notifications').add({
               userId: user.uid,
               message: welcomeMessage,
               read: false,
               createdAt: new Date().toISOString(),
-          };
-          await db.collection('notifications').add(welcomeNotification);
+          });
           
-           const newActivity = {
+           await db.collection('activities').add({
               userId: user.uid,
               type: 'ACCOUNT_CREATED',
-              details: `Le compte de ${newUser.name} a été créé${isAdmin ? ' en tant qu\'administrateur' : ''}.`,
+              details: `Compte créé pour ${newUser.name}.`,
               createdAt: new Date().toISOString(),
-          };
-          await db.collection('activities').add(newActivity);
+          });
 
-          // A page reload will trigger onAuthStateChanged which will now find the user 
-          // document and log the user in correctly.
           window.location.reload();
       }
     } catch (error: any) {
-        console.error("Erreur lors de la création du compte:", error);
+        console.error("Erreur création compte:", error);
         if (error.code === 'auth/email-already-in-use') {
             setSignupError('Cette adresse e-mail est déjà utilisée.');
         } else {
-            setSignupError(`Erreur lors de la création du compte : ${error.message}`);
+            setSignupError(`Erreur : ${error.message}`);
         }
     } finally {
         setIsLoading(false);
@@ -261,7 +295,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                     {loginError}
                 </div>
             )}
-            <Button type="submit" className="w-full" disabled={isLoading}>{isLoading ? 'Connexion...' : 'Se connecter'}</Button>
+            <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>{isLoading ? 'Connexion...' : 'Se connecter'}</Button>
         </form>
         <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
@@ -271,33 +305,21 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                 <span className="px-2 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400">OU</span>
             </div>
         </div>
-        <div className="space-y-3">
-            <Button
-                onClick={handleGoogleSignIn}
-                variant="secondary"
-                className="w-full flex items-center justify-center"
-                disabled={isGoogleLoading}
-            >
-                {isGoogleLoading ? (
-                    'Vérification...'
-                ) : (
-                    <>
-                        <GoogleIcon className="w-5 h-5 mr-3" />
-                        Continuer avec Google
-                    </>
-                )}
-            </Button>
-            {showRedirectFallback && (
-                 <Button
-                    onClick={handleGoogleRedirectSignIn}
-                    className="w-full flex items-center justify-center !bg-blue-600 hover:!bg-blue-700 text-white"
-                    disabled={isGoogleLoading}
-                >
-                    <GoogleIcon className="w-5 h-5 mr-3 grayscale brightness-200" />
-                    Connexion via Redirection (Alternative)
-                </Button>
+        <Button
+            onClick={handleGoogleSignIn}
+            variant="secondary"
+            className="w-full flex items-center justify-center"
+            disabled={isGoogleLoading || isLoading}
+        >
+            {isGoogleLoading ? (
+                'Connexion Google en cours...'
+            ) : (
+                <>
+                    <GoogleIcon className="w-5 h-5 mr-3" />
+                    Continuer avec Google
+                </>
             )}
-        </div>
+        </Button>
     </Card>
   );
 

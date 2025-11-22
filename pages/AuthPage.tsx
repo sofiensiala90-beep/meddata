@@ -21,6 +21,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [showRedirectFallback, setShowRedirectFallback] = useState(false);
 
   // Signup state
   const [signupData, setSignupData] = useState({
@@ -38,7 +39,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
   const [isCompletingGoogleSignup, setIsCompletingGoogleSignup] = useState(false);
 
-  // Détecter si un utilisateur est déjà authentifié mais n'a pas de profil (cas de rechargement de page pendant l'inscription Google)
+  // Détecter si un utilisateur est déjà authentifié mais n'a pas de profil (cas de rechargement de page pendant l'inscription Google ou redirection)
   useEffect(() => {
     if (auth.currentUser && !isCompletingGoogleSignup) {
         const user = auth.currentUser;
@@ -73,6 +74,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const handleGoogleSignIn = async () => {
     setLoginError('');
     setSignupError('');
+    setShowRedirectFallback(false);
     setIsGoogleLoading(true);
 
     try {
@@ -102,12 +104,26 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         setLoginError('Un compte existe déjà avec cette adresse e-mail. Veuillez vous connecter avec votre mot de passe.');
       } else if (error.code === 'auth/popup-closed-by-user') {
         setLoginError('La connexion a été annulée par l\'utilisateur.');
+      } else if (error.code === 'auth/popup-blocked') {
+        setLoginError("Le navigateur a bloqué la fenêtre de connexion Google. Veuillez autoriser les pop-ups pour ce site ou utiliser le bouton alternatif ci-dessous.");
+        setShowRedirectFallback(true);
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        setLoginError("Une autre tentative de connexion est déjà en cours.");
       } else {
         setLoginError(`Erreur de connexion Google : ${error.message}`);
       }
     } finally {
       setIsGoogleLoading(false);
     }
+  };
+  
+  const handleGoogleRedirectSignIn = () => {
+      setLoginError('');
+      setIsGoogleLoading(true);
+      auth.signInWithRedirect(googleProvider).catch((error: any) => {
+          setLoginError(`Erreur lors de la redirection : ${error.message}`);
+          setIsGoogleLoading(false);
+      });
   };
 
 
@@ -240,7 +256,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mot de passe</label>
                 <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
             </div>
-            {loginError && <p className="text-sm text-red-500">{loginError}</p>}
+            {loginError && (
+                <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-md border border-red-200 dark:border-red-800">
+                    {loginError}
+                </div>
+            )}
             <Button type="submit" className="w-full" disabled={isLoading}>{isLoading ? 'Connexion...' : 'Se connecter'}</Button>
         </form>
         <div className="relative my-6">
@@ -251,7 +271,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                 <span className="px-2 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400">OU</span>
             </div>
         </div>
-        <div>
+        <div className="space-y-3">
             <Button
                 onClick={handleGoogleSignIn}
                 variant="secondary"
@@ -267,6 +287,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                     </>
                 )}
             </Button>
+            {showRedirectFallback && (
+                 <Button
+                    onClick={handleGoogleRedirectSignIn}
+                    className="w-full flex items-center justify-center !bg-blue-600 hover:!bg-blue-700 text-white"
+                    disabled={isGoogleLoading}
+                >
+                    <GoogleIcon className="w-5 h-5 mr-3 grayscale brightness-200" />
+                    Connexion via Redirection (Alternative)
+                </Button>
+            )}
         </div>
     </Card>
   );

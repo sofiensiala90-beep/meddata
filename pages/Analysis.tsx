@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { User, Form, FormResponse, TransactionReason, AnalysisHistory } from '../types';
+import { User, Form, FormResponse, TransactionReason, AnalysisHistory, SystemSettings } from '../types';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import Spinner from '../components/Spinner';
@@ -11,7 +11,6 @@ import PieChartIcon from '../components/icons/PieChartIcon';
 import DoughnutChartIcon from '../components/icons/DoughnutChartIcon';
 import HistoryIcon from '../components/icons/HistoryIcon';
 import ConfirmationModal, { ConfirmationModalProps } from '../components/ConfirmationModal';
-import { COIN_COSTS } from '../constants';
 
 
 interface AnalysisProps {
@@ -26,6 +25,7 @@ interface AnalysisProps {
   saveAnalysisToHistory: (formIds: string[], formTitles: string[], userPrompt: string, analysisResult: any) => void;
   deleteAnalysisHistory: (historyId: string) => void;
   unlockedAnalysis: {userId: string; formId: string}[];
+  systemSettings: SystemSettings;
 }
 
 const isValidHex = (color: string | undefined | null): color is string => {
@@ -49,7 +49,7 @@ const ChartTypeButton: React.FC<{ icon: React.ReactNode; label: string; isActive
     </button>
 );
 
-const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransaction, analysisContext, onNavigate, analysisHistory, saveAnalysisToHistory, deleteAnalysisHistory, unlockedAnalysis }) => {
+const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransaction, analysisContext, onNavigate, analysisHistory, saveAnalysisToHistory, deleteAnalysisHistory, unlockedAnalysis, systemSettings }) => {
     const [selectedFormId, setSelectedFormId] = useState<string>('');
     const [userPrompt, setUserPrompt] = useState<string>('');
     const [analysisResult, setAnalysisResult] = useState<any>(null);
@@ -122,7 +122,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
         const formsToUnlock = formsToAnalyze.filter(form => 
             !unlockedAnalysis.some(ua => ua.userId === user.id && ua.formId === form.id)
         );
-        const cost = formsToUnlock.length * COIN_COSTS.AI_ANALYSIS;
+        const cost = formsToUnlock.length * systemSettings.coinCosts.aiAnalysis;
 
         const executeInitialAnalysis = async () => {
             setIsLoading(true);
@@ -431,7 +431,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                             className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                         />
                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            Coût : 500 coins pour débloquer l'analyse illimitée sur un formulaire. Les analyses suivantes sur le même formulaire sont gratuites.
+                            Coût : {systemSettings.coinCosts.aiAnalysis} coins pour débloquer l'analyse illimitée sur un formulaire. Les analyses suivantes sur le même formulaire sont gratuites.
                         </p>
                     </div>
 

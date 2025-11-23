@@ -1,22 +1,29 @@
+import { SystemSettings } from "./types";
 
-
-export const COIN_COSTS = {
-  VALIDATE_FORM: 500,
-  VALIDATE_PURCHASED_FORM: 500,
-  ADD_RESPONSE: 10,
-  AI_ANALYSIS: 500,
+// Default settings used if database is empty
+export const DEFAULT_SETTINGS: SystemSettings = {
+  coinCosts: {
+    validateForm: 500,
+    validatePurchasedForm: 500,
+    addResponse: 10,
+    aiAnalysis: 500,
+  },
+  libraryPrices: {
+    defaultFormPrice: 700,
+    defaultPricePerResponse: 15,
+  },
+  welcomeBonus: 500,
+  commissionRates: {
+    creatorFormSale: 400 / 700,
+    creatorResponseSale: 10 / 15,
+  },
+  platformFees: {
+    monthly: 50,
+  },
 };
 
-export const PLATFORM_FEES = {
-    MONTHLY: 50,
-};
-
-export const LIBRARY_PRICES = {
-  DEFAULT_FORM_PRICE: 700,
-  DEFAULT_PRICE_PER_RESPONSE: 15,
-};
-
-export const COMMISSION_RATES = {
-  CREATOR_FORM_SALE: 400 / 700, // 400 coins out of 700
-  CREATOR_RESPONSE_SALE: 10 / 15, // 10 coins out of 15
-};
+// Deprecated: Use settings from App state instead
+export const COIN_COSTS = DEFAULT_SETTINGS.coinCosts;
+export const PLATFORM_FEES = DEFAULT_SETTINGS.platformFees;
+export const LIBRARY_PRICES = DEFAULT_SETTINGS.libraryPrices;
+export const COMMISSION_RATES = DEFAULT_SETTINGS.commissionRates;

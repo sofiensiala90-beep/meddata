@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Form, FormField } from '../types';
+import { Form, FormField, SystemSettings } from '../types';
 import Button from './Button';
 import Card from './Card';
 import TrashIcon from './icons/TrashIcon';
@@ -16,7 +16,6 @@ import NoteIcon from './icons/NoteIcon';
 import ConfirmationModal, { ConfirmationModalProps } from './ConfirmationModal';
 import RangeIcon from './icons/RangeIcon';
 import UndoIcon from './icons/UndoIcon';
-import { COIN_COSTS } from '../constants';
 import EyeIcon from './icons/EyeIcon';
 
 interface FormBuilderProps {
@@ -25,6 +24,7 @@ interface FormBuilderProps {
   onValidate: (form: Form) => void;
   onCancel: () => void;
   userId: string;
+  systemSettings: SystemSettings;
 }
 
 const newFormTemplate = (userId: string): Form => ({
@@ -298,7 +298,7 @@ const PreviewModal: React.FC<{
 };
 
 
-const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValidate, onCancel, userId }) => {
+const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValidate, onCancel, userId, systemSettings }) => {
   const [form, setForm] = useState<Form>(initialForm ? JSON.parse(JSON.stringify(initialForm)) : newFormTemplate(userId));
   const [history, setHistory] = useState<Form[]>([]);
   const [isTypePickerOpen, setIsTypePickerOpen] = useState(false);
@@ -567,7 +567,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
     });
   };
 
-  const validationCost = form.origin === 'purchased' ? COIN_COSTS.VALIDATE_PURCHASED_FORM : COIN_COSTS.VALIDATE_FORM;
+  const validationCost = form.origin === 'purchased' ? systemSettings.coinCosts.validatePurchasedForm : systemSettings.coinCosts.validateForm;
   const isFreeValidation = form.revalidationFree === true;
 
   const handleValidateClick = () => {

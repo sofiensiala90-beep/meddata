@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity, ActivityType } from './types';
+import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity, ActivityType, SystemSettings } from './types';
 import { auth, db } from './services/firebase';
 import firebase from 'firebase/compat/app';
 
@@ -16,11 +16,12 @@ import Finance from './pages/Finance';
 import ActivityPage from './pages/Activity';
 import Chatbot from './components/Chatbot';
 import ComplaintModal from './components/ComplaintModal';
-import { COIN_COSTS, COMMISSION_RATES, PLATFORM_FEES } from './constants';
+import { DEFAULT_SETTINGS } from './constants'; // Use DEFAULT_SETTINGS as fallback only
 import NotificationsPage from './pages/NotificationsPage';
 import Library from './pages/Library';
 import InsufficientFundsModal from './components/InsufficientFundsModal';
 import Spinner from './components/Spinner';
+import AdminConfiguration from './pages/AdminConfiguration';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -31,6 +32,7 @@ const App: React.FC = () => {
   const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<{ required: number; balance: number } | null>(null);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
 
   // App-wide state, now populated from Firestore
   const [users, setUsers] = useState<User[]>([]);
@@ -49,6 +51,20 @@ const App: React.FC = () => {
     setCurrentUser(prev => (prev?.id === userId ? { ...prev, ...updates } : prev));
     setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, ...updates } : u));
   };
+  
+  // Load System Settings
+  useEffect(() => {
+    const unsubscribe = db.collection('settings').doc('general').onSnapshot(doc => {
+      if (doc.exists) {
+        setSystemSettings(doc.data() as SystemSettings);
+      } else {
+        // Init if not exists
+        db.collection('settings').doc('general').set(DEFAULT_SETTINGS);
+        setSystemSettings(DEFAULT_SETTINGS);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const authUnsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -156,7 +172,7 @@ const App: React.FC = () => {
         sessionStorage.setItem(sessionKey, 'true');
 
         const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
-        const monthlyFee = PLATFORM_FEES.MONTHLY;
+        const monthlyFee = systemSettings.platformFees.monthly;
 
         const userTransactionsQuery = await db.collection('transactions')
             .where('userId', '==', student.id)
@@ -230,16 +246,19 @@ const App: React.FC = () => {
     if (currentUser && currentUser.role === 'student') {
         runMonthlyFeeCheck(currentUser);
     }
-  }, [currentUser]);
+  }, [currentUser, systemSettings]);
 
   const handleAddActivity = async (type: ActivityType, userId: string, details: string, targetId?: string) => {
-    const newActivity: Omit<Activity, 'id'> = {
+    const newActivity: any = {
       userId,
       type,
       details,
-      targetId,
       createdAt: new Date().toISOString(),
     };
+    // Ensure undefined is not passed to Firestore
+    if (targetId) {
+        newActivity.targetId = targetId;
+    }
     await db.collection('activities').add(newActivity);
   };
 
@@ -275,18 +294,18 @@ const App: React.FC = () => {
 
     switch(reason) {
       case TransactionReason.FormValidation:
-        cost = context?.form?.origin === 'purchased' ? COIN_COSTS.VALIDATE_PURCHASED_FORM : COIN_COSTS.VALIDATE_FORM;
+        cost = context?.form?.origin === 'purchased' ? systemSettings.coinCosts.validatePurchasedForm : systemSettings.coinCosts.validateForm;
         details = `Validation du formulaire : "${context?.form?.title || 'N/A'}"`;
         break;
       case TransactionReason.FormResponse:
-        cost = COIN_COSTS.ADD_RESPONSE;
+        cost = systemSettings.coinCosts.addResponse;
         details = `Ajout de réponse au formulaire : "${context?.form?.title || 'N/A'}"`;
         break;
       case TransactionReason.AiRequest:
         if (!context?.formIds || context.formIds.length === 0) return false;
         formsToUnlock = context.formIds.filter(formId => !unlockedAnalysis.some(ua => ua.userId === userId && ua.formId === formId));
         if (formsToUnlock.length === 0) return true;
-        cost = formsToUnlock.length * COIN_COSTS.AI_ANALYSIS;
+        cost = formsToUnlock.length * systemSettings.coinCosts.aiAnalysis;
         const formTitlesToUnlock = context.formTitles?.filter((_, index) => formsToUnlock.includes(context.formIds![index]));
         details = `Déblocage de l'analyse IA pour ${formsToUnlock.length} formulaire(s): "${formTitlesToUnlock?.join('", "')}"`;
         break;
@@ -436,8 +455,8 @@ const App: React.FC = () => {
         return false;
     }
 
-    const creatorFormCommission = formCost * COMMISSION_RATES.CREATOR_FORM_SALE;
-    const creatorResponsesCommission = responsesCost * COMMISSION_RATES.CREATOR_RESPONSE_SALE;
+    const creatorFormCommission = formCost * systemSettings.commissionRates.creatorFormSale;
+    const creatorResponsesCommission = responsesCost * systemSettings.commissionRates.creatorResponseSale;
     const creatorTotalCommission = creatorFormCommission + creatorResponsesCommission;
     const platformCommission = totalCost - creatorTotalCommission;
 
@@ -800,6 +819,66 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdateSettings = async (newSettings: SystemSettings) => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    try {
+        await db.collection('settings').doc('general').update(newSettings);
+        setSystemSettings(newSettings);
+        await handleAddActivity(ActivityType.SYSTEM_SETTINGS_UPDATED, currentUser.id, "Mise à jour de la configuration système.");
+        alert("Configuration mise à jour avec succès !");
+    } catch (error) {
+        console.error("Failed to update settings:", error);
+        alert("Erreur lors de la mise à jour de la configuration.");
+    }
+  };
+
+  const handleCreditAllUsers = async (amount: number, message: string) => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    const students = users.filter(u => u.role === 'student');
+    const batchSize = 450; // Firestore limit is 500
+    
+    try {
+        const timestamp = new Date().toISOString();
+        const chunks = [];
+        for (let i = 0; i < students.length; i += batchSize) {
+            chunks.push(students.slice(i, i + batchSize));
+        }
+
+        for (const chunk of chunks) {
+            const batch = db.batch();
+            chunk.forEach(student => {
+                const userRef = db.collection('users').doc(student.id);
+                batch.update(userRef, { coinBalance: firebase.firestore.FieldValue.increment(amount) });
+                
+                const txRef = db.collection('transactions').doc();
+                batch.set(txRef, {
+                    userId: student.id,
+                    type: TransactionType.Credit,
+                    amount: amount,
+                    reason: TransactionReason.PROMOTIONAL_GIFT,
+                    details: message,
+                    createdAt: timestamp
+                });
+
+                const notifRef = db.collection('notifications').doc();
+                batch.set(notifRef, {
+                    userId: student.id,
+                    message: `CADEAU : ${message}. Vous avez reçu ${amount} coins !`,
+                    read: false,
+                    createdAt: timestamp
+                });
+            });
+            await batch.commit();
+        }
+        
+        await handleAddActivity(ActivityType.PROMOTIONAL_CAMPAIGN, currentUser.id, `Campagne promo : ${amount} coins offerts à ${students.length} étudiants.`);
+        alert("Promotion envoyée à tous les étudiants !");
+        
+    } catch (error) {
+        console.error("Failed to credit all users:", error);
+        alert("Une erreur est survenue lors de l'envoi de la promotion.");
+    }
+  };
 
   const renderPage = () => {
     if (!currentUser) return null;
@@ -827,12 +906,14 @@ const App: React.FC = () => {
                   publishForm={handlePublishForm} users={users} onNavigate={handleNavigate}
                   handleRequestFormModification={handleRequestFormModification}
                   onModificationDecision={handleModificationDecision}
+                  systemSettings={systemSettings}
                />;
       case 'bibliotheque':
         return <Library
                   currentUser={currentUser} publicForms={forms.filter(f => f.isPublic)}
                   purchasedForms={userPurchasedForms} responses={responses}
                   users={users} onPurchase={handlePurchaseForm}
+                  systemSettings={systemSettings}
                 />;
       case 'analyse':
         const purchasedFormObjects = userPurchasedForms
@@ -848,6 +929,7 @@ const App: React.FC = () => {
                   saveAnalysisToHistory={handleSaveAnalysisToHistory}
                   deleteAnalysisHistory={handleDeleteAnalysisHistory}
                   unlockedAnalysis={unlockedAnalysis}
+                  systemSettings={systemSettings}
                 />;
       case 'portefeuille':
         return <Wallet 
@@ -871,6 +953,8 @@ const App: React.FC = () => {
         return <Finance transactions={transactions} users={users}/>;
       case 'activite':
         return <ActivityPage activities={activities} users={users} />;
+      case 'configuration':
+        return <AdminConfiguration settings={systemSettings} users={users} onUpdateSettings={handleUpdateSettings} onCreditAllUsers={handleCreditAllUsers} />;
       default:
         return <Dashboard user={currentUser} forms={userForms} responses={userResponses} />;
     }

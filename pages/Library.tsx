@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { User, Form, FormResponse, PurchasedForm, FormField } from '../types';
+import { User, Form, FormResponse, PurchasedForm, FormField, SystemSettings } from '../types';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import CoinIcon from '../components/icons/CoinIcon';
@@ -190,9 +190,10 @@ interface LibraryProps {
     users: User[];
     // FIX: Updated prop type to handle async function returning a Promise.
     onPurchase: (form: Form, withResponses: boolean) => Promise<boolean | void>;
+    systemSettings: SystemSettings;
 }
 
-const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedForms, responses, users, onPurchase }) => {
+const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedForms, responses, users, onPurchase, systemSettings }) => {
     const [filters, setFilters] = useState({ searchTerm: '' });
     const [formToBuy, setFormToBuy] = useState<Form | null>(null);
     const [formToPreview, setFormToPreview] = useState<Form | null>(null);

@@ -82,8 +82,12 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
 
             return true;
         })
-        // SORTING: Ensure newest activities are always at the top
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        // TRI CHRONOLOGIQUE INVERSE (Le plus récent en premier)
+        .sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return dateB - dateA;
+        });
     }, [activities, filters]);
 
     const getUserName = (userId: string) => users.find(u => u.id === userId)?.name || 'Système/Admin';
@@ -93,7 +97,10 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Journal d'Activité</h2>
+                <div className="flex items-center space-x-3">
+                    <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Journal d'Activité</h2>
+                    <span className="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded-full border border-green-200 animate-pulse">Live</span>
+                </div>
                 <div className="text-sm text-slate-500 dark:text-slate-400">
                     {filteredActivities.length} événement(s) trouvé(s)
                 </div>

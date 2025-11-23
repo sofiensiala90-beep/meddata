@@ -28,7 +28,7 @@ const translateActivityType = (type: ActivityType): string => {
     return translations[type] || (type as string);
 };
 
-const ActivityIcon: React.FC<{ type: ActivityType }> = ({ type }) => {
+export const ActivityIcon: React.FC<{ type: ActivityType }> = ({ type }) => {
     const iconMap: Record<string, string> = {
         [ActivityType.ACCOUNT_CREATED]: '👤',
         [ActivityType.FORM_CREATED]: '📝',
@@ -64,6 +64,8 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
     };
 
     const filteredActivities = useMemo(() => {
+        if (!activities) return [];
+        
         return activities.filter(activity => {
             if (filters.userId && activity.userId !== filters.userId) return false;
             if (filters.activityType && activity.type !== filters.activityType) return false;
@@ -82,11 +84,15 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
 
             return true;
         })
-        // TRI CHRONOLOGIQUE INVERSE (Le plus récent en premier)
+        // TRI CHRONOLOGIQUE INVERSE STRICT (Le plus récent en haut) avec sécurité pour dates invalides
         .sort((a, b) => {
-            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return dateB - dateA;
+            let timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            let timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            
+            if (isNaN(timeA)) timeA = 0;
+            if (isNaN(timeB)) timeB = 0;
+
+            return timeB - timeA;
         });
     }, [activities, filters]);
 
@@ -96,13 +102,16 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="flex items-center space-x-3">
                     <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Journal d'Activité</h2>
-                    <span className="px-2 py-1 text-xs font-bold bg-green-100 text-green-800 rounded-full border border-green-200 animate-pulse">Live</span>
+                    <span className="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full border border-blue-200 dark:border-blue-800 animate-pulse flex items-center">
+                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                        V4 LIVE
+                    </span>
                 </div>
-                <div className="text-sm text-slate-500 dark:text-slate-400">
-                    {filteredActivities.length} événement(s) trouvé(s)
+                <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-md">
+                    Total: <strong>{filteredActivities.length}</strong> événements
                 </div>
             </div>
             
@@ -140,7 +149,7 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
                             {filteredActivities.map(activity => (
                                 <tr key={activity.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
-                                        <div className="font-medium">{new Date(activity.createdAt).toLocaleDateString()}</div>
+                                        <div className="font-medium text-slate-900 dark:text-white">{new Date(activity.createdAt).toLocaleDateString()}</div>
                                         <div className="text-xs">{new Date(activity.createdAt).toLocaleTimeString()}</div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-white">{getUserName(activity.userId)}</td>

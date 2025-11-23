@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity, ActivityType, SystemSettings } from './types';
 import { auth, db } from './services/firebase';
@@ -895,6 +896,7 @@ const App: React.FC = () => {
         return <Dashboard 
                   user={currentUser} forms={userForms} responses={userResponses}
                   users={users} transactions={transactions} onNavigate={handleNavigate}
+                  activities={activities} // Pass activities here
                />;
       case 'formulaires':
         return <Forms 
@@ -956,7 +958,7 @@ const App: React.FC = () => {
       case 'configuration':
         return <AdminConfiguration settings={systemSettings} users={users} onUpdateSettings={handleUpdateSettings} onCreditAllUsers={handleCreditAllUsers} />;
       default:
-        return <Dashboard user={currentUser} forms={userForms} responses={userResponses} />;
+        return <Dashboard user={currentUser} forms={userForms} responses={userResponses} activities={activities} />;
     }
   };
   

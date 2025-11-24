@@ -1,5 +1,38 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
+
+// Fonction simplifiée pour récupérer la clé API de manière sécurisée
+const getGeminiApiKey = () => {
+    let key = '';
+    
+    // 1. Essai via import.meta.env (Vite)
+    try {
+        // @ts-ignore
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+            // Accès explicite pour le remplacement statique
+            // @ts-ignore
+            if (import.meta.env.API_KEY) key = import.meta.env.API_KEY;
+            // @ts-ignore
+            else if (import.meta.env.VITE_API_KEY) key = import.meta.env.VITE_API_KEY;
+            // @ts-ignore
+            else if (import.meta.env.GEMINI_API_KEY) key = import.meta.env.GEMINI_API_KEY;
+        }
+    } catch (e) {
+        // Ignorer
+    }
+    
+    // 2. Fallback via process.env
+    if (!key && typeof process !== 'undefined' && process.env) {
+        if (process.env.API_KEY) key = process.env.API_KEY;
+        else if (process.env.VITE_API_KEY) key = process.env.VITE_API_KEY;
+        else if (process.env.GEMINI_API_KEY) key = process.env.GEMINI_API_KEY;
+    }
+    
+    return key;
+};
+
+const API_KEY = getGeminiApiKey();
 
 /**
  * Cleans the AI's text response to extract a valid JSON string.
@@ -30,7 +63,11 @@ const cleanAndParseJson = (text: string): any => {
  * @returns A promise that resolves to an array of field IDs.
  */
 const getRelevantFieldIds = async (schema: Form['schema'], userPrompt: string): Promise<string[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    if (!API_KEY) {
+        console.error("API Key manquante pour Gemini.");
+        throw new Error("Clé API manquante. Veuillez configurer API_KEY.");
+    }
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
 
     const systemInstruction = `
         Tu es un pré-processeur de données intelligent. Ton unique tâche est de déterminer quels champs de données sont nécessaires pour répondre à une demande utilisateur, en te basant sur le schéma d'un formulaire.
@@ -53,7 +90,7 @@ const getRelevantFieldIds = async (schema: Form['schema'], userPrompt: string): 
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro', // Use a powerful model for reasoning
+            model: 'gemini-2.0-flash', // Use a faster, cost-effective model
             contents: prompt,
             config: {
                 systemInstruction: systemInstruction,
@@ -61,7 +98,7 @@ const getRelevantFieldIds = async (schema: Form['schema'], userPrompt: string): 
             }
         });
         
-        const jsonResponse = cleanAndParseJson(response.text);
+        const jsonResponse = cleanAndParseJson(response.text as string);
         if (jsonResponse && Array.isArray(jsonResponse.fieldIds)) {
             return jsonResponse.fieldIds;
         }
@@ -89,7 +126,10 @@ const generateFinalReport = async (
     schema: Form['schema'],
     sampleInfo?: { sampleSize: number; totalSize: number }
 ) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    if (!API_KEY) {
+        throw new Error("Clé API manquante.");
+    }
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
 
     let dataContextInstruction = `
         Tu es un assistant d'analyse de données médicales expert.
@@ -158,7 +198,7 @@ const generateFinalReport = async (
             }
         });
 
-        return cleanAndParseJson(response.text);
+        return cleanAndParseJson(response.text as string);
     } catch (error) {
         console.error("Failed to perform final analysis:", error);
         throw new Error("The AI failed to generate a valid analysis.");
@@ -169,7 +209,8 @@ const generateFinalReport = async (
  * An AI planner that decides the best analysis strategy based on the query's complexity and data size.
  */
 const getAnalysisStrategy = async (userPrompt: string, relevantFieldCount: number, totalResponseCount: number): Promise<'ANALYZE_ALL' | 'ANALYZE_SAMPLE'> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    if (!API_KEY) return 'ANALYZE_ALL';
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
 
     // For smaller datasets, always analyze everything directly. This respects a previous user requirement.
     if (totalResponseCount <= 100) {
@@ -210,7 +251,7 @@ const getAnalysisStrategy = async (userPrompt: string, relevantFieldCount: numbe
             }
         });
         
-        const jsonResponse = cleanAndParseJson(response.text);
+        const jsonResponse = cleanAndParseJson(response.text as string);
         if (jsonResponse.strategy === 'ANALYZE_SAMPLE') {
             return 'ANALYZE_SAMPLE';
         }
@@ -230,6 +271,13 @@ const getAnalysisStrategy = async (userPrompt: string, relevantFieldCount: numbe
  */
 export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
     try {
+        if (!API_KEY) {
+            return {
+                analysisText: "Erreur de configuration : La clé API pour l'Intelligence Artificielle est manquante.",
+                chartData: null
+            };
+        }
+
         const representativeSchema = forms[0].schema;
         const SAMPLE_SIZE = 100;
 
@@ -341,7 +389,10 @@ export const performSampledAnalysis = async (forms: Form[], responses: FormRespo
 
 export const getChatbotResponseStream = async (userRole: User['role'], history: ChatMessage[]) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    if (!API_KEY) {
+        throw new Error("Clé API manquante.");
+    }
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
     
     const model = 'gemini-2.5-flash';
 

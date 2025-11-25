@@ -16,7 +16,6 @@ const translateField = (field: MedicalField) => {
     case MedicalField.Medicine: return 'Médecine';
     case MedicalField.Pharmacy: return 'Pharmacie';
     case MedicalField.Dentistry: return 'Dentaire';
-    case MedicalField.Other: return 'Autre';
     default: return field;
   }
 };
@@ -167,7 +166,6 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onUpdatePasswo
                 <option value={MedicalField.Medicine}>Médecine</option>
                 <option value={MedicalField.Pharmacy}>Pharmacie</option>
                 <option value={MedicalField.Dentistry}>Dentaire</option>
-                <option value={MedicalField.Other}>Autre</option>
               </select>
             </div>
              {renderEditableField("Année d'étude", "studyYear", "number")}

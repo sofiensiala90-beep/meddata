@@ -24,7 +24,6 @@ const translateField = (field: MedicalField) => {
     case MedicalField.Medicine: return 'Médecine';
     case MedicalField.Pharmacy: return 'Pharmacie';
     case MedicalField.Dentistry: return 'Dentaire';
-    case MedicalField.Other: return 'Autre';
     default: return field;
   }
 };
@@ -171,7 +170,6 @@ const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNoti
             <option value={MedicalField.Medicine}>Médecine</option>
             <option value={MedicalField.Pharmacy}>Pharmacie</option>
             <option value={MedicalField.Dentistry}>Dentaire</option>
-            <option value={MedicalField.Other}>Autre</option>
           </select>
           <input name="studyYear" type="number" value={filters.studyYear} onChange={handleFilterChange} placeholder="Filtrer par année..." className={inputClasses}/>
         </div>

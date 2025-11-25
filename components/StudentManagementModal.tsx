@@ -21,7 +21,6 @@ const translateField = (field: MedicalField) => {
     case MedicalField.Medicine: return 'Médecine';
     case MedicalField.Pharmacy: return 'Pharmacie';
     case MedicalField.Dentistry: return 'Dentaire';
-    case MedicalField.Other: return 'Autre';
     default: return field;
   }
 };

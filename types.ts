@@ -4,7 +4,6 @@ export enum MedicalField {
   Medicine = 'MEDICINE',
   Pharmacy = 'PHARMACY',
   Dentistry = 'DENTISTRY',
-  Other = 'OTHER',
 }
 
 export interface User {
@@ -93,7 +92,6 @@ export enum TransactionReason {
   PlatformCommission = 'PLATFORM_COMMISSION',
   COIN_TRANSFER_SENT = 'COIN_TRANSFER_SENT',
   COIN_TRANSFER_RECEIVED = 'COIN_TRANSFER_RECEIVED',
-  PROMOTIONAL_GIFT = 'PROMOTIONAL_GIFT',
 }
 
 export interface Transaction {
@@ -129,8 +127,6 @@ export enum ActivityType {
   ADMIN_COIN_ADJUSTMENT = 'ADMIN_COIN_ADJUSTMENT',
   USER_STATUS_CHANGED = 'USER_STATUS_CHANGED',
   RESPONSE_ADDED = 'RESPONSE_ADDED',
-  SYSTEM_SETTINGS_UPDATED = 'SYSTEM_SETTINGS_UPDATED',
-  PROMOTIONAL_CAMPAIGN = 'PROMOTIONAL_CAMPAIGN',
 }
 
 export interface Activity {
@@ -152,25 +148,4 @@ export interface ChatbotResponse {
 export interface ChatMessage {
   role: 'user' | 'model';
   parts: { text: string }[];
-}
-
-export interface SystemSettings {
-  coinCosts: {
-    validateForm: number;
-    validatePurchasedForm: number;
-    addResponse: number;
-    aiAnalysis: number;
-  };
-  libraryPrices: {
-    defaultFormPrice: number;
-    defaultPricePerResponse: number;
-  };
-  welcomeBonus: number;
-  commissionRates: {
-    creatorFormSale: number;
-    creatorResponseSale: number;
-  };
-  platformFees: {
-    monthly: number;
-  };
 }

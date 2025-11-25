@@ -1,12 +1,10 @@
-
 import React from 'react';
-import { User, Form, FormResponse, Transaction, TransactionType, Activity, ActivityType } from '../types';
+import { User, Form, FormResponse, Transaction, TransactionType } from '../types';
 import Card from '../components/Card';
 import StudentsIcon from '../components/icons/StudentsIcon';
 import FormsIcon from '../components/icons/FormsIcon';
 import CoinIcon from '../components/icons/CoinIcon';
 import Button from '../components/Button';
-import { ActivityIcon } from './Activity';
 
 interface DashboardProps {
   user: User;
@@ -14,7 +12,6 @@ interface DashboardProps {
   responses: FormResponse[];
   users?: User[];
   transactions?: Transaction[];
-  activities?: Activity[];
   onNavigate?: (page: string) => void;
 }
 
@@ -38,44 +35,7 @@ const QuickAccessButton: React.FC<{title: string; description: string; onClick: 
     </div>
 );
 
-const RecentActivityList: React.FC<{ activities: Activity[]; users?: User[] }> = ({ activities, users }) => {
-    const getUserName = (userId: string) => {
-        if (!users) return 'Utilisateur';
-        return users.find(u => u.id === userId)?.name || 'Utilisateur inconnu';
-    };
-
-    if (!activities || activities.length === 0) {
-        return <p className="text-slate-500 dark:text-slate-400 text-sm">Aucune activité récente.</p>;
-    }
-
-    return (
-        <div className="space-y-3">
-            {activities.slice(0, 5).map(activity => (
-                <div key={activity.id} className="flex items-start space-x-3 p-3 bg-slate-50 dark:bg-slate-700/30 rounded-lg border border-slate-100 dark:border-slate-700">
-                    <div className="flex-shrink-0 mt-1">
-                        <ActivityIcon type={activity.type} />
-                    </div>
-                    <div className="flex-grow min-w-0">
-                        <p className="text-sm text-slate-800 dark:text-slate-200">
-                            {users ? <span className="font-semibold">{getUserName(activity.userId)}: </span> : null}
-                            {activity.details}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                            {new Date(activity.createdAt).toLocaleString()}
-                        </p>
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
-};
-
-const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, transactions, activities, onNavigate }) => {
-
-    // Helper to sort activities
-    const sortedActivities = activities 
-        ? [...activities].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) 
-        : [];
+const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, transactions, onNavigate }) => {
 
     if (user.role === 'admin' && users && transactions) {
         const studentCount = users.filter(u => u.role === 'student').length;
@@ -108,37 +68,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, tr
                     />
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2">
-                        <Card title="Actions Administrateur" className="h-full">
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <QuickAccessButton 
-                                    title="Gérer les étudiants"
-                                    description="Consultez, gérez et communiquez avec les utilisateurs."
-                                    onClick={() => onNavigate && onNavigate('etudiants')}
-                                />
-                                <QuickAccessButton 
-                                    title="Consulter les finances"
-                                    description="Suivez toutes les transactions de la plateforme."
-                                    onClick={() => onNavigate && onNavigate('finances')}
-                                />
-                                <QuickAccessButton 
-                                    title="Voir tous les formulaires"
-                                    description="Visualisez tous les formulaires soumis par les étudiants."
-                                    onClick={() => onNavigate && onNavigate('formulaires')}
-                                />
-                            </div>
-                        </Card>
+                <Card title="Actions Administrateur">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <QuickAccessButton 
+                            title="Gérer les étudiants"
+                            description="Consultez, gérez et communiquez avec les utilisateurs."
+                            onClick={() => onNavigate && onNavigate('etudiants')}
+                        />
+                        <QuickAccessButton 
+                            title="Consulter les finances"
+                            description="Suivez toutes les transactions de coins sur la plateforme."
+                            onClick={() => onNavigate && onNavigate('finances')}
+                        />
+                         <QuickAccessButton 
+                            title="Voir tous les formulaires"
+                            description="Visualisez tous les formulaires soumis par les étudiants."
+                            onClick={() => onNavigate && onNavigate('formulaires')}
+                        />
                     </div>
-                    <div className="lg:col-span-1">
-                        <Card title="Activité Récente de la Plateforme" className="h-full">
-                            <RecentActivityList activities={sortedActivities} users={users} />
-                            <div className="mt-4 text-right">
-                                <button onClick={() => onNavigate && onNavigate('activite')} className="text-sm text-primary-600 hover:underline dark:text-primary-400">Voir tout l'historique →</button>
-                            </div>
-                        </Card>
-                    </div>
-                </div>
+                </Card>
+                 <Card title="Activité de la plateforme">
+                    <p className="text-slate-500 dark:text-slate-400">L'activité globale de la plateforme sera affichée ici.</p>
+                </Card>
             </div>
         );
     }
@@ -148,8 +99,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, tr
     const validatedForms = forms.filter(f => f.status === 'validated').length;
     const draftForms = forms.filter(f => f.status === 'draft').length;
     const isSuspended = user.status.startsWith('suspended');
-    
-    const studentActivities = sortedActivities.filter(a => a.userId === user.id);
 
     return (
         <div className="space-y-6">
@@ -206,34 +155,29 @@ const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, tr
                         />
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2">
-                            <Card title="Accès Rapide" className="h-full">
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                    <QuickAccessButton 
-                                        title="Créer un formulaire"
-                                        description="Commencez à collecter des données pour vos recherches."
-                                        onClick={() => onNavigate && onNavigate('formulaires')}
-                                    />
-                                    <QuickAccessButton 
-                                        title="Lancer une analyse IA"
-                                        description="Obtenez des insights précieux à partir de vos données."
-                                        onClick={() => onNavigate && onNavigate('analyse')}
-                                    />
-                                    <QuickAccessButton 
-                                        title="Consulter le portefeuille"
-                                        description="Vérifiez votre solde et l'historique de vos transactions."
-                                        onClick={() => onNavigate && onNavigate('portefeuille')}
-                                    />
-                                </div>
-                            </Card>
+                    <Card title="Accès Rapide">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <QuickAccessButton 
+                                title="Créer un formulaire"
+                                description="Commencez à collecter des données pour vos recherches."
+                                onClick={() => onNavigate && onNavigate('formulaires')}
+                            />
+                             <QuickAccessButton 
+                                title="Lancer une analyse IA"
+                                description="Obtenez des insights précieux à partir de vos données."
+                                onClick={() => onNavigate && onNavigate('analyse')}
+                            />
+                             <QuickAccessButton 
+                                title="Consulter le portefeuille"
+                                description="Vérifiez votre solde et l'historique de vos transactions."
+                                onClick={() => onNavigate && onNavigate('portefeuille')}
+                            />
                         </div>
-                        <div className="lg:col-span-1">
-                            <Card title="Mon Activité Récente" className="h-full">
-                                <RecentActivityList activities={studentActivities} />
-                            </Card>
-                        </div>
-                    </div>
+                    </Card>
+
+                    <Card title="Activité Récente">
+                        <p className="text-slate-500 dark:text-slate-400">La liste des activités récentes sera affichée ici.</p>
+                    </Card>
                 </>
             )}
         </div>

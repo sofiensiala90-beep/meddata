@@ -73,61 +73,133 @@ const App: React.FC = () => {
         listenersRef.current = [];
 
         if (user) {
-            const userDoc = await db.collection('users').doc(user.uid).get();
-            if (userDoc.exists) {
-                const userData = { id: user.uid, ...userDoc.data() } as User;
-                setCurrentUser(userData);
-                setIsLoading(false);
+            try {
+                const userDoc = await db.collection('users').doc(user.uid).get();
+                if (userDoc.exists) {
+                    const userData = { id: user.uid, ...userDoc.data() } as User;
+                    setCurrentUser(userData);
+                    setIsLoading(false);
 
-                // Collections with generic listeners
-                const genericCollections = ['users', 'responses', 'transactions', 'analysisHistory', 'purchasedForms', 'activities', 'unlockedAnalysis'];
-                const setters:any = {
-                    users: setUsers,
-                    responses: setResponses,
-                    transactions: setTransactions,
-                    analysisHistory: setAnalysisHistory,
-                    purchasedForms: setPurchasedForms,
-                    activities: setActivities,
-                    unlockedAnalysis: setUnlockedAnalysis
-                };
-
-                genericCollections.forEach(collection => {
-                  const unsubscribe = db.collection(collection).onSnapshot(snapshot => {
-                      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                      setters[collection](data);
-                  });
-                  listenersRef.current.push(unsubscribe);
-                });
-
-                // Special listener for 'forms' to handle data migration
-                const formsUnsubscribe = db.collection('forms').onSnapshot(snapshot => {
-                    const formsData = snapshot.docs.map(doc => {
-                        const data: any = doc.data();
-                        // Compatibility layer: If 'status' is missing, infer from old 'validated' field.
+                    // Helper to process form data migration
+                    const processFormData = (doc: any): Form => {
+                        const data = doc.data();
                         if (!data.status && typeof data.validated === 'boolean') {
                             data.status = data.validated ? 'validated' : 'draft';
                         }
-                        // Default to 'draft' if status is still missing, for safety.
                         if (!data.status) {
                             data.status = 'draft';
                         }
                         return { id: doc.id, ...data } as Form;
-                    });
-                    setForms(formsData);
-                });
-                listenersRef.current.push(formsUnsubscribe);
+                    };
 
-                // Notifications listener (user-specific)
-                const notifUnsubscribe = db.collection('notifications').where('userId', '==', user.uid).onSnapshot(snapshot => {
-                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setNotifications(data as Notification[]);
-                });
-                listenersRef.current.push(notifUnsubscribe);
-            } else {
-                // This is a new user who has authenticated but does not have a user profile
-                // in Firestore yet. The AuthPage component is responsible for creating it.
-                // We must NOT sign them out. We just finish loading so the AuthPage can
-                // continue the signup process.
+                    if (userData.role === 'admin') {
+                        // --- ADMIN: Load Everything (EXCEPT AnalysisHistory which is private) ---
+                        const genericCollections = ['users', 'responses', 'transactions', 'purchasedForms', 'activities', 'unlockedAnalysis'];
+                        const setters:any = {
+                            users: setUsers,
+                            responses: setResponses,
+                            transactions: setTransactions,
+                            purchasedForms: setPurchasedForms,
+                            activities: setActivities,
+                            unlockedAnalysis: setUnlockedAnalysis
+                        };
+
+                        genericCollections.forEach(collection => {
+                          const unsubscribe = db.collection(collection).onSnapshot(snapshot => {
+                              const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                              setters[collection](data);
+                          }, error => console.error(`Error fetching ${collection}:`, error));
+                          listenersRef.current.push(unsubscribe);
+                        });
+
+                        // Fetch Admin's own analysis history separately to respect security rules
+                        const historyUnsubscribe = db.collection('analysisHistory')
+                            .where('userId', '==', user.uid)
+                            .onSnapshot(snapshot => {
+                                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                                setAnalysisHistory(data as AnalysisHistory[]);
+                            }, error => console.error("Error fetching admin analysisHistory:", error));
+                        listenersRef.current.push(historyUnsubscribe);
+
+                        const formsUnsubscribe = db.collection('forms').onSnapshot(snapshot => {
+                            setForms(snapshot.docs.map(processFormData));
+                        }, error => console.error("Error fetching forms:", error));
+                        listenersRef.current.push(formsUnsubscribe);
+
+                    } else {
+                        // --- STUDENT: Load Filtered Data ---
+                        
+                        // 1. Global Collections (Allowed by rules)
+                        const globalCollections = ['users', 'responses', 'purchasedForms', 'activities', 'unlockedAnalysis'];
+                        const setters:any = {
+                            users: setUsers,
+                            responses: setResponses,
+                            purchasedForms: setPurchasedForms,
+                            activities: setActivities,
+                            unlockedAnalysis: setUnlockedAnalysis
+                        };
+
+                        globalCollections.forEach(collection => {
+                            const unsubscribe = db.collection(collection).onSnapshot(snapshot => {
+                                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                                setters[collection](data);
+                            }, error => console.error(`Error fetching ${collection} (student):`, error));
+                            listenersRef.current.push(unsubscribe);
+                        });
+
+                        // 2. Private Collections (Must filter by userId)
+                        const privateCollections = ['transactions', 'analysisHistory'];
+                        const privateSetters: any = {
+                            transactions: setTransactions,
+                            analysisHistory: setAnalysisHistory
+                        };
+
+                        privateCollections.forEach(collection => {
+                            const unsubscribe = db.collection(collection).where('userId', '==', user.uid).onSnapshot(snapshot => {
+                                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                                privateSetters[collection](data);
+                            }, error => console.error(`Error fetching ${collection} (student):`, error));
+                            listenersRef.current.push(unsubscribe);
+                        });
+
+                        // 3. Forms (Merged: Public + Owned)
+                        let publicForms: Form[] = [];
+                        let myForms: Form[] = [];
+
+                        const updateMergedForms = () => {
+                            const formMap = new Map<string, Form>();
+                            publicForms.forEach(f => formMap.set(f.id, f));
+                            myForms.forEach(f => formMap.set(f.id, f));
+                            setForms(Array.from(formMap.values()));
+                        };
+
+                        const publicFormsUnsub = db.collection('forms').where('isPublic', '==', true).onSnapshot(snapshot => {
+                            publicForms = snapshot.docs.map(processFormData);
+                            updateMergedForms();
+                        }, error => console.error("Error fetching public forms:", error));
+                        listenersRef.current.push(publicFormsUnsub);
+
+                        const myFormsUnsub = db.collection('forms').where('userId', '==', user.uid).onSnapshot(snapshot => {
+                            myForms = snapshot.docs.map(processFormData);
+                            updateMergedForms();
+                        }, error => console.error("Error fetching my forms:", error));
+                        listenersRef.current.push(myFormsUnsub);
+                    }
+
+                    // Notifications (Always filtered)
+                    const notifUnsubscribe = db.collection('notifications').where('userId', '==', user.uid).onSnapshot(snapshot => {
+                        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        setNotifications(data as Notification[]);
+                    }, error => console.error("Error fetching notifications:", error));
+                    listenersRef.current.push(notifUnsubscribe);
+
+                } else {
+                    // User authenticated but document not found yet (during creation)
+                    setCurrentUser(null);
+                    setIsLoading(false);
+                }
+            } catch (error) {
+                console.error("Error loading user data:", error);
                 setCurrentUser(null);
                 setIsLoading(false);
             }

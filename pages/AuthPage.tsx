@@ -1,23 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { User, MedicalField } from '../types';
+import React, { useState } from 'react';
+import { User, MedicalField, SystemSettings } from '../types';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import LogoIcon from '../components/icons/LogoIcon';
 import TermsOfUseModal from '../components/TermsOfUseModal';
-import GoogleIcon from '../components/icons/GoogleIcon';
-import { auth, db, googleProvider } from '../services/firebase';
+import { auth, db } from '../services/firebase';
 import { mockAdminUser } from '../data/mockData';
-import firebase from 'firebase/compat/app';
+import { DEFAULT_SETTINGS } from '../constants';
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
-  const [view, setView] = useState<'login' | 'signup'>('login');
+  const [view, setView] = useState<'login' | 'signup' | 'reset_password'>('login');
   const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  
+
   // Login state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -37,71 +35,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [signupError, setSignupError] = useState('');
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
-  const [isCompletingGoogleSignup, setIsCompletingGoogleSignup] = useState(false);
 
-  // Fonction utilitaire pour traiter un utilisateur Google
-  const processGoogleUser = async (user: firebase.User) => {
-    // Vérifier si l'utilisateur existe déjà dans Firestore
-    const userDoc = await db.collection('users').doc(user.uid).get();
-
-    if (!userDoc.exists) {
-      // Nouvel utilisateur : pré-remplir le formulaire
-      setSignupData(prev => ({
-        ...prev,
-        password: '',
-        confirmPassword: '',
-        name: user.displayName || '',
-        email: user.email || '',
-      }));
-      setIsCompletingGoogleSignup(true);
-      setView('signup');
-    }
-    // Si l'utilisateur existe, onAuthStateChanged dans App.tsx gère la connexion automatiquement.
-  };
-
-  // Gérer le retour de la redirection Google
-  useEffect(() => {
-    const checkRedirectResult = async () => {
-      try {
-        const result = await auth.getRedirectResult();
-        if (result && result.user) {
-          setIsGoogleLoading(true);
-          await processGoogleUser(result.user);
-          setIsGoogleLoading(false);
-        }
-      } catch (error: any) {
-        console.error("Erreur redirection Google:", error);
-        setIsGoogleLoading(false);
-        
-        const currentDomain = window.location.hostname;
-        if (error.code === 'auth/unauthorized-domain') {
-           setLoginError(`Domaine non autorisé. Ajoutez EXACTEMENT ce domaine dans Firebase : "${currentDomain}"`);
-        } else if (error.code === 'auth/account-exists-with-different-credential') {
-           setLoginError("Un compte existe déjà avec cet email. Connectez-vous avec votre mot de passe.");
-        } else {
-           setLoginError(`Erreur de redirection : ${error.message}`);
-        }
-      }
-    };
-    checkRedirectResult();
-  }, []);
-
-  // Détecter si un utilisateur est déjà authentifié mais n'a pas de profil
-  useEffect(() => {
-    const timer = setTimeout(() => {
-        if (auth.currentUser && !isCompletingGoogleSignup) {
-            const user = auth.currentUser;
-            setSignupData(prev => ({
-                ...prev,
-                name: user.displayName || prev.name,
-                email: user.email || prev.email,
-            }));
-            setIsCompletingGoogleSignup(true);
-            setView('signup');
-        }
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
+  // Password Reset state
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetStatus, setResetStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [resetMessage, setResetMessage] = useState('');
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +47,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     setIsLoading(true);
     try {
       await auth.signInWithEmailAndPassword(loginEmail.trim(), loginPassword);
+      // Login successful, App.tsx will handle state change via onAuthStateChanged
     } catch (error: any) {
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         setLoginError('Adresse e-mail ou mot de passe incorrect.');
@@ -118,54 +57,31 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       setIsLoading(false);
     }
   };
-  
-  const handleGoogleSignIn = async () => {
-    setLoginError('');
-    setSignupError('');
-    setIsGoogleLoading(true);
 
-    // Récupération des infos de l'environnement actuel pour le débogage
-    const currentDomain = window.location.hostname;
-    const currentProtocol = window.location.protocol;
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail.trim()) {
+        setResetMessage('Veuillez entrer votre adresse e-mail.');
+        setResetStatus('error');
+        return;
+    }
+
+    setResetStatus('loading');
+    setResetMessage('');
 
     try {
-      // Tentative standard via Popup
-      const result = await auth.signInWithPopup(googleProvider);
-      if (result.user) {
-        await processGoogleUser(result.user);
-      }
+        await auth.sendPasswordResetEmail(resetEmail.trim());
+        setResetStatus('success');
+        setResetMessage('Un e-mail de réinitialisation a été envoyé. Vérifiez votre boîte de réception (et vos spams).');
     } catch (error: any) {
-      console.error("Google Sign-In Error:", error);
-      
-      // Si le popup est bloqué, on essaie automatiquement la redirection
-      if (error.code === 'auth/popup-blocked' || error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-        try {
-             await auth.signInWithRedirect(googleProvider);
-             return; // La redirection va recharger la page, on arrête l'exécution ici.
-        } catch (redirectError: any) {
-             // Si la redirection échoue aussi (souvent à cause du domaine), on affiche l'erreur
-             setIsGoogleLoading(false);
-             if (redirectError.code === 'auth/unauthorized-domain') {
-                setLoginError(`DOMAINE NON AUTORISÉ. Vous devez ajouter "${currentDomain}" dans la console Firebase (Authentication > Settings > Authorized Domains).`);
-             } else {
-                setLoginError(`Impossible d'établir la connexion Google. Erreur : ${redirectError.message}`);
-             }
-             return;
+        setResetStatus('error');
+        if (error.code === 'auth/user-not-found') {
+            setResetMessage('Aucun compte ne correspond à cette adresse e-mail.');
+        } else if (error.code === 'auth/invalid-email') {
+             setResetMessage('Adresse e-mail invalide.');
+        } else {
+            setResetMessage(`Erreur : ${error.message}`);
         }
-      }
-
-      setIsGoogleLoading(false);
-
-      // Gestion des erreurs spécifiques
-      if (error.code === 'auth/unauthorized-domain') {
-        setLoginError(`DOMAINE NON AUTORISÉ. Veuillez ajouter EXACTEMENT ce domaine : "${currentDomain}" dans la console Firebase (Authentication > Settings > Authorized Domains).`);
-      } else if (error.code === 'auth/operation-not-supported-in-this-environment') {
-        setLoginError(`Environnement non sécurisé (${currentProtocol}). Google exige HTTPS. Si vous êtes en local, utilisez localhost.`);
-      } else if (error.code === 'auth/account-exists-with-different-credential') {
-        setLoginError('Un compte existe déjà avec cette adresse e-mail. Veuillez utiliser votre mot de passe.');
-      } else {
-        setLoginError(`Erreur Google (${error.code}): ${error.message}`);
-      }
     }
   };
 
@@ -180,19 +96,17 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         return;
     }
 
-    if (!isCompletingGoogleSignup) {
-        if (!password || !confirmPassword) {
-            setSignupError('Veuillez saisir et confirmer votre mot de passe.');
-            return;
-        }
-        if (password.length < 8) {
-            setSignupError('Le mot de passe doit contenir au moins 8 caractères.');
-            return;
-        }
-        if (password !== confirmPassword) {
-            setSignupError('Les mots de passe ne correspondent pas.');
-            return;
-        }
+    if (!password || !confirmPassword) {
+        setSignupError('Veuillez saisir et confirmer votre mot de passe.');
+        return;
+    }
+    if (password.length < 8) {
+        setSignupError('Le mot de passe doit contenir au moins 8 caractères.');
+        return;
+    }
+    if (password !== confirmPassword) {
+        setSignupError('Les mots de passe ne correspondent pas.');
+        return;
     }
 
     if (!termsAccepted) {
@@ -202,24 +116,31 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
 
     setIsLoading(true);
     try {
-      let user;
-      if (isCompletingGoogleSignup) {
-        user = auth.currentUser;
-        if (!user) throw new Error("Erreur de session. Veuillez réessayer.");
-      } else {
-        const userCredential = await auth.createUserWithEmailAndPassword(signupData.email.trim(), signupData.password);
-        user = userCredential.user;
-      }
+      // Create auth user
+      const userCredential = await auth.createUserWithEmailAndPassword(signupData.email.trim(), signupData.password);
+      const user = userCredential.user;
       
       if (user) {
           const usersCollection = db.collection('users');
           const isAdmin = signupData.email.trim().toLowerCase() === mockAdminUser.email.toLowerCase();
 
+          // Fetch current system settings to get welcome bonus
+          let welcomeBonus = DEFAULT_SETTINGS.welcomeBonus;
+          try {
+              const settingsDoc = await db.collection('settings').doc('general').get();
+              if (settingsDoc.exists) {
+                  const settings = settingsDoc.data() as SystemSettings;
+                  welcomeBonus = settings.welcomeBonus;
+              }
+          } catch (err) {
+              console.error("Failed to fetch settings for welcome bonus, using default", err);
+          }
+
           const role = isAdmin ? 'admin' : 'student';
-          const coinBalance = isAdmin ? Infinity : 500;
+          const coinBalance = isAdmin ? Infinity : welcomeBonus;
           const welcomeMessage = isAdmin 
             ? 'Bienvenue, Administrateur !'
-            : 'Bienvenue sur MedataAI ! Votre solde de départ est de 500 coins.';
+            : `Bienvenue sur MedataAI ! Votre solde de départ est de ${welcomeBonus} coins.`;
 
           const newUser: Omit<User, 'id' | 'password'> = {
               name: signupData.name,
@@ -250,13 +171,15 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               createdAt: new Date().toISOString(),
           });
 
-          // Forcer le rechargement pour être sûr que l'état est propre
+          // Reload to ensure fresh state in App.tsx
           window.location.reload();
       }
     } catch (error: any) {
         console.error("Erreur création compte:", error);
         if (error.code === 'auth/email-already-in-use') {
             setSignupError('Cette adresse e-mail est déjà utilisée. Essayez de vous connecter.');
+        } else if (error.code === 'permission-denied') {
+            setSignupError("Erreur de permission. Impossible de créer le profil.");
         } else {
             setSignupError(`Erreur : ${error.message}`);
         }
@@ -272,6 +195,52 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     });
   };
 
+  const renderResetPassword = () => (
+    <Card>
+        <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Réinitialisation</h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                Entrez votre e-mail pour recevoir un lien de réinitialisation.
+            </p>
+        </div>
+
+        {resetStatus === 'success' ? (
+             <div className="space-y-4">
+                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md text-green-700 dark:text-green-300 text-sm">
+                    {resetMessage}
+                </div>
+                <Button onClick={() => setView('login')} className="w-full">Retour à la connexion</Button>
+            </div>
+        ) : (
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+                {resetStatus === 'error' && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-red-600 dark:text-red-400 text-sm">
+                        {resetMessage}
+                    </div>
+                )}
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Adresse e-mail</label>
+                    <input 
+                        type="email" 
+                        value={resetEmail} 
+                        onChange={e => { setResetEmail(e.target.value); setResetStatus('idle'); }} 
+                        required 
+                        className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" 
+                    />
+                </div>
+                <Button type="submit" className="w-full" disabled={resetStatus === 'loading'}>
+                    {resetStatus === 'loading' ? 'Envoi...' : 'Envoyer le lien'}
+                </Button>
+                <div className="text-center">
+                    <button type="button" onClick={() => setView('login')} className="text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">
+                        Annuler et retourner à la connexion
+                    </button>
+                </div>
+            </form>
+        )}
+    </Card>
+  );
+
   const renderLogin = () => (
     <Card>
         <div className="text-center mb-6">
@@ -283,6 +252,14 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                 </button>
             </p>
         </div>
+        
+        {loginError && (
+            <div className="mb-4 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-md border border-red-200 dark:border-red-800">
+                <p className="font-bold">Erreur de connexion :</p>
+                <p className="break-words">{loginError}</p>
+            </div>
+        )}
+
         <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Adresse e-mail</label>
@@ -291,38 +268,18 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mot de passe</label>
                 <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
-            </div>
-            {loginError && (
-                <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-md border border-red-200 dark:border-red-800 break-words">
-                    <span className="font-bold block mb-1">Erreur :</span>
-                    {loginError}
+                <div className="flex justify-end mt-1">
+                    <button 
+                        type="button" 
+                        onClick={() => { setResetEmail(loginEmail); setView('reset_password'); }} 
+                        className="text-xs font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400"
+                    >
+                        Mot de passe oublié ?
+                    </button>
                 </div>
-            )}
-            <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>{isLoading ? 'Connexion...' : 'Se connecter'}</Button>
+            </div>
+            <Button type="submit" className="w-full" disabled={isLoading}>{isLoading ? 'Connexion...' : 'Se connecter'}</Button>
         </form>
-        <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-300 dark:border-slate-600" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400">OU</span>
-            </div>
-        </div>
-        <Button
-            onClick={handleGoogleSignIn}
-            variant="secondary"
-            className="w-full flex items-center justify-center"
-            disabled={isGoogleLoading || isLoading}
-        >
-            {isGoogleLoading ? (
-                'Connexion Google en cours...'
-            ) : (
-                <>
-                    <GoogleIcon className="w-5 h-5 mr-3" />
-                    Continuer avec Google
-                </>
-            )}
-        </Button>
     </Card>
   );
 
@@ -330,45 +287,39 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     <Card>
         <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-              {isCompletingGoogleSignup ? 'Finaliser votre inscription' : 'Créer un compte'}
+              Créer un compte
             </h2>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                {isCompletingGoogleSignup ? (
-                  'Veuillez compléter les informations suivantes.'
-                ) : (
-                  <>
-                    Déjà un compte ?{' '}
-                    <button onClick={() => setView('login')} className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400">
-                        Se connecter
-                    </button>
-                  </>
-                )}
+                Déjà un compte ?{' '}
+                <button onClick={() => setView('login')} className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400">
+                    Se connecter
+                </button>
             </p>
         </div>
         <form onSubmit={handleSignupSubmit} className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nom complet</label>
-                    <input type="text" name="name" value={signupData.name} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled={isCompletingGoogleSignup} />
+                    <input type="text" name="name" value={signupData.name} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Adresse e-mail</label>
-                    <input type="email" name="email" value={signupData.email} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" disabled={isCompletingGoogleSignup}/>
+                    <input type="email" name="email" value={signupData.email} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
                 </div>
             </div>
-            {!isCompletingGoogleSignup && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mot de passe</label>
-                  <input type="password" name="password" value={signupData.password} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">8 caractères minimum.</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Confirmez le mot de passe</label>
-                  <input type="password" name="confirmPassword" value={signupData.confirmPassword} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
-                </div>
-              </div>
-            )}
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Mot de passe</label>
+                <input type="password" name="password" value={signupData.password} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">8 caractères minimum.</p>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Confirmez le mot de passe</label>
+                <input type="password" name="confirmPassword" value={signupData.confirmPassword} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
+            </div>
+            </div>
+            
              <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Université (Faculté)</label>
                 <input type="text" name="university" value={signupData.university} onChange={handleSignupChange} required className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
@@ -380,6 +331,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
                         <option value={MedicalField.Medicine}>Médecine</option>
                         <option value={MedicalField.Pharmacy}>Pharmacie</option>
                         <option value={MedicalField.Dentistry}>Dentaire</option>
+                        <option value={MedicalField.Other}>Autre</option>
                     </select>
                 </div>
                 <div>
@@ -409,7 +361,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         <div className="flex justify-center mb-6">
           <LogoIcon className="h-24 w-auto" />
         </div>
-        {view === 'login' ? renderLogin() : renderSignup()}
+        {view === 'login' && renderLogin()}
+        {view === 'signup' && renderSignup()}
+        {view === 'reset_password' && renderResetPassword()}
       </div>
       <TermsOfUseModal isOpen={isTermsModalOpen} onClose={() => setIsTermsModalOpen(false)} />
     </div>

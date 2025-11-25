@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import Card from '../components/Card';
 import { Activity, ActivityType, User } from '../types';
@@ -12,6 +13,8 @@ const translateActivityType = (type: ActivityType): string => {
         [ActivityType.ACCOUNT_CREATED]: 'Création de compte',
         [ActivityType.FORM_CREATED]: 'Création de formulaire',
         [ActivityType.FORM_VALIDATED]: 'Validation de formulaire',
+        [ActivityType.FORM_VALIDATION_CANCELLED]: 'Annulation de validation',
+        [ActivityType.FORM_DELETED]: 'Suppression de formulaire',
         [ActivityType.FORM_PUBLISHED]: 'Publication de formulaire',
         [ActivityType.FORM_PURCHASED]: 'Achat de formulaire',
         [ActivityType.AI_ANALYSIS_PERFORMED]: 'Analyse IA effectuée',
@@ -19,15 +22,19 @@ const translateActivityType = (type: ActivityType): string => {
         [ActivityType.ADMIN_COIN_ADJUSTMENT]: 'Ajustement de solde',
         [ActivityType.USER_STATUS_CHANGED]: 'Statut utilisateur modifié',
         [ActivityType.RESPONSE_ADDED]: 'Ajout de réponse',
+        [ActivityType.SYSTEM_SETTINGS_UPDATED]: 'Configuration système',
+        [ActivityType.PROMOTIONAL_CAMPAIGN]: 'Campagne promotionnelle',
     };
     return translations[type] || (type as string);
 };
 
-const ActivityIcon: React.FC<{ type: ActivityType }> = ({ type }) => {
+export const ActivityIcon: React.FC<{ type: ActivityType }> = ({ type }) => {
     const iconMap: Record<string, string> = {
         [ActivityType.ACCOUNT_CREATED]: '👤',
         [ActivityType.FORM_CREATED]: '📝',
         [ActivityType.FORM_VALIDATED]: '✅',
+        [ActivityType.FORM_VALIDATION_CANCELLED]: '↩️',
+        [ActivityType.FORM_DELETED]: '🗑️',
         [ActivityType.FORM_PUBLISHED]: '🌍',
         [ActivityType.FORM_PURCHASED]: '🛒',
         [ActivityType.AI_ANALYSIS_PERFORMED]: '💡',
@@ -35,6 +42,8 @@ const ActivityIcon: React.FC<{ type: ActivityType }> = ({ type }) => {
         [ActivityType.ADMIN_COIN_ADJUSTMENT]: '⚙️',
         [ActivityType.USER_STATUS_CHANGED]: '🔄',
         [ActivityType.RESPONSE_ADDED]: '📥',
+        [ActivityType.SYSTEM_SETTINGS_UPDATED]: '🔧',
+        [ActivityType.PROMOTIONAL_CAMPAIGN]: '🎁',
     };
     return <span className="text-xl" title={translateActivityType(type)}>{iconMap[type] || '🔔'}</span>;
 };
@@ -55,6 +64,8 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
     };
 
     const filteredActivities = useMemo(() => {
+        if (!activities) return [];
+        
         return activities.filter(activity => {
             if (filters.userId && activity.userId !== filters.userId) return false;
             if (filters.activityType && activity.type !== filters.activityType) return false;
@@ -72,6 +83,16 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
             }
 
             return true;
+        })
+        // TRI CHRONOLOGIQUE INVERSE STRICT (Le plus récent en haut) avec sécurité pour dates invalides
+        .sort((a, b) => {
+            let timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            let timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            
+            if (isNaN(timeA)) timeA = 0;
+            if (isNaN(timeB)) timeB = 0;
+
+            return timeB - timeA;
         });
     }, [activities, filters]);
 
@@ -81,12 +102,23 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
 
     return (
         <div className="space-y-6">
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Journal d'Activité</h2>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex items-center space-x-3">
+                    <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Journal d'Activité</h2>
+                    <span className="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full border border-blue-200 dark:border-blue-800 animate-pulse flex items-center">
+                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                        V4 LIVE
+                    </span>
+                </div>
+                <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-md">
+                    Total: <strong>{filteredActivities.length}</strong> événements
+                </div>
+            </div>
             
             <Card title="Filtres">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <select name="userId" value={filters.userId} onChange={handleFilterChange} className={inputClasses}>
-                        <option value="">Tous les étudiants</option>
+                        <option value="">Tous les utilisateurs</option>
                         {studentUsers.map(user => (
                             <option key={user.id} value={user.id}>{user.name}</option>
                         ))}
@@ -107,7 +139,7 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
                     <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
                         <thead className="bg-slate-50 dark:bg-slate-700">
                             <tr>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">Date</th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">Heure</th>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">Utilisateur</th>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">Type d'Activité</th>
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">Détails</th>
@@ -115,8 +147,11 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
                         </thead>
                         <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                             {filteredActivities.map(activity => (
-                                <tr key={activity.id}>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{new Date(activity.createdAt).toLocaleString()}</td>
+                                <tr key={activity.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+                                        <div className="font-medium text-slate-900 dark:text-white">{new Date(activity.createdAt).toLocaleDateString()}</div>
+                                        <div className="text-xs">{new Date(activity.createdAt).toLocaleTimeString()}</div>
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-white">{getUserName(activity.userId)}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
                                         <div className="flex items-center space-x-2">
@@ -124,7 +159,7 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
                                             <span>{translateActivityType(activity.type)}</span>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-normal text-sm text-slate-500 dark:text-slate-400">{activity.details}</td>
+                                    <td className="px-6 py-4 whitespace-normal text-sm text-slate-500 dark:text-slate-400 max-w-md">{activity.details}</td>
                                 </tr>
                             ))}
                         </tbody>

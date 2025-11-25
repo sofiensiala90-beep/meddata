@@ -1,10 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { User, Form, FormResponse, FormField, PurchasedForm } from '../types';
+import { User, Form, FormResponse, FormField, PurchasedForm, SystemSettings } from '../types';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import FormBuilder from '../components/FormBuilder';
 import ConfirmationModal, { ConfirmationModalProps } from '../components/ConfirmationModal';
-import { COIN_COSTS, LIBRARY_PRICES, COMMISSION_RATES } from '../constants';
 import PlusIcon from '../components/icons/PlusIcon';
 import CoinIcon from '../components/icons/CoinIcon';
 import TrashIcon from '../components/icons/TrashIcon';
@@ -26,16 +25,18 @@ interface FormsProps {
   onNavigate: (page: string, context?: any) => void;
   handleRequestFormModification: (form: Form, reason: string) => void;
   onModificationDecision: (formId: string, keepResponses: boolean) => void;
+  systemSettings: SystemSettings;
 }
 
 const PublishModal: React.FC<{
   form: Form;
   onClose: () => void;
   onConfirm: (formId: string, price: number, pricePerResponse: number) => void;
-}> = ({ form, onClose, onConfirm }) => {
+  settings: SystemSettings;
+}> = ({ form, onClose, onConfirm, settings }) => {
 
   const handleConfirm = () => {
-    onConfirm(form.id, LIBRARY_PRICES.DEFAULT_FORM_PRICE, LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE);
+    onConfirm(form.id, settings.libraryPrices.defaultFormPrice, settings.libraryPrices.defaultPricePerResponse);
     onClose();
   };
 
@@ -51,20 +52,20 @@ const PublishModal: React.FC<{
             <div className="p-4 bg-slate-100 dark:bg-slate-700/50 rounded-lg space-y-3">
                 <div className="flex justify-between items-center">
                     <span className="font-medium text-slate-800 dark:text-slate-200">Prix de vente du formulaire</span>
-                    <span className="font-semibold text-slate-900 dark:text-white flex items-center"><CoinIcon className="w-4 h-4 mr-1 text-yellow-500" />{LIBRARY_PRICES.DEFAULT_FORM_PRICE}</span>
+                    <span className="font-semibold text-slate-900 dark:text-white flex items-center"><CoinIcon className="w-4 h-4 mr-1 text-yellow-500" />{settings.libraryPrices.defaultFormPrice}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm text-green-600 dark:text-green-400">
                     <span>Votre gain par vente</span>
-                    <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{Math.round(LIBRARY_PRICES.DEFAULT_FORM_PRICE * COMMISSION_RATES.CREATOR_FORM_SALE)}</span>
+                    <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{Math.round(settings.libraryPrices.defaultFormPrice * settings.commissionRates.creatorFormSale)}</span>
                 </div>
                 <div className="border-t border-slate-200 dark:border-slate-600 !my-2"></div>
                  <div className="flex justify-between items-center">
                     <span className="font-medium text-slate-800 dark:text-slate-200">Prix de vente par réponse</span>
-                    <span className="font-semibold text-slate-900 dark:text-white flex items-center"><CoinIcon className="w-4 h-4 mr-1 text-yellow-500" />{LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE}</span>
+                    <span className="font-semibold text-slate-900 dark:text-white flex items-center"><CoinIcon className="w-4 h-4 mr-1 text-yellow-500" />{settings.libraryPrices.defaultPricePerResponse}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm text-green-600 dark:text-green-400">
                     <span>Votre gain par réponse</span>
-                    <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{Math.round(LIBRARY_PRICES.DEFAULT_PRICE_PER_RESPONSE * COMMISSION_RATES.CREATOR_RESPONSE_SALE)}</span>
+                    <span className="font-semibold flex items-center"><CoinIcon className="w-4 h-4 mr-1" />{Math.round(settings.libraryPrices.defaultPricePerResponse * settings.commissionRates.creatorResponseSale)}</span>
                 </div>
             </div>
 
@@ -170,7 +171,7 @@ const ModificationDecisionModal: React.FC<{
   );
 };
 
-const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision }) => {
+const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
   const [activeTab, setActiveTab] = useState<'my_creations' | 'data_purchases'>(user.role === 'admin' ? 'my_creations' : 'my_creations');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
@@ -649,6 +650,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
       onValidate={handleValidateAndSaveFormWrapper}
       onCancel={handleBackToList}
       userId={user.id}
+      systemSettings={systemSettings}
     />
   }
 
@@ -671,7 +673,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
           </div>
           <div className="flex justify-end mt-6">
             <Button onClick={handleSubmitResponse}>
-                Soumettre la réponse {user.role !== 'admin' && `(${COIN_COSTS.ADD_RESPONSE} Coins)`}
+                Soumettre la réponse {user.role !== 'admin' && `(${systemSettings.coinCosts.addResponse} Coins)`}
             </Button>
           </div>
         </Card>
@@ -896,7 +898,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
 
       </div>
       {confirmation && <ConfirmationModal {...confirmation} />}
-      {isPublishModalOpen && formToPublish && <PublishModal form={formToPublish} onClose={() => setIsPublishModalOpen(false)} onConfirm={handleConfirmPublish} />}
+      {isPublishModalOpen && formToPublish && <PublishModal form={formToPublish} onClose={() => setIsPublishModalOpen(false)} onConfirm={handleConfirmPublish} settings={systemSettings} />}
       {formToAction?.status === 'validated' && <ModificationRequestModal form={formToAction} onClose={() => setFormToAction(null)} onSubmit={handleRequestFormModification} />}
       {formToAction?.status === 'awaiting_modification_decision' && <ModificationDecisionModal form={formToAction} responseCount={getResponseCountForForm(formToAction.id)} onClose={() => setFormToAction(null)} onDecision={onModificationDecision} />}
     </>

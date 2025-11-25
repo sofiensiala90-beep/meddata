@@ -2,8 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
 
-// Clé de secours (Celle de Firebase, fonctionne souvent pour Gemini si sur le même projet)
-const FALLBACK_KEY = "AIzaSyB2JSL4iJUd2yvMPkpZUfCSeB0NVBcm1Hg";
+// Clé de secours (Celle spécifique pour l'IA Gemini, fournie précédemment comme API_KEY)
+const FALLBACK_KEY = "AIzaSyAWB3NXtWYRMIFQl";
 
 // Fonction simplifiée pour récupérer la clé API de manière sécurisée
 const getGeminiApiKey = () => {

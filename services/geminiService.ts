@@ -58,7 +58,7 @@ const getRelevantFieldIds = async (schema: Form['schema'], userPrompt: string): 
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash', // Utilisation du modèle stable
+            model: 'gemini-2.5-flash', // Mise à jour vers le modèle supporté
             contents: prompt,
             config: {
                 systemInstruction: systemInstruction,
@@ -155,7 +155,7 @@ const generateFinalReport = async (
     
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash', // Utilisation du modèle stable
+            model: 'gemini-2.5-flash', // Mise à jour vers le modèle supporté
             contents: prompt,
             config: {
                 systemInstruction: systemInstruction,
@@ -170,7 +170,10 @@ const generateFinalReport = async (
         if (error.toString().includes('403') || error.toString().includes('permission')) {
              throw new Error("Accès refusé par Google (Erreur 403). Cela arrive si le domaine du site n'est pas autorisé dans la console Google Cloud.");
         }
-        throw new Error("L'IA n'a pas réussi à générer une analyse valide.");
+        if (error.toString().includes('404')) {
+             throw new Error("Erreur de modèle (404). Le modèle d'IA demandé est introuvable. Veuillez contacter le support.");
+        }
+        throw new Error(`L'IA n'a pas réussi à générer une analyse valide : ${error.message}`);
     }
 };
 
@@ -211,7 +214,7 @@ const getAnalysisStrategy = async (userPrompt: string, relevantFieldCount: numbe
     
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash', // Utilisation du modèle stable
+            model: 'gemini-2.5-flash', // Mise à jour vers le modèle supporté
             contents: prompt,
             config: {
                 systemInstruction,
@@ -356,7 +359,7 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
   try {
     const ai = new GoogleGenAI({ apiKey: API_KEY });
     
-    const model = 'gemini-1.5-flash'; // Utilisation du modèle stable
+    const model = 'gemini-2.5-flash'; // Mise à jour vers le modèle supporté
 
     const contents = history;
 
@@ -485,6 +488,9 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
     // Throw an error with a user-friendly message if possible
     if (error.message?.includes('403') || error.toString().includes('403')) {
         throw new Error("Accès refusé (403). La clé API Google est restreinte. Vérifiez Google Cloud Console.");
+    }
+    if (error.toString().includes('404')) {
+        throw new Error("Erreur 404 : Modèle IA introuvable. Le service est peut-être momentanément indisponible.");
     }
     throw error;
   }

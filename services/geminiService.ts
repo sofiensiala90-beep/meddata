@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
 
 // --- CONFIGURATION CRITIQUE ---
@@ -58,7 +58,7 @@ const getRelevantFieldIds = async (schema: Form['schema'], userPrompt: string): 
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash', // Standard model
+            model: 'gemini-1.5-flash', // Utilisation du modèle stable
             contents: prompt,
             config: {
                 systemInstruction: systemInstruction,
@@ -155,7 +155,7 @@ const generateFinalReport = async (
     
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash', // Utilisation du modèle stable
             contents: prompt,
             config: {
                 systemInstruction: systemInstruction,
@@ -211,7 +211,7 @@ const getAnalysisStrategy = async (userPrompt: string, relevantFieldCount: numbe
     
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash', // Utilisation du modèle stable
             contents: prompt,
             config: {
                 systemInstruction,
@@ -295,9 +295,9 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
 
     } catch (error: any) {
         console.error("Error during analysis process:", error);
-        let errorMsg = `Une erreur est survenue durant l'analyse.`;
-        if (error.message.includes('403') || error.message.includes('Accès refusé')) {
-            errorMsg = "ERREUR: La clé API Google est restreinte et n'autorise pas ce domaine. Vérifiez la console Google Cloud.";
+        let errorMsg = `Une erreur est survenue durant l'analyse : ${error.message}`;
+        if (error.message?.includes('403') || error.toString().includes('403')) {
+            errorMsg = "ACCÈS REFUSÉ (Erreur 403) : Votre clé API Google est restreinte à un autre domaine. Veuillez ajouter ce domaine dans Google Cloud Console ou désactiver la restriction 'Web sites'.";
         }
         return {
             analysisText: errorMsg,
@@ -356,7 +356,7 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
   try {
     const ai = new GoogleGenAI({ apiKey: API_KEY });
     
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-1.5-flash'; // Utilisation du modèle stable
 
     const contents = history;
 
@@ -480,10 +480,12 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
     });
     
     return responseStream;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error getting chatbot stream:", error);
-    // This is a generator function, so we need to handle the error within the stream
-    // or let it bubble up. Here, we'll throw to be caught by the caller.
+    // Throw an error with a user-friendly message if possible
+    if (error.message?.includes('403') || error.toString().includes('403')) {
+        throw new Error("Accès refusé (403). La clé API Google est restreinte. Vérifiez Google Cloud Console.");
+    }
     throw error;
   }
 };

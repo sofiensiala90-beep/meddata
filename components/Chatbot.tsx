@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import ChatIcon from './icons/ChatIcon';
 import Button from './Button';
@@ -16,6 +17,7 @@ interface Message {
   sender: 'user' | 'ai';
   action?: ChatbotResponse['action'];
   actionTaken?: boolean;
+  isError?: boolean;
 }
 
 const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate }) => {
@@ -108,12 +110,14 @@ const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate }) => {
             );
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Chatbot stream error:", error);
+        // Display the actual error message from the service (e.g., 403 Forbidden)
+        const errorMessage = error.message || "Désolé, une erreur technique est survenue.";
         setMessages(prev => 
             prev.map(m => 
                 m.id === aiMessagePlaceholder.id 
-                ? { ...m, text: "Désolé, une erreur est survenue." } 
+                ? { ...m, text: `⚠️ Erreur : ${errorMessage}`, isError: true } 
                 : m
             )
         );
@@ -193,7 +197,13 @@ const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate }) => {
             <div className="space-y-4">
               {messages.map(message => (
                 <div key={message.id} className={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
-                  <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${message.sender === 'user' ? 'bg-primary-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'}`}>
+                  <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
+                      message.sender === 'user' 
+                        ? 'bg-primary-500 text-white' 
+                        : message.isError 
+                            ? 'bg-red-100 text-red-800 border border-red-200'
+                            : 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
+                    }`}>
                     {message.sender === 'ai' && message.text === '' && isLoading ? (
                         <span className="blinking-cursor"></span>
                     ) : (

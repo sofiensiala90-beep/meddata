@@ -2,48 +2,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
 
-// Clé de secours (Celle spécifique pour l'IA Gemini, fournie par l'utilisateur)
-// CORRECTION : Clé complète insérée.
-const FALLBACK_KEY = "AIzaSyAWB3NXtWYRMIFQlnmYp9620c4Gtty_C-s";
-
-// Fonction simplifiée pour récupérer la clé API de manière sécurisée
-const getGeminiApiKey = () => {
-    let key = '';
-    
-    // 1. Essai via import.meta.env (Vite)
-    try {
-        // @ts-ignore
-        if (typeof import.meta !== 'undefined' && import.meta.env) {
-            // Accès explicite pour le remplacement statique par Vite
-            // @ts-ignore
-            if (import.meta.env.VITE_API_KEY) key = import.meta.env.VITE_API_KEY;
-            // @ts-ignore
-            else if (import.meta.env.VITE_GEMINI_API_KEY) key = import.meta.env.VITE_GEMINI_API_KEY;
-            // @ts-ignore
-            else if (import.meta.env.API_KEY) key = import.meta.env.API_KEY; // Souvent masqué par Vite, mais on tente
-        }
-    } catch (e) {
-        // Ignorer
-    }
-    
-    // 2. Fallback via process.env (Pour certains environnements Node)
-    if (!key && typeof process !== 'undefined' && process.env) {
-        // @ts-ignore
-        if (process.env.VITE_API_KEY) key = process.env.VITE_API_KEY;
-        // @ts-ignore
-        else if (process.env.API_KEY) key = process.env.API_KEY;
-    }
-    
-    // 3. Clé de secours ultime (Hardcoded)
-    if (!key) {
-        console.log("Gemini: Aucune clé d'environnement trouvée. Utilisation de la clé de secours.");
-        return FALLBACK_KEY;
-    }
-    
-    return key;
-};
-
-const API_KEY = getGeminiApiKey();
+// --- CONFIGURATION CRITIQUE ---
+// Nous forçons la clé API directement pour éviter tout problème avec Vercel/Env variables.
+const API_KEY = "AIzaSyAWB3NXtWYRMIFQlnmYp9620c4Gtty_C-s"; 
 
 /**
  * Cleans the AI's text response to extract a valid JSON string.
@@ -74,10 +35,6 @@ const cleanAndParseJson = (text: string): any => {
  * @returns A promise that resolves to an array of field IDs.
  */
 const getRelevantFieldIds = async (schema: Form['schema'], userPrompt: string): Promise<string[]> => {
-    if (!API_KEY) {
-        console.error("API Key manquante pour Gemini.");
-        throw new Error("Clé API manquante. Veuillez configurer VITE_API_KEY sur Vercel.");
-    }
     const ai = new GoogleGenAI({ apiKey: API_KEY });
 
     const systemInstruction = `
@@ -137,9 +94,6 @@ const generateFinalReport = async (
     schema: Form['schema'],
     sampleInfo?: { sampleSize: number; totalSize: number }
 ) => {
-    if (!API_KEY) {
-        throw new Error("Clé API manquante.");
-    }
     const ai = new GoogleGenAI({ apiKey: API_KEY });
 
     let dataContextInstruction = `
@@ -210,8 +164,12 @@ const generateFinalReport = async (
         });
 
         return cleanAndParseJson(response.text as string);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Failed to perform final analysis:", error);
+        // Better error message for the user if it's a permission issue
+        if (error.toString().includes('403') || error.toString().includes('permission')) {
+             throw new Error("Accès refusé par Google (Erreur 403). Cela arrive si le domaine du site n'est pas autorisé dans la console Google Cloud.");
+        }
         throw new Error("L'IA n'a pas réussi à générer une analyse valide.");
     }
 };
@@ -220,7 +178,6 @@ const generateFinalReport = async (
  * An AI planner that decides the best analysis strategy based on the query's complexity and data size.
  */
 const getAnalysisStrategy = async (userPrompt: string, relevantFieldCount: number, totalResponseCount: number): Promise<'ANALYZE_ALL' | 'ANALYZE_SAMPLE'> => {
-    if (!API_KEY) return 'ANALYZE_ALL';
     const ai = new GoogleGenAI({ apiKey: API_KEY });
 
     // For smaller datasets, always analyze everything directly. This respects a previous user requirement.
@@ -282,13 +239,6 @@ const getAnalysisStrategy = async (userPrompt: string, relevantFieldCount: numbe
  */
 export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
     try {
-        if (!API_KEY) {
-            return {
-                analysisText: "Erreur de configuration : La clé API pour l'Intelligence Artificielle est manquante.",
-                chartData: null
-            };
-        }
-
         const representativeSchema = forms[0].schema;
         const SAMPLE_SIZE = 100;
 
@@ -343,10 +293,14 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
         
         return result;
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error during analysis process:", error);
+        let errorMsg = `Une erreur est survenue durant l'analyse.`;
+        if (error.message.includes('403') || error.message.includes('Accès refusé')) {
+            errorMsg = "ERREUR: La clé API Google est restreinte et n'autorise pas ce domaine. Vérifiez la console Google Cloud.";
+        }
         return {
-            analysisText: `Une erreur est survenue durant l'analyse. L'IA a peut-être retourné une réponse inattendue. Veuillez réessayer.`,
+            analysisText: errorMsg,
             chartData: null
         };
     }
@@ -400,9 +354,6 @@ export const performSampledAnalysis = async (forms: Form[], responses: FormRespo
 
 export const getChatbotResponseStream = async (userRole: User['role'], history: ChatMessage[]) => {
   try {
-    if (!API_KEY) {
-        throw new Error("Clé API manquante.");
-    }
     const ai = new GoogleGenAI({ apiKey: API_KEY });
     
     const model = 'gemini-2.5-flash';

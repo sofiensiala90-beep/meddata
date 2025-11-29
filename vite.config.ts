@@ -2,34 +2,26 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-  // Charge toutes les variables d'environnement (y compris API_KEY de Vercel)
-  // Le 3ème argument '' permet de charger TOUTES les variables, pas seulement celles commençant par VITE_
-  // Fix: Cast process to any to avoid TS error about cwd missing on Process type
+  // Charge les variables d'environnement, y compris celles de Vercel (API_KEY)
   const env = loadEnv(mode, (process as any).cwd(), '');
 
   return {
     plugins: [react()],
     define: {
-      // 1. Polyfill pour 'process.env' : Crée un objet vide pour éviter le crash "process is not defined"
-      // utilisé par certaines librairies (comme Firebase compat).
-      'process.env': {},
-      
-      // 2. Definition de process.env.API_KEY pour le client Google GenAI
+      // Injection sécurisée de la clé API. 
+      // Vite remplacera 'process.env.API_KEY' par la valeur réelle lors du build.
       'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
     },
     build: {
-      // Augmente la limite d'avertissement pour la taille des fichiers
-      chunkSizeWarningLimit: 1600,
-      target: 'esnext',
+      chunkSizeWarningLimit: 1000, // Augmente la limite de warning
       rollupOptions: {
         output: {
-          // Optimisation : Sépare les grosses librairies dans des fichiers distincts
-          // Cela permet au navigateur de les charger en parallèle et évite le warning "Large chunks"
+          // Découpage manuel des bibliothèques lourdes pour optimiser le chargement et éviter le "Large chunk" warning
           manualChunks: {
-            vendor: ['react', 'react-dom'],
-            firebase: ['firebase/compat/app', 'firebase/compat/auth', 'firebase/compat/firestore'],
-            genai: ['@google/genai'],
-            ui: ['react-markdown'], // Exemple d'autre lib UI si utilisée
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-firebase': ['firebase/compat/app', 'firebase/compat/auth', 'firebase/compat/firestore'],
+            'vendor-genai': ['@google/genai'],
+            'vendor-ui': ['react-markdown'], 
           },
         },
       },

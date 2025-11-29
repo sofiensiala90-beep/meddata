@@ -2,28 +2,26 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
 
-// Récupération de la clé API via process.env.API_KEY
+// La clé API sera injectée par Vite lors du build grâce à 'define' dans vite.config.ts
 const apiKey = process.env.API_KEY || "";
 
-// Initialisation du client Gemini avec une gestion d'erreur pour éviter l'écran blanc
 let ai: GoogleGenAI;
 try {
-    if (!apiKey || apiKey === "") {
-        console.warn("API_KEY manquante. L'IA ne fonctionnera pas (Vérifiez la variable API_KEY sur Vercel).");
+    if (!apiKey) {
+        console.warn("API_KEY manquante. Vérifiez les variables d'environnement sur Vercel.");
     }
-    // Si la clé est vide, on initialise quand même pour ne pas casser l'app au démarrage
+    // Initialisation sécurisée
     ai = new GoogleGenAI({ apiKey: apiKey || "MISSING_KEY" });
 } catch (error) {
     console.error("Erreur critique lors de l'initialisation de GoogleGenAI:", error);
     ai = new GoogleGenAI({ apiKey: "" }); 
 }
 
-// Modèles utilisés - On utilise la série Flash pour la rapidité et le coût
+// Modèles utilisés
 const ANALYSIS_MODEL = 'gemini-2.5-flash';
 const CHAT_MODEL = 'gemini-2.5-flash';
 
 // Schéma JSON strict pour l'analyse
-// Cela garantit que l'IA renvoie toujours des données compatibles avec le composant ChartRenderer.tsx
 const analysisResponseSchema: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -78,7 +76,7 @@ const analysisResponseSchema: Schema = {
     },
     requiresConfirmation: {
       type: Type.BOOLEAN,
-      description: "Mettre à true uniquement si les données sont trop volumineuses et nécessitent une analyse par lot (logique avancée). Pour l'instant, false.",
+      description: "Mettre à true uniquement si les données sont trop volumineuses et nécessitent une analyse par lot. Pour l'instant, false.",
     },
     relevantFieldIds: {
         type: Type.ARRAY,
@@ -91,10 +89,9 @@ const analysisResponseSchema: Schema = {
 };
 
 /**
- * Prépare le contexte des données pour l'analyse en nettoyant les objets complexes
+ * Prépare le contexte des données pour l'analyse
  */
 const prepareDataContext = (forms: Form[], responses: FormResponse[]) => {
-  // Simplification des formulaires pour réduire la taille du prompt (économie de tokens)
   const formsSummary = forms.map(f => ({
     id: f.id,
     title: f.title,
@@ -102,7 +99,6 @@ const prepareDataContext = (forms: Form[], responses: FormResponse[]) => {
     schema: f.schema.map(q => ({ id: q.id, label: q.label, type: q.type, options: q.options }))
   }));
 
-  // Simplification des réponses
   const responsesSummary = responses.map(r => ({
     formId: r.formId,
     answers: r.data
@@ -112,12 +108,12 @@ const prepareDataContext = (forms: Form[], responses: FormResponse[]) => {
 };
 
 /**
- * Effectue une analyse complète des données fournies via Gemini.
+ * Effectue une analyse complète des données
  */
 export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
   if (!apiKey) {
       return {
-          analysisText: "⚠️ La clé API Gemini n'est pas configurée. Veuillez vérifier les variables d'environnement sur Vercel (API_KEY).",
+          analysisText: "⚠️ La clé API Gemini n'est pas configurée. Vérifiez la variable API_KEY sur Vercel.",
           chartData: null,
           requiresConfirmation: false
       };
@@ -137,7 +133,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
       2. Format : Retourne un objet JSON respectant strictement le schéma fourni.
       3. Visualisation : Si la demande implique des comparaisons, des proportions ou des évolutions, tu DOIS générer l'objet 'chartData'.
       4. Texte : Le champ 'analysisText' doit être en Markdown propre. Utilise du gras pour les chiffres clés.
-      5. Confidentialité : Ne mentionne jamais d'ID utilisateur ou de données brutes sensibles, parle de "répondants" ou "patients".
+      5. Confidentialité : Ne mentionne jamais d'ID utilisateur ou de données brutes sensibles.
 
       CONTEXTE DES DONNÉES (JSON) :
       ${dataContext}
@@ -150,11 +146,10 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
         systemInstruction: systemInstruction,
         responseMimeType: "application/json",
         responseSchema: analysisResponseSchema,
-        temperature: 0.3, // Température basse pour une analyse factuelle
+        temperature: 0.3,
       },
     });
 
-    // Extraction et parsing de la réponse
     const responseText = response.text;
     if (!responseText) throw new Error("Réponse vide de l'IA");
     
@@ -162,27 +157,20 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
 
   } catch (error) {
     console.error("Erreur Gemini Analysis:", error);
-    // Retour d'une erreur gracieuse pour l'interface utilisateur
     return {
-      analysisText: "⚠️ Une erreur est survenue lors de l'analyse IA. Vérifiez que votre clé API est valide et que vous avez des crédits suffisants.",
+      analysisText: "⚠️ Une erreur est survenue lors de l'analyse IA. Vérifiez votre clé API et vos crédits.",
       chartData: null,
       requiresConfirmation: false
     };
   }
 };
 
-/**
- * Fonction pour l'analyse sur échantillon (Utilisée si requiresConfirmation était true)
- * Ici, on réutilise la logique principale pour simplifier, mais on pourrait ajuster le prompt.
- */
 export const performSampledAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string, relevantFieldIds: string[]): Promise<any> => {
-  // Dans une version avancée, on filtrerait 'responses' pour ne garder que les champs 'relevantFieldIds'
   return getAnalysis(forms, responses, userPrompt);
 };
 
 /**
- * Chatbot interactif avec streaming.
- * Gère la conversation et les actions de navigation dans l'app.
+ * Chatbot interactif avec streaming
  */
 export const getChatbotResponseStream = async (userRole: User['role'], history: ChatMessage[]) => {
   if (!apiKey) {
@@ -196,49 +184,30 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
       Tu es l'assistant virtuel intelligent de la plateforme MedataAI.
       Ton rôle est d'aider les étudiants en médecine et les administrateurs.
 
-      TON STYLE :
-      - Professionnel, empathique et concis.
-      - Tu parles français.
-
-      TES CAPACITÉS :
-      - Expliquer comment créer des formulaires.
-      - Aider à interpréter des statistiques.
-      - Expliquer le système de "Coins" (monnaie virtuelle).
-
-      ACTIONS DE NAVIGATION (IMPORTANT) :
-      Si l'utilisateur demande explicitement à aller quelque part, tu dois ajouter un "tag d'action" à la fin de ta réponse.
-      L'interface utilisateur détectera ce tag et effectuera la navigation.
-      
-      Liste des tags disponibles :
-      - [ACTION:navigate_formulaires] : Pour voir/créer des formulaires.
-      - [ACTION:navigate_bibliotheque] : Pour acheter des formulaires/données.
-      - [ACTION:navigate_analyse] : Pour l'outil d'analyse IA.
-      - [ACTION:navigate_portefeuille] : Pour voir le solde ou les transactions.
-
-      Exemple : "Bien sûr, je vous emmène vers votre portefeuille. [ACTION:navigate_portefeuille]"
+      ACTIONS DE NAVIGATION :
+      - [ACTION:navigate_formulaires]
+      - [ACTION:navigate_bibliotheque]
+      - [ACTION:navigate_analyse]
+      - [ACTION:navigate_portefeuille]
       
       Rôle de l'utilisateur actuel : ${userRole}
     `;
 
-    // Création de la session de chat
     const chat = ai.chats.create({
       model: CHAT_MODEL,
       config: {
         systemInstruction: systemInstruction,
-        temperature: 0.7, // Plus créatif pour la conversation
+        temperature: 0.7,
       },
-      // On convertit l'historique sauf le dernier message qui sera envoyé via sendMessageStream
       history: history.slice(0, -1),
     });
 
     const lastMessage = history[history.length - 1].parts[0].text;
     
-    // Appel en streaming
     const resultStream = await chat.sendMessageStream({
       message: lastMessage,
     });
 
-    // Retourne le flux asynchrone pour que le composant React puisse l'itérer
     return (async function* () {
       for await (const chunk of resultStream) {
         yield { text: chunk.text };
@@ -247,9 +216,8 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
 
   } catch (error) {
     console.error("Erreur Gemini Chatbot:", error);
-    // Flux de secours en cas d'erreur
     return (async function* () {
-      yield { text: "Je suis désolé, je rencontre des difficultés techniques pour accéder à mes fonctions cognitives. Veuillez vérifier votre clé API." };
+      yield { text: "Désolé, je rencontre des difficultés techniques. Vérifiez votre connexion ou la clé API." };
     })();
   }
 };

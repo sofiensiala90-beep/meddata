@@ -2,9 +2,21 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
 
-// Initialisation du client Gemini avec la clé API de l'environnement
-// La clé est injectée par Vercel via process.env.API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Récupération sécurisée de la clé API
+// Grâce à vite.config.ts, process.env.API_KEY sera remplacé par la chaîne de caractères réelle.
+// On ajoute une vérification typeof pour éviter le crash "process is not defined" dans certains environnements.
+const apiKey = (typeof process !== 'undefined' && process.env && process.env.API_KEY) ? process.env.API_KEY : "";
+
+// Initialisation du client Gemini avec une gestion d'erreur pour éviter l'écran blanc
+let ai: GoogleGenAI;
+try {
+    // Si la clé est vide, cela ne plantera pas ici, mais les appels échoueront gracieusement plus tard
+    ai = new GoogleGenAI({ apiKey: apiKey || "MISSING_KEY" });
+} catch (error) {
+    console.error("Erreur critique lors de l'initialisation de GoogleGenAI:", error);
+    // Instance de secours pour ne pas casser l'import du module
+    ai = new GoogleGenAI({ apiKey: "" }); 
+}
 
 // Modèles utilisés - On utilise la série Flash pour la rapidité et le coût
 const ANALYSIS_MODEL = 'gemini-2.5-flash';
@@ -103,6 +115,14 @@ const prepareDataContext = (forms: Form[], responses: FormResponse[]) => {
  * Effectue une analyse complète des données fournies via Gemini.
  */
 export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
+  if (!apiKey) {
+      return {
+          analysisText: "⚠️ La clé API Gemini n'est pas configurée sur Vercel. Veuillez ajouter la variable d'environnement `API_KEY`.",
+          chartData: null,
+          requiresConfirmation: false
+      };
+  }
+  
   try {
     const dataContext = prepareDataContext(forms, responses);
     
@@ -165,6 +185,12 @@ export const performSampledAnalysis = async (forms: Form[], responses: FormRespo
  * Gère la conversation et les actions de navigation dans l'app.
  */
 export const getChatbotResponseStream = async (userRole: User['role'], history: ChatMessage[]) => {
+  if (!apiKey) {
+      return (async function* () {
+        yield { text: "⚠️ Clé API manquante. Veuillez configurer la variable API_KEY sur Vercel." };
+      })();
+  }
+
   try {
     const systemInstruction = `
       Tu es l'assistant virtuel intelligent de la plateforme MedataAI.

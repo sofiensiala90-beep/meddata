@@ -453,15 +453,25 @@ const App: React.FC = () => {
         return;
     }
 
-    if (formToDelete.status !== 'draft') {
-        alert("Impossible de supprimer un formulaire qui n'est pas en brouillon.");
-        return;
-    }
-
     try {
-        await db.collection('forms').doc(formId).delete();
-        await handleAddActivity(ActivityType.FORM_DELETED, currentUser.id, `Le formulaire en brouillon "${formToDelete.title}" a été supprimé.`, formId);
-        alert("Formulaire supprimé avec succès.");
+        const batch = db.batch();
+        
+        // 1. Delete the form document
+        const formRef = db.collection('forms').doc(formId);
+        batch.delete(formRef);
+
+        // 2. Delete all associated responses
+        const responsesSnapshot = await db.collection('responses').where('formId', '==', formId).get();
+        responsesSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        // 3. Delete from purchasedForms if necessary (optional, depending on business logic, here we keep history but form is gone)
+        
+        await batch.commit();
+
+        await handleAddActivity(ActivityType.FORM_DELETED, currentUser.id, `Le formulaire "${formToDelete.title}" a été supprimé.`, formId);
+        alert("Formulaire et réponses associées supprimés avec succès.");
     } catch (error) {
         console.error("Error deleting form: ", error);
         alert("Une erreur est survenue lors de la suppression du formulaire.");

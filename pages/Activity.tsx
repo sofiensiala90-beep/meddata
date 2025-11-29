@@ -105,10 +105,6 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="flex items-center space-x-3">
                     <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Journal d'Activité</h2>
-                    <span className="px-3 py-1 text-xs font-bold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full border border-blue-200 dark:border-blue-800 animate-pulse flex items-center">
-                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                        V4 LIVE
-                    </span>
                 </div>
                 <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-md">
                     Total: <strong>{filteredActivities.length}</strong> événements

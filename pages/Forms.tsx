@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User, Form, FormResponse, FormField, PurchasedForm, SystemSettings } from '../types';
 import Card from '../components/Card';
@@ -314,19 +315,52 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   };
 
   const handleDeleteFormClick = (form: Form) => {
-    setConfirmation({
-        isOpen: true,
-        title: "Confirmer la suppression",
-        message: `Êtes-vous sûr de vouloir supprimer le formulaire "${form.title}" ? Cette action est irréversible.`,
-        onConfirm: () => {
-            deleteForm(form.id);
-            setConfirmation(null);
-        },
-        onClose: () => setConfirmation(null),
-        variant: 'danger',
-        confirmText: 'Supprimer',
-        cancelText: 'Annuler'
-    });
+    // Si le formulaire est validé, on demande une DOUBLE confirmation
+    if (form.status === 'validated') {
+        setConfirmation({
+            isOpen: true,
+            title: "Suppression d'un formulaire validé",
+            message: (
+                <div className="space-y-2">
+                    <p>Attention : Ce formulaire est validé. Le supprimer entraînera la <strong>perte définitive</strong> de toutes les réponses associées.</p>
+                    <p className="text-sm text-red-600 font-semibold">Les paiements liés à la validation ne seront pas remboursés.</p>
+                </div>
+            ),
+            confirmText: "Continuer...",
+            variant: 'danger',
+            onConfirm: () => {
+                // Deuxième niveau de confirmation
+                setConfirmation({
+                    isOpen: true,
+                    title: "CONFIRMATION DÉFINITIVE",
+                    message: "Êtes-vous ABSOLUMENT sûr ? Cette action est irréversible et toutes les données seront perdues.",
+                    confirmText: "OUI, TOUT SUPPRIMER",
+                    variant: 'danger',
+                    onConfirm: () => {
+                        deleteForm(form.id);
+                        setConfirmation(null);
+                    },
+                    onClose: () => setConfirmation(null)
+                });
+            },
+            onClose: () => setConfirmation(null)
+        });
+    } else {
+        // Suppression simple pour les brouillons
+        setConfirmation({
+            isOpen: true,
+            title: "Confirmer la suppression",
+            message: `Êtes-vous sûr de vouloir supprimer le formulaire "${form.title}" ? Cette action est irréversible.`,
+            onConfirm: () => {
+                deleteForm(form.id);
+                setConfirmation(null);
+            },
+            onClose: () => setConfirmation(null),
+            variant: 'danger',
+            confirmText: 'Supprimer',
+            cancelText: 'Annuler'
+        });
+    }
   };
 
   const isFieldVisible = (field: FormField, currentData: Record<string, any>): boolean => {
@@ -778,7 +812,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                             {user.role === 'admin' && creator && (<p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Créé par : <span className="font-medium">{creator.name}</span></p>)}
                             {matchingQuestions.length > 0 && (<div className="mt-3 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700 pt-2"><p className="font-semibold">Correspondance dans les questions :</p><ul className="list-disc list-inside ml-2 mt-1">{matchingQuestions.map((label, index) => (<li key={index} className="truncate" title={label}>{highlightMatch(label, filters.searchTerm)}</li>))}</ul></div>)}
                             <div className="mt-4 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
-                            <span>Créé le : {new Date(form.createdAt).toLocaleDateString()}</span>
+                            <span>Créé le : {new Date(form.createdAt).toLocaleDateString()}</span
                             {user.role === 'student' && form.status === 'validated' ? (<button onClick={() => responseCount > 0 && handleViewResponses(form)} disabled={responseCount === 0} className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default">{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</button>) : (<span>{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</span>)}
                             </div>
                         </div>
@@ -805,6 +839,18 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                                 <PlusIcon className="w-4 h-4 mr-2 inline-block" />
                                                 Ajouter une réponse
                                             </Button>
+                                            
+                                            {/* Bouton de suppression rouge */}
+                                            <Button 
+                                                onClick={() => handleDeleteFormClick(form)} 
+                                                variant="danger"
+                                                className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                                title="Supprimer le formulaire"
+                                                disabled={isSuspended}
+                                            >
+                                                <TrashIcon className="w-5 h-5" />
+                                            </Button>
+
                                             <div className="relative flex-shrink-0" ref={(el) => (actionMenuRef.current[form.id] = el)}>
                                                 <Button 
                                                     onClick={() => setOpenActionMenu(openActionMenu === form.id ? null : form.id)}
@@ -840,7 +886,10 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                          <Button onClick={() => handleDeleteFormClick(form)} variant="danger" className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700" title="Supprimer le formulaire"><TrashIcon className="w-5 h-5" /></Button>
                                     </div>
                                 ) : (
-                                    <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses ({responseCount})</Button>
+                                    <div className="w-full flex items-center space-x-3">
+                                        <Button onClick={() => handleViewResponses(form)} className="flex-grow" disabled={responseCount === 0}>Voir les réponses ({responseCount})</Button>
+                                        <Button onClick={() => handleDeleteFormClick(form)} variant="danger" className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700" title="Supprimer le formulaire"><TrashIcon className="w-5 h-5" /></Button>
+                                    </div>
                                 )
                             )}
                         </div>

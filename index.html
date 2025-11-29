@@ -92,6 +92,10 @@
       }
     }
   </script>
+  <script>
+    // Polyfill simple pour éviter le crash 'process is not defined' dans le navigateur
+    window.process = { env: { NODE_ENV: 'production' } };
+  </script>
 <script type="importmap">
 {
   "imports": {

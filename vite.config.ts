@@ -3,19 +3,32 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   // Charge les variables d'environnement (comme API_KEY sur Vercel)
+  // Le cast (process as any) évite les erreurs TS si @types/node manque
   const env = loadEnv(mode, (process as any).cwd(), '');
 
   return {
     plugins: [react()],
     define: {
-      // Remplace process.env.API_KEY par la vraie valeur lors du build
+      // Remplace process.env.API_KEY par la valeur de la variable d'env lors du build
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
-      // Empêche certaines librairies de planter si elles cherchent process.env
+      // Définit process.env comme un objet vide pour les libs qui l'appellent sans vérifier
       'process.env': JSON.stringify({}),
     },
     build: {
-      // Augmente la limite pour éviter le warning "chunk size limit"
-      chunkSizeWarningLimit: 1600,
+      // Augmente la limite de taille pour éviter l'avertissement "chunk size limit"
+      chunkSizeWarningLimit: 2000,
+      rollupOptions: {
+        output: {
+          manualChunks: (id) => {
+            if (id.includes('node_modules')) {
+              // Sépare les grosses librairies pour alléger le chargement initial
+              if (id.includes('firebase')) return 'firebase';
+              if (id.includes('@google/genai')) return 'genai';
+              if (id.includes('react')) return 'vendor';
+            }
+          },
+        },
+      },
     },
   };
 });

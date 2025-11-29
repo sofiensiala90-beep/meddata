@@ -2,16 +2,14 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
 
-// Récupération de la clé API
-// Grâce à la configuration dans vite.config.ts, process.env.API_KEY est remplacé par la valeur réelle au build.
-// On ajoute un fallback vide pour éviter les erreurs de syntaxe si l'injection échoue.
+// Récupération de la clé API via process.env.API_KEY
 const apiKey = process.env.API_KEY || "";
 
 // Initialisation du client Gemini avec une gestion d'erreur pour éviter l'écran blanc
 let ai: GoogleGenAI;
 try {
     if (!apiKey || apiKey === "") {
-        console.warn("API_KEY manquante. L'IA ne fonctionnera pas.");
+        console.warn("API_KEY manquante. L'IA ne fonctionnera pas (Vérifiez la variable API_KEY sur Vercel).");
     }
     // Si la clé est vide, on initialise quand même pour ne pas casser l'app au démarrage
     ai = new GoogleGenAI({ apiKey: apiKey || "MISSING_KEY" });

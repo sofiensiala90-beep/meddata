@@ -2,19 +2,21 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
 
-// Récupération sécurisée de la clé API
-// Grâce à vite.config.ts, process.env.API_KEY sera remplacé par la chaîne de caractères réelle.
-// On ajoute une vérification typeof pour éviter le crash "process is not defined" dans certains environnements.
-const apiKey = (typeof process !== 'undefined' && process.env && process.env.API_KEY) ? process.env.API_KEY : "";
+// Récupération de la clé API
+// Grâce à la configuration dans vite.config.ts, process.env.API_KEY est remplacé par la valeur réelle au build.
+// On ajoute un fallback vide pour éviter les erreurs de syntaxe si l'injection échoue.
+const apiKey = process.env.API_KEY || "";
 
 // Initialisation du client Gemini avec une gestion d'erreur pour éviter l'écran blanc
 let ai: GoogleGenAI;
 try {
-    // Si la clé est vide, cela ne plantera pas ici, mais les appels échoueront gracieusement plus tard
+    if (!apiKey || apiKey === "") {
+        console.warn("API_KEY manquante. L'IA ne fonctionnera pas.");
+    }
+    // Si la clé est vide, on initialise quand même pour ne pas casser l'app au démarrage
     ai = new GoogleGenAI({ apiKey: apiKey || "MISSING_KEY" });
 } catch (error) {
     console.error("Erreur critique lors de l'initialisation de GoogleGenAI:", error);
-    // Instance de secours pour ne pas casser l'import du module
     ai = new GoogleGenAI({ apiKey: "" }); 
 }
 
@@ -117,7 +119,7 @@ const prepareDataContext = (forms: Form[], responses: FormResponse[]) => {
 export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
   if (!apiKey) {
       return {
-          analysisText: "⚠️ La clé API Gemini n'est pas configurée sur Vercel. Veuillez ajouter la variable d'environnement `API_KEY`.",
+          analysisText: "⚠️ La clé API Gemini n'est pas configurée. Veuillez vérifier les variables d'environnement sur Vercel (API_KEY).",
           chartData: null,
           requiresConfirmation: false
       };

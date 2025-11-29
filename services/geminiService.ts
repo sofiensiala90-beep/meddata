@@ -2,19 +2,16 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User } from '../types';
 
-// La clé API sera injectée par Vite lors du build grâce à 'define' dans vite.config.ts
+// La clé API sera injectée par Vite
 const apiKey = process.env.API_KEY || "";
 
 let ai: GoogleGenAI;
 try {
-    if (!apiKey) {
-        console.warn("API_KEY manquante. Vérifiez les variables d'environnement sur Vercel.");
-    }
-    // Initialisation sécurisée
-    ai = new GoogleGenAI({ apiKey: apiKey || "MISSING_KEY" });
+    ai = new GoogleGenAI({ apiKey: apiKey });
 } catch (error) {
-    console.error("Erreur critique lors de l'initialisation de GoogleGenAI:", error);
-    ai = new GoogleGenAI({ apiKey: "" }); 
+    console.error("Erreur d'initialisation Gemini:", error);
+    // Fallback pour éviter le crash immédiat si la clé manque
+    ai = new GoogleGenAI({ apiKey: "MISSING_KEY" });
 }
 
 // Modèles utilisés
@@ -111,9 +108,9 @@ const prepareDataContext = (forms: Form[], responses: FormResponse[]) => {
  * Effectue une analyse complète des données
  */
 export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
-  if (!apiKey) {
+  if (!apiKey || apiKey === "MISSING_KEY") {
       return {
-          analysisText: "⚠️ La clé API Gemini n'est pas configurée. Vérifiez la variable API_KEY sur Vercel.",
+          analysisText: "⚠️ La clé API Gemini n'est pas configurée sur Vercel. Veuillez ajouter la variable API_KEY dans les settings.",
           chartData: null,
           requiresConfirmation: false
       };
@@ -158,7 +155,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
   } catch (error) {
     console.error("Erreur Gemini Analysis:", error);
     return {
-      analysisText: "⚠️ Une erreur est survenue lors de l'analyse IA. Vérifiez votre clé API et vos crédits.",
+      analysisText: "⚠️ Une erreur technique est survenue lors de l'analyse IA. Veuillez réessayer plus tard.",
       chartData: null,
       requiresConfirmation: false
     };
@@ -173,9 +170,9 @@ export const performSampledAnalysis = async (forms: Form[], responses: FormRespo
  * Chatbot interactif avec streaming
  */
 export const getChatbotResponseStream = async (userRole: User['role'], history: ChatMessage[]) => {
-  if (!apiKey) {
+  if (!apiKey || apiKey === "MISSING_KEY") {
       return (async function* () {
-        yield { text: "⚠️ Clé API manquante. Veuillez configurer la variable API_KEY sur Vercel." };
+        yield { text: "⚠️ Clé API manquante. Veuillez configurer API_KEY sur Vercel." };
       })();
   }
 
@@ -217,7 +214,7 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
   } catch (error) {
     console.error("Erreur Gemini Chatbot:", error);
     return (async function* () {
-      yield { text: "Désolé, je rencontre des difficultés techniques. Vérifiez votre connexion ou la clé API." };
+      yield { text: "Désolé, je rencontre des difficultés techniques." };
     })();
   }
 };

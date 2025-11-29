@@ -129,36 +129,36 @@ const App: React.FC = () => {
                     } else {
                         // --- STUDENT: Load Filtered Data ---
                         
-                        // 1. Global Collections (Allowed by rules)
-                        const globalCollections = ['users', 'responses', 'purchasedForms', 'activities', 'unlockedAnalysis'];
+                        // 1. Global Collections (Allowed by rules - e.g. Public Profiles, Public Responses stats)
+                        const globalCollections = ['users', 'responses'];
                         const setters:any = {
                             users: setUsers,
                             responses: setResponses,
-                            purchasedForms: setPurchasedForms,
-                            activities: setActivities,
-                            unlockedAnalysis: setUnlockedAnalysis
                         };
 
                         globalCollections.forEach(collection => {
                             const unsubscribe = db.collection(collection).onSnapshot(snapshot => {
                                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                                 setters[collection](data);
-                            }, error => console.error(`Error fetching ${collection} (student):`, error));
+                            }, error => console.error(`Error fetching ${collection} (student global):`, error));
                             listenersRef.current.push(unsubscribe);
                         });
 
-                        // 2. Private Collections (Must filter by userId)
-                        const privateCollections = ['transactions', 'analysisHistory'];
+                        // 2. Private Collections (Must filter by userId to avoid 'Missing permissions')
+                        const privateCollections = ['transactions', 'analysisHistory', 'purchasedForms', 'activities', 'unlockedAnalysis'];
                         const privateSetters: any = {
                             transactions: setTransactions,
-                            analysisHistory: setAnalysisHistory
+                            analysisHistory: setAnalysisHistory,
+                            purchasedForms: setPurchasedForms,
+                            activities: setActivities,
+                            unlockedAnalysis: setUnlockedAnalysis
                         };
 
                         privateCollections.forEach(collection => {
                             const unsubscribe = db.collection(collection).where('userId', '==', user.uid).onSnapshot(snapshot => {
                                 const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                                 privateSetters[collection](data);
-                            }, error => console.error(`Error fetching ${collection} (student):`, error));
+                            }, error => console.error(`Error fetching ${collection} (student private):`, error));
                             listenersRef.current.push(unsubscribe);
                         });
 
@@ -1069,7 +1069,7 @@ const App: React.FC = () => {
           {renderPage()}
         </main>
       </div>
-      <Chatbot user={currentUser} onNavigate={handleNavigate} />
+      <Chatbot user={currentUser} onNavigate={handleNavigate} systemSettings={systemSettings} />
       <ComplaintModal
         isOpen={isComplaintModalOpen}
         onClose={() => setIsComplaintModalOpen(false)}

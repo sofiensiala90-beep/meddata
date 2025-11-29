@@ -4,11 +4,12 @@ import ChatIcon from './icons/ChatIcon';
 import Button from './Button';
 import Spinner from './Spinner';
 import { getChatbotResponseStream } from '../services/geminiService';
-import { User, ChatMessage, ChatbotResponse } from '../types';
+import { User, ChatMessage, ChatbotResponse, SystemSettings } from '../types';
 
 interface ChatbotProps {
   user: User;
   onNavigate: (page: string) => void;
+  systemSettings: SystemSettings;
 }
 
 interface Message {
@@ -20,7 +21,7 @@ interface Message {
   isError?: boolean;
 }
 
-const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate }) => {
+const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate, systemSettings }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     { id: 1, text: `Bonjour ${user.name} ! Je suis MedataAI. Comment puis-je vous aider aujourd'hui ?`, sender: 'ai' }
@@ -83,7 +84,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate }) => {
     
     let fullText = '';
     try {
-        const stream = await getChatbotResponseStream(user.role, history);
+        const stream = await getChatbotResponseStream(user.role, history, systemSettings);
 
         for await (const chunk of stream) {
             fullText += chunk.text;

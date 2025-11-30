@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Form, FormField, SystemSettings } from '../types';
 import Button from './Button';
@@ -139,6 +140,7 @@ const FieldCard: React.FC<FieldCardProps> = ({ field, index, total, updateField,
                                 type="text"
                                 value={opt}
                                 onChange={e => updateOption(field.id, i, e.target.value)}
+                                onFocus={(e) => e.target.select()}
                                 className="flex-grow bg-white dark:bg-slate-700/50 border-slate-300 dark:border-slate-600 focus:ring-primary-500 focus:border-primary-500 rounded-md shadow sm:text-sm text-slate-900 dark:text-slate-200"
                             />
                             <div className="flex items-center shrink-0">

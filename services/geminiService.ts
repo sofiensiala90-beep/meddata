@@ -18,7 +18,24 @@ try {
 const ANALYSIS_MODEL = 'gemini-2.5-flash';
 const CHAT_MODEL = 'gemini-2.5-flash';
 
-// Schéma JSON strict pour l'analyse
+// Schéma pour la sélection des champs pertinents (Étape 1)
+const fieldSelectionResponseSchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    relevantFieldIds: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: "Liste des IDs de questions strictement nécessaires pour répondre à la demande de l'utilisateur.",
+    },
+    reasoning: {
+      type: Type.STRING,
+      description: "Brève explication du choix des champs."
+    }
+  },
+  required: ["relevantFieldIds"],
+};
+
+// Schéma JSON strict pour l'analyse (Étape 2)
 const analysisResponseSchema: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -100,22 +117,102 @@ const suggestionsResponseSchema: Schema = {
 };
 
 /**
- * Prépare le contexte des données pour l'analyse
+ * Prépare uniquement la structure du formulaire (Schema) sans les réponses.
+ * Utilisé pour l'étape 1 : Sélection des colonnes.
  */
-const prepareDataContext = (forms: Form[], responses: FormResponse[]) => {
-  const formsSummary = forms.map(f => ({
+const prepareSchemaContext = (forms: Form[]) => {
+  return JSON.stringify(forms.map(f => ({
     id: f.id,
     title: f.title,
     description: f.description,
-    schema: f.schema.map(q => ({ id: q.id, label: q.label, type: q.type, options: q.options }))
+    questions: f.schema.map(q => ({
+      id: q.id,
+      label: q.label,
+      type: q.type,
+      options: q.options
+    }))
+  })));
+};
+
+/**
+ * Prépare le contexte des données pour l'analyse finale (Étape 2).
+ * Ne contient que les champs filtrés.
+ */
+const prepareDataContext = (forms: Form[], responses: FormResponse[], relevantFieldIds?: string[]) => {
+  // Résumé des formulaires (structure légère)
+  const formsSummary = forms.map(f => ({
+    id: f.id,
+    title: f.title,
+    schema: f.schema
+        .filter(q => !relevantFieldIds || relevantFieldIds.includes(q.id))
+        .map(q => ({ id: q.id, label: q.label, type: q.type, options: q.options }))
   }));
 
-  const responsesSummary = responses.map(r => ({
-    formId: r.formId,
-    answers: r.data
-  }));
+  // Résumé des réponses (Données filtrées)
+  const responsesSummary = responses.map(r => {
+    const filteredData: Record<string, any> = {};
+    
+    if (relevantFieldIds) {
+      // Garder uniquement les champs demandés
+      relevantFieldIds.forEach(fieldId => {
+        if (r.data.hasOwnProperty(fieldId)) {
+          filteredData[fieldId] = r.data[fieldId];
+        }
+      });
+    } else {
+      // Tout garder (comportement par défaut)
+      Object.assign(filteredData, r.data);
+    }
+
+    return {
+      // On retire l'ID utilisateur pour économiser des tokens et anonymiser
+      formId: r.formId,
+      answers: filteredData
+    };
+  });
 
   return JSON.stringify({ forms: formsSummary, responses: responsesSummary });
+};
+
+/**
+ * ÉTAPE 1 : Identifie les champs nécessaires pour répondre à la question
+ */
+const identifyRelevantFields = async (forms: Form[], userPrompt: string): Promise<string[]> => {
+    try {
+        const schemaContext = prepareSchemaContext(forms);
+        const systemInstruction = `
+            Tu es un expert en optimisation de données.
+            L'utilisateur veut analyser un jeu de données médicales mais le volume est trop grand.
+            
+            TA MISSION :
+            Analyser la demande de l'utilisateur et la structure du formulaire pour identifier UNIQUEMENT les IDs des questions ('relevantFieldIds') strictement nécessaires pour répondre.
+            
+            RÈGLES :
+            1. Si l'utilisateur demande une "analyse globale" ou "générale", sélectionne les champs démographiques clés (âge, sexe) et les variables principales (diagnostics, résultats). Ne sélectionne pas tout.
+            2. Si l'utilisateur pose une question précise (ex: "Lien entre Tabac et Cancer"), ne sélectionne QUE les champs liés au Tabac et au Cancer.
+            3. Sois minimaliste pour économiser les tokens.
+            
+            STRUCTURE DU FORMULAIRE :
+            ${schemaContext}
+        `;
+
+        const response = await ai.models.generateContent({
+            model: ANALYSIS_MODEL,
+            contents: `Demande utilisateur : "${userPrompt}"`,
+            config: {
+                systemInstruction: systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: fieldSelectionResponseSchema,
+                temperature: 0.1, // Très déterministe
+            },
+        });
+
+        const result = JSON.parse(response.text || "{}");
+        return result.relevantFieldIds || [];
+    } catch (error) {
+        console.warn("Échec de la sélection intelligente des champs, utilisation de tous les champs.", error);
+        return []; // Retourne vide pour dire "tous les champs" en fallback
+    }
 };
 
 /**
@@ -127,7 +224,10 @@ export const getAnalysisSuggestions = async (forms: Form[], responses: FormRespo
   }
 
   try {
-    const dataContext = prepareDataContext(forms, responses);
+    // Pour les suggestions, on envoie un extrait des réponses (5 premières) pour que l'IA comprenne le contenu sans saturer
+    const sampleResponses = responses.slice(0, 5);
+    const dataContext = prepareDataContext(forms, sampleResponses);
+    
     const systemInstruction = `
       Tu es un Professeur expert en Méthodologie de Recherche et Biostatistiques.
       Tu assistes un étudiant en médecine qui a collecté des données mais ne sait pas quelles analyses statistiques effectuer pour sa thèse.
@@ -146,7 +246,7 @@ export const getAnalysisSuggestions = async (forms: Form[], responses: FormRespo
       - description : Une phrase expliquant l'intérêt de cette analyse pour la thèse.
       - searchPrompt : Une instruction très précise que l'étudiant pourra renvoyer à l'IA pour réaliser cette analyse (ex: "Réalise un test de Chi-2 pour croiser la variable X et la variable Y...").
 
-      CONTEXTE DES DONNÉES :
+      CONTEXTE DES DONNÉES (Échantillon) :
       ${dataContext}
     `;
 
@@ -173,7 +273,7 @@ export const getAnalysisSuggestions = async (forms: Form[], responses: FormRespo
 };
 
 /**
- * Effectue une analyse complète des données
+ * Effectue une analyse complète des données (Optimisée en 2 étapes)
  */
 export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
   if (!apiKey || apiKey === "MISSING_KEY") {
@@ -185,14 +285,26 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
   }
   
   try {
-    const dataContext = prepareDataContext(forms, responses);
+    // ÉTAPE 1 : Identification des colonnes pertinentes pour réduire la charge
+    let relevantFieldIds: string[] = [];
+    
+    // On ne fait cette optimisation que si on a beaucoup de données (> 10 réponses)
+    // Sinon on peut tout envoyer, c'est rapide.
+    if (responses.length > 10) {
+        relevantFieldIds = await identifyRelevantFields(forms, userPrompt);
+        console.log(`Optimisation IA : ${relevantFieldIds.length} champs sélectionnés sur ${forms[0]?.schema.length || 0} pour l'analyse.`);
+    }
+
+    // ÉTAPE 2 : Filtrage et Analyse Finale
+    // Si relevantFieldIds est vide (échec ou demande "tout"), prepareDataContext mettra tout (ou une limite safe).
+    const filteredContext = prepareDataContext(forms, responses, relevantFieldIds.length > 0 ? relevantFieldIds : undefined);
     
     const systemInstruction = `
       Tu es MedataAI, un expert de classe mondiale en biostatistiques médicales, épidémiologie et méthodologie de recherche clinique.
       Ton rôle est d'assister des étudiants en médecine dans l'analyse de leurs thèses.
 
       TA MISSION :
-      Analyser les données fournies au format JSON et répondre à la demande de l'utilisateur avec la rigueur d'un article scientifique.
+      Analyser les données fournies au format JSON (qui ont été pré-filtrées pour être pertinentes à la demande) et répondre à la demande de l'utilisateur avec la rigueur d'un article scientifique.
 
       CAPACITÉS D'EXPERT ATTENDUES :
       1. **Qualification des variables** : Identifie automatiquement si les variables sont qualitatives (nominales/ordinales) ou quantitatives (discrètes/continues).
@@ -201,26 +313,21 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
          - T-Student ou ANOVA pour comparer des moyennes.
          - Corrélation de Pearson/Spearman pour les variables quantitatives.
          - Odds Ratio (OR) et Risque Relatif (RR) pour les facteurs de risque.
-      3. **Interprétation clinique** : Ne donne pas juste des chiffres. Explique ce qu'ils signifient médicalement (ex: "Une prévalence de 20% est supérieure à la moyenne nationale...").
-      4. **Propositions proactives** : Si la demande de l'utilisateur est vague (ex: "Analyse tout"), tu dois structurer une réponse complète :
-         - *Population* : Description démographique (Âge moyen, Sex-ratio).
-         - *Prévalence* : Fréquence des pathologies/symptômes principaux.
-         - *Associations* : Recherche de liens pertinents (ex: Tabac vs Cancer).
-         - *Recommandations* : Suggère des croisements de variables intéressants à explorer.
+      3. **Interprétation clinique** : Ne donne pas juste des chiffres. Explique ce qu'ils signifient médicalement.
+      4. **Propositions proactives** : Si la demande de l'utilisateur est vague (ex: "Analyse tout"), tu dois structurer une réponse complète basée sur les champs fournis.
 
       STRUCTURE DE LA RÉPONSE (Markdown) :
-      - **Résumé Méthodologique** : (Ex: "Étude transversale descriptive portant sur N=${responses.length} patients...")
+      - **Résumé Méthodologique** : (Ex: "Analyse ciblée portant sur N=${responses.length} patients...")
       - **Résultats Clés** : Chiffres marquants en gras.
       - **Analyse Détaillée** : Réponses spécifiques au prompt.
       - **Pistes de Réflexion** : Suggestions de tests statistiques à valider officiellement.
 
       RÈGLES STRICTES :
       - Utilise un langage médical précis mais pédagogique.
-      - Si l'échantillon est trop petit (<30) pour certains tests, mentionne-le comme une limitation.
       - Génère TOUJOURS un graphique pertinent ('chartData') si des comparaisons chiffrées sont possibles.
 
       CONTEXTE DES DONNÉES (JSON) :
-      ${dataContext}
+      ${filteredContext}
     `;
 
     const response = await ai.models.generateContent({
@@ -245,6 +352,8 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
     const errorString = String(error);
     if (errorString.includes("leaked") || errorString.includes("API key not valid")) {
         errorMsg = "⚠️ Clé API bloquée par Google (fuite détectée ou invalide). Veuillez générer une nouvelle clé sur Google AI Studio et mettre à jour Vercel.";
+    } else if (errorString.includes("429")) {
+        errorMsg = "⚠️ Trop de requêtes (Quota dépassé). Veuillez réessayer dans une minute.";
     }
     return {
       analysisText: errorMsg,

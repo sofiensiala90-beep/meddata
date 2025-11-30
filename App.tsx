@@ -23,6 +23,7 @@ import Library from './pages/Library';
 import InsufficientFundsModal from './components/InsufficientFundsModal';
 import Spinner from './components/Spinner';
 import AdminConfiguration from './pages/AdminConfiguration';
+import Toast from './components/Toast';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -34,6 +35,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<{ required: number; balance: number } | null>(null);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   // App-wide state, now populated from Firestore
   const [users, setUsers] = useState<User[]>([]);
@@ -51,6 +53,10 @@ const App: React.FC = () => {
   const updateLocalUserState = (userId: string, updates: Partial<User>) => {
     setCurrentUser(prev => (prev?.id === userId ? { ...prev, ...updates } : prev));
     setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, ...updates } : u));
+  };
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
   };
   
   // Load System Settings
@@ -357,7 +363,7 @@ const App: React.FC = () => {
     if (!user || user.role === 'admin') return true;
     
     if (user.status.startsWith('suspended')) {
-        alert("Votre compte est suspendu. Vous ne pouvez pas effectuer cette action.");
+        showToast("Votre compte est suspendu. Vous ne pouvez pas effectuer cette action.", 'error');
         return false;
     }
 
@@ -425,12 +431,12 @@ const App: React.FC = () => {
       };
       await db.collection('responses').add(newResponse);
       await handleAddActivity(ActivityType.RESPONSE_ADDED, currentUser.id, `Nouvelle réponse ajoutée au formulaire "${form.title}".`, form.id);
-      alert("Réponse soumise avec succès !");
+      showToast("Réponse soumise avec succès !");
   };
   
   const handleDeleteFormResponse = async (responseId: string) => {
     await db.collection('responses').doc(responseId).delete();
-    alert("Réponse supprimée avec succès !");
+    showToast("Réponse supprimée avec succès !");
   };
 
   const handleCreateForm = async (newForm: Form) => {
@@ -449,7 +455,7 @@ const App: React.FC = () => {
     const formToDelete = forms.find(f => f.id === formId);
     if (!formToDelete) {
         console.error("Form to delete not found");
-        alert("Erreur: formulaire introuvable.");
+        showToast("Erreur: formulaire introuvable.", 'error');
         return;
     }
 
@@ -471,10 +477,10 @@ const App: React.FC = () => {
         await batch.commit();
 
         await handleAddActivity(ActivityType.FORM_DELETED, currentUser.id, `Le formulaire "${formToDelete.title}" a été supprimé.`, formId);
-        alert("Formulaire et réponses associées supprimés avec succès.");
+        showToast("Formulaire et réponses associées supprimés avec succès.");
     } catch (error) {
         console.error("Error deleting form: ", error);
-        alert("Une erreur est survenue lors de la suppression du formulaire.");
+        showToast("Une erreur est survenue lors de la suppression du formulaire.", 'error');
     }
   };
 
@@ -513,7 +519,7 @@ const App: React.FC = () => {
     await db.collection('forms').doc(formId).update({ isPublic: true, price, pricePerResponse });
     await handleSendNotification(formToPublish.userId, `Votre formulaire "${formToPublish.title}" a été publié dans la bibliothèque !`, false);
     await handleAddActivity(ActivityType.FORM_PUBLISHED, formToPublish.userId, `Le formulaire "${formToPublish.title}" a été publié dans la bibliothèque.`, formId);
-    alert("Formulaire publié avec succès !");
+    showToast("Formulaire publié avec succès !");
   };
 
   const handlePurchaseForm = async (formToBuy: Form, withResponses: boolean): Promise<boolean> => {
@@ -522,7 +528,7 @@ const App: React.FC = () => {
     const admin = users.find(u => u.role === 'admin');
 
     if (!seller || !admin) {
-        alert("Erreur: Le vendeur ou l'administrateur n'a pas pu être trouvé.");
+        showToast("Erreur: Le vendeur ou l'administrateur n'a pas pu être trouvé.", 'error');
         return false;
     }
 
@@ -613,11 +619,11 @@ const App: React.FC = () => {
         updateLocalUserState(seller.id, { coinBalance: seller.coinBalance + creatorTotalCommission });
 
         await handleAddActivity(ActivityType.FORM_PURCHASED, currentUser.id, `Le formulaire "${formToBuy.title}" a été acheté pour ${totalCost} coins.`, formToBuy.id);
-        alert("Achat réussi !");
+        showToast("Achat réussi !");
         return true;
     } catch (error) {
         console.error("Form purchase failed:", error);
-        alert("Une erreur est survenue lors de l'achat. Votre solde n'a pas été modifié.");
+        showToast("Une erreur est survenue lors de l'achat. Votre solde n'a pas été modifié.", 'error');
         return false;
     }
   };
@@ -626,24 +632,24 @@ const App: React.FC = () => {
     if (!currentUser) return;
     const admin = users.find(u => u.role === 'admin');
     if (!admin) {
-        alert("Erreur: Administrateur non trouvé. La demande ne peut pas être envoyée.");
+        showToast("Erreur: Administrateur non trouvé. La demande ne peut pas être envoyée.", 'error');
         return;
     }
 
     const message = `L'étudiant ${currentUser.name} (${currentUser.email}) demande une modification pour le formulaire "${form.title}".\n\nRaison : "${reason}"\n\nPour approuver, allez dans la gestion de l'étudiant et cliquez sur "Annuler la validation" pour ce formulaire.`;
     await handleSendNotification(admin.id, message, false);
     
-    alert('Votre demande a été envoyée à l\'administrateur.');
+    showToast('Votre demande a été envoyée à l\'administrateur.');
   };
 
   const handleUnvalidateForm = async (formId: string) => {
     if (!currentUser || currentUser.role !== 'admin') {
-        alert("Action non autorisée.");
+        showToast("Action non autorisée.", 'error');
         return;
     }
     const formToUpdate = forms.find(f => f.id === formId);
     if (!formToUpdate) {
-        alert("Erreur: Formulaire introuvable.");
+        showToast("Erreur: Formulaire introuvable.", 'error');
         return;
     }
 
@@ -663,11 +669,11 @@ const App: React.FC = () => {
 
         await handleAddActivity(ActivityType.FORM_VALIDATION_CANCELLED, currentUser.id, `A annulé la validation du formulaire "${formToUpdate.title}" pour l'étudiant ${student?.name || 'inconnu'}.`, formId);
         
-        alert("La validation du formulaire a été annulée. L'étudiant a été notifié.");
+        showToast("La validation du formulaire a été annulée. L'étudiant a été notifié.");
 
     } catch (error) {
         console.error("Error un-validating form: ", error);
-        alert("Une erreur est survenue lors de l'annulation de la validation.");
+        showToast("Une erreur est survenue lors de l'annulation de la validation.", 'error');
     }
   };
 
@@ -675,7 +681,7 @@ const App: React.FC = () => {
     if (!currentUser) return;
     const form = forms.find(f => f.id === formId);
     if (!form || form.status !== 'awaiting_modification_decision') {
-      alert("Action non valide ou formulaire non trouvé.");
+      showToast("Action non valide ou formulaire non trouvé.", 'error');
       return;
     }
 
@@ -696,7 +702,7 @@ const App: React.FC = () => {
     const notifMessage = `Vous pouvez maintenant modifier votre formulaire "${form.title}". Les réponses existantes ont été ${keepResponses ? 'conservées' : 'supprimées'} comme demandé.`;
     await handleSendNotification(currentUser.id, notifMessage, false);
 
-    alert("Vous pouvez maintenant modifier votre formulaire.");
+    showToast("Vous pouvez maintenant modifier votre formulaire.");
   };
 
   const handleUpdateProfile = async (updatedUser: User) => {
@@ -709,7 +715,7 @@ const App: React.FC = () => {
         phoneNumber: profileData.phoneNumber
     };
     await db.collection('users').doc(id).update(dataToUpdate);
-    alert("Profil mis à jour !");
+    showToast("Profil mis à jour !");
   };
 
   const handleSendNotification = async (userId: string, message: string, showAlert = true) => {
@@ -720,7 +726,7 @@ const App: React.FC = () => {
       createdAt: new Date().toISOString(),
     };
     await db.collection('notifications').add(newNotification);
-    if (showAlert) alert('Notification envoyée !');
+    if (showAlert) showToast('Notification envoyée !');
   };
 
   const handleMarkNotificationsRead = async (userId: string) => {
@@ -745,11 +751,11 @@ const App: React.FC = () => {
   const handleAdminCoinAdjustment = async (userId: string, amount: number, type: TransactionType) => {
       const user = users.find(u => u.id === userId);
       if (!user) {
-        alert("Utilisateur introuvable.");
+        showToast("Utilisateur introuvable.", 'error');
         return;
       }
       if (!currentUser || currentUser.role !== 'admin') {
-        alert("Action non autorisée.");
+        showToast("Action non autorisée.", 'error');
         return;
       }
 
@@ -785,7 +791,7 @@ const App: React.FC = () => {
       const finalBalance = user.coinBalance + increment;
       updateLocalUserState(userId, { coinBalance: finalBalance });
 
-      alert("Ajustement des coins effectué !");
+      showToast("Ajustement des coins effectué !");
   };
 
   const handleSendComplaint = async (message: string) => {
@@ -795,7 +801,7 @@ const App: React.FC = () => {
     const fullMessage = `Réclamation de ${currentUser.name} (${currentUser.email}):\n\n${message}`;
     await handleSendNotification(admin.id, fullMessage, false);
     
-    alert('Votre réclamation a été envoyée avec succès.');
+    showToast('Votre réclamation a été envoyée avec succès.');
     setIsComplaintModalOpen(false);
   };
 
@@ -822,23 +828,23 @@ const App: React.FC = () => {
     if (!currentUser) return false;
 
     if (amount < 100) {
-      alert("Le montant minimum pour un transfert est de 100 coins.");
+      showToast("Le montant minimum pour un transfert est de 100 coins.", 'error');
       return false;
     }
     if (currentUser.coinBalance < amount) {
-      alert("Votre solde est insuffisant pour ce transfert.");
+      showToast("Votre solde est insuffisant pour ce transfert.", 'error');
       return false;
     }
 
     const recipientQuery = await db.collection('users').where('email', '==', recipientEmail.toLowerCase()).limit(1).get();
     if (recipientQuery.empty) {
-        alert("Aucun étudiant trouvé avec cette adresse e-mail.");
+        showToast("Aucun étudiant trouvé avec cette adresse e-mail.", 'error');
         return false;
     }
     const recipient = { id: recipientQuery.docs[0].id, ...recipientQuery.docs[0].data() } as User;
 
     if (recipient.id === currentUser.id) {
-        alert("Vous ne pouvez pas vous envoyer de coins à vous-même.");
+        showToast("Vous ne pouvez pas vous envoyer de coins à vous-même.", 'error');
         return false;
     }
 
@@ -892,12 +898,12 @@ const App: React.FC = () => {
           `A transféré ${amount} coins à ${recipient.name}.`, recipient.id
       );
 
-      alert("Transfert effectué avec succès !");
+      showToast("Transfert effectué avec succès !");
       return true;
 
     } catch (error) {
         console.error("Coin transfer transaction failed: ", error);
-        alert("Une erreur est survenue pendant le transfert. Votre solde n'a pas été modifié. Veuillez réessayer.");
+        showToast("Une erreur est survenue pendant le transfert. Votre solde n'a pas été modifié. Veuillez réessayer.", 'error');
         return false;
     }
   };
@@ -908,10 +914,10 @@ const App: React.FC = () => {
         await db.collection('settings').doc('general').update(newSettings);
         setSystemSettings(newSettings);
         await handleAddActivity(ActivityType.SYSTEM_SETTINGS_UPDATED, currentUser.id, "Mise à jour de la configuration système.");
-        alert("Configuration mise à jour avec succès !");
+        showToast("Configuration mise à jour avec succès !");
     } catch (error) {
         console.error("Failed to update settings:", error);
-        alert("Erreur lors de la mise à jour de la configuration.");
+        showToast("Erreur lors de la mise à jour de la configuration.", 'error');
     }
   };
 
@@ -955,11 +961,11 @@ const App: React.FC = () => {
         }
         
         await handleAddActivity(ActivityType.PROMOTIONAL_CAMPAIGN, currentUser.id, `Campagne promo : ${amount} coins offerts à ${students.length} étudiants.`);
-        alert("Promotion envoyée à tous les étudiants !");
+        showToast("Promotion envoyée à tous les étudiants !");
         
     } catch (error) {
         console.error("Failed to credit all users:", error);
-        alert("Une erreur est survenue lors de l'envoi de la promotion.");
+        showToast("Une erreur est survenue lors de l'envoi de la promotion.", 'error');
     }
   };
 
@@ -1095,6 +1101,13 @@ const App: React.FC = () => {
         requiredAmount={insufficientFundsInfo?.required || 0}
         currentBalance={insufficientFundsInfo?.balance || 0}
       />
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 };

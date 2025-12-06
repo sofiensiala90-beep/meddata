@@ -48,6 +48,7 @@ export interface Form {
   price: number;
   pricePerResponse: number;
   origin?: 'created' | 'purchased';
+  orderIndex?: number;
 }
 
 export interface FormResponse {

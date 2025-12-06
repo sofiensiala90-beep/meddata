@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { ChatMessage, Form, FormResponse, User, SystemSettings, FormField } from '../types';
+import { ChatMessage, Form, FormResponse, User, SystemSettings } from '../types';
 
 // La clé API sera injectée par Vite via la constante globale __APP_API_KEY__
 const apiKey = process.env.API_KEY || "";
@@ -18,30 +18,13 @@ try {
 const ANALYSIS_MODEL = 'gemini-2.5-flash';
 const CHAT_MODEL = 'gemini-2.5-flash';
 
-// Schéma pour la sélection des champs pertinents (Étape 1)
-const fieldSelectionResponseSchema: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    relevantFieldIds: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-      description: "Liste des IDs de questions strictement nécessaires pour répondre à la demande de l'utilisateur.",
-    },
-    reasoning: {
-      type: Type.STRING,
-      description: "Brève explication du choix des champs."
-    }
-  },
-  required: ["relevantFieldIds"],
-};
-
 // Schéma JSON strict pour l'analyse (Étape 2)
 const analysisResponseSchema: Schema = {
   type: Type.OBJECT,
   properties: {
     analysisText: {
       type: Type.STRING,
-      description: "Une analyse experte en biostatistiques et épidémiologie, formatée en Markdown. Doit inclure : Méthodologie, Résultats Descriptifs, Analyse Inférentielle (si applicable), et Recommandations.",
+      description: "Une analyse experte en biostatistiques et épidémiologie, formatée en HTML STRICT (pas de Markdown). Doit inclure : Méthodologie, Résultats Descriptifs, Analyse Inférentielle (si applicable), et Recommandations. Utiliser des balises <h3>, <p>, <ul>, <li>, <strong>.",
     },
     chartData: {
       type: Type.OBJECT,
@@ -117,134 +100,57 @@ const suggestionsResponseSchema: Schema = {
 };
 
 /**
- * Prépare uniquement la structure du formulaire (Schema) sans les réponses.
- * Utilisé pour l'étape 1 : Sélection des colonnes.
+ * Prépare le contexte des données pour l'analyse finale (Optimisé format Texte/CSV).
+ * Transforme les données JSON en format tabulaire pipe-separated pour économiser des tokens.
+ * Retourne le texte ET le nombre exact de lignes traitées.
  */
-const prepareSchemaContext = (forms: Form[]) => {
-  return JSON.stringify(forms.map(f => ({
-    id: f.id,
-    title: f.title,
-    description: f.description,
-    questions: f.schema.map(q => ({
-      id: q.id,
-      label: q.label,
-      type: q.type,
-      options: q.options
-    }))
-  })));
-};
+const prepareDataContext = (forms: Form[], responses: FormResponse[]): { contextText: string, totalRows: number } => {
+  let output = "";
+  let totalRows = 0;
 
-/**
- * ÉTAPE 2 (Optimisée) : Compression CSV avec Système de Codage (Codebook)
- * Transforme les données en un format ultra-compact pour l'IA.
- */
-const prepareCompressedContext = (forms: Form[], responses: FormResponse[], relevantFieldIds?: string[]) => {
-  // 1. Aplatir et filtrer le schéma pour obtenir toutes les questions pertinentes
-  let allQuestions: FormField[] = [];
-  forms.forEach(f => {
-     const fields = f.schema.filter(q => !relevantFieldIds || relevantFieldIds.includes(q.id));
-     allQuestions = [...allQuestions, ...fields];
-  });
+  forms.forEach(form => {
+    output += `--- FORMULAIRE: ${form.title} (ID: ${form.id}) ---\n`;
+    output += `DESCRIPTION: ${form.description || 'Aucune'}\n`;
+    output += `FORMAT DONNÉES: Valeurs séparées par des barres verticales '|' (Pipe-separated values). Première ligne = En-têtes.\n\n`;
+    
+    // En-têtes (Questions)
+    // On nettoie les labels pour éviter les pipes qui casseraient le format
+    const headers = form.schema.map(f => f.label.replace(/\|/g, '/').trim());
+    const fieldIds = form.schema.map(f => f.id);
+    
+    output += headers.join(" | ") + "\n";
+    // Ligne de séparation visuelle (optionnelle mais aide l'IA)
+    output += headers.map(() => "---").join("|") + "\n";
 
-  // 2. Construire la LÉGENDE (Codebook)
-  // Mapping: FieldID -> { Code (Q1), Type, OptionsMap (Option Texte -> "1") }
-  let legendText = "LÉGENDE DES DONNÉES (CODAGE) :\n";
-  const fieldMap = new Map<string, { code: string, type: string, optionsMap?: Map<string, string> }>();
-
-  allQuestions.forEach((q, index) => {
-    const code = `Q${index + 1}`;
-    let mappingInfo = "";
-    let optionsMap: Map<string, string> | undefined;
-
-    if ((q.type === 'choice' || q.type === 'checkbox') && q.options) {
-       optionsMap = new Map();
-       const optionsLegend: string[] = [];
-       q.options.forEach((opt, i) => {
-          const optCode = `${i + 1}`; // Code numérique simple pour les options : 1, 2, 3...
-          optionsMap!.set(opt, optCode);
-          optionsLegend.push(`${optCode}="${opt}"`);
-       });
-       mappingInfo = ` [Codes Options: ${optionsLegend.join(', ')}]`;
-    }
-
-    fieldMap.set(q.id, { code, type: q.type, optionsMap });
-    // Format ligne légende : Q1: "Age du patient" (number)
-    legendText += `- ${code}: "${q.label}" (${q.type})${mappingInfo}\n`;
-  });
-
-  // 3. Construire le CSV
-  // Header: Q1,Q2,Q3...
-  const header = Array.from(fieldMap.values()).map(f => f.code).join(',');
-  
-  // Rows
-  const rows = responses.map(r => {
-     return allQuestions.map(q => {
-        const fieldInfo = fieldMap.get(q.id);
-        let val = r.data[q.id];
-
-        // Gérer les valeurs vides
-        if (val === undefined || val === null || val === '') return "";
-
-        if (fieldInfo?.optionsMap) {
-           // Cas Choix / Checkbox : Remplacer le texte par le code
-           if (Array.isArray(val)) {
-              // Checkbox: on joint les codes par un pipe '|' (ex: 1|3 pour Option 1 et Option 3)
-              return val.map(v => fieldInfo.optionsMap?.get(v) || v).join('|');
-           } else {
-              // Choice: code simple
-              return fieldInfo.optionsMap.get(val) || val;
-           }
-        } else {
-           // Cas Texte / Nombre : On garde la valeur brute mais on nettoie pour le CSV
-           // On enlève les retours à la ligne et les virgules pour ne pas casser le CSV
-           const strVal = String(val).replace(/[\n\r]/g, ' ').replace(/,/g, ';'); 
-           return strVal;
-        }
-     }).join(',');
-  });
-
-  return `${legendText}\nDONNÉES (Format CSV Compressé):\n${header}\n${rows.join('\n')}`;
-};
-
-/**
- * ÉTAPE 1 : Identifie les champs nécessaires pour répondre à la question
- */
-const identifyRelevantFields = async (forms: Form[], userPrompt: string): Promise<string[]> => {
-    try {
-        const schemaContext = prepareSchemaContext(forms);
-        const systemInstruction = `
-            Tu es un expert en optimisation de données.
-            L'utilisateur veut analyser un jeu de données médicales mais le volume est trop grand.
-            
-            TA MISSION :
-            Analyser la demande de l'utilisateur et la structure du formulaire pour identifier UNIQUEMENT les IDs des questions ('relevantFieldIds') strictement nécessaires pour répondre.
-            
-            RÈGLES :
-            1. Si l'utilisateur demande une "analyse globale" ou "générale", sélectionne les champs démographiques clés (âge, sexe) et les variables principales (diagnostics, résultats). Ne sélectionne pas tout.
-            2. Si l'utilisateur pose une question précise (ex: "Lien entre Tabac et Cancer"), ne sélectionne QUE les champs liés au Tabac et au Cancer.
-            3. Sois minimaliste pour économiser les tokens.
-            
-            STRUCTURE DU FORMULAIRE :
-            ${schemaContext}
-        `;
-
-        const response = await ai.models.generateContent({
-            model: ANALYSIS_MODEL,
-            contents: `Demande utilisateur : "${userPrompt}"`,
-            config: {
-                systemInstruction: systemInstruction,
-                responseMimeType: "application/json",
-                responseSchema: fieldSelectionResponseSchema,
-                temperature: 0.1, // Très déterministe
-            },
+    // Données (Réponses)
+    const formResponses = responses.filter(r => r.formId === form.id);
+    
+    if (formResponses.length === 0) {
+        output += "(Aucune réponse collectée pour ce formulaire)\n";
+    } else {
+        formResponses.forEach(r => {
+            totalRows++; // Comptage précis
+            const rowValues = fieldIds.map(fid => {
+                const val = r.data[fid];
+                let strVal = "";
+                
+                if (Array.isArray(val)) {
+                    // Pour les choix multiples, on sépare par des points-virgules pour distinguer du séparateur de colonne
+                    strVal = val.join("; "); 
+                } else if (val !== undefined && val !== null) {
+                    strVal = String(val);
+                }
+                
+                // Nettoyage critique : remplacer les pipes et les sauts de ligne pour maintenir la structure CSV
+                return strVal.replace(/\|/g, "/").replace(/[\r\n]+/g, " ").trim();
+            });
+            output += rowValues.join(" | ") + "\n";
         });
-
-        const result = JSON.parse(response.text || "{}");
-        return result.relevantFieldIds || [];
-    } catch (error) {
-        console.warn("Échec de la sélection intelligente des champs, utilisation de tous les champs.", error);
-        return []; // Retourne vide pour dire "tous les champs" en fallback
     }
+    output += "\n\n";
+  });
+
+  return { contextText: output, totalRows };
 };
 
 /**
@@ -256,24 +162,30 @@ export const getAnalysisSuggestions = async (forms: Form[], responses: FormRespo
   }
 
   try {
-    // Utilisation du format compressé même pour l'échantillon
-    const sampleResponses = responses.slice(0, 10);
-    const dataContext = prepareCompressedContext(forms, sampleResponses);
+    // Pour les suggestions, on envoie un extrait des réponses (5 premières) pour que l'IA comprenne le contenu sans saturer
+    const sampleResponses = responses.slice(0, 5);
+    const { contextText } = prepareDataContext(forms, sampleResponses);
     
     const systemInstruction = `
       Tu es un Professeur expert en Méthodologie de Recherche et Biostatistiques.
-      Tu assistes un étudiant en médecine qui a collecté des données.
+      Tu assistes un étudiant en médecine qui a collecté des données mais ne sait pas quelles analyses statistiques effectuer pour sa thèse.
 
       TA MISSION :
-      Analyser la structure du formulaire fournie (via la Légende et l'échantillon CSV) pour proposer 4 à 6 pistes d'analyses pertinentes.
+      Analyser la structure du formulaire et l'échantillon de données fourni pour proposer 4 à 6 pistes d'analyses pertinentes.
 
       CRITÈRES DE SUGGESTION :
-      1. **Pertinence Scientifique** : Propose des analyses qui ont du sens médicalement.
-      2. **Faisabilité Statistique** : Vérifie si les variables (Q1, Q2...) permettent ces tests.
-      3. **Diversité** : Propose un mélange d'analyses descriptives et analytiques.
+      1. **Pertinence Scientifique** : Propose des analyses qui ont du sens médicalement (ex: Facteurs de risque, Évaluation d'impact, Corrélations cliniques).
+      2. **Faisabilité Statistique** : Vérifie si les variables (qualitatives/quantitatives) permettent ces tests (Chi-2, Student, ANOVA, etc.).
+      3. **Diversité** : Propose un mélange d'analyses descriptives (profil épidémiologique) et analytiques (recherche de liens).
 
-      CONTEXTE DES DONNÉES (Format Codebook + CSV) :
-      ${dataContext}
+      FORMAT DE SORTIE (JSON) :
+      Une liste d'objets contenant :
+      - title : Un titre accrocheur pour l'analyse.
+      - description : Une phrase expliquant l'intérêt de cette analyse pour la thèse.
+      - searchPrompt : Une instruction très précise que l'étudiant pourra renvoyer à l'IA pour réaliser cette analyse (ex: "Réalise un test de Chi-2 pour croiser la variable X et la variable Y...").
+
+      CONTEXTE DES DONNÉES (Échantillon format Tableau Texte) :
+      ${contextText}
     `;
 
     const response = await ai.models.generateContent({
@@ -299,72 +211,109 @@ export const getAnalysisSuggestions = async (forms: Form[], responses: FormRespo
 };
 
 /**
- * Effectue une analyse complète des données (Optimisée en 2 étapes + Compression CSV)
+ * Effectue une analyse complète des données.
+ * Supporte le mode "Refinement" si un previousReport est fourni.
  */
-export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string): Promise<any> => {
+export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string, previousReport: any = null): Promise<any> => {
   if (!apiKey || apiKey === "MISSING_KEY") {
       return {
-          analysisText: "⚠️ La clé API Gemini n'est pas configurée sur Vercel. Veuillez ajouter la variable API_KEY dans les settings.",
+          analysisText: "<p class='text-red-500 font-bold'>⚠️ La clé API Gemini n'est pas configurée sur Vercel. Veuillez ajouter la variable API_KEY dans les settings.</p>",
           chartData: null,
           requiresConfirmation: false
       };
   }
   
   try {
-    // ÉTAPE 1 : Identification des colonnes pertinentes pour réduire la charge
-    let relevantFieldIds: string[] = [];
+    // Préparation des données complètes au format optimisé (CSV-like)
+    // On récupère le nombre exact de lignes pour l'injecter dans le prompt
+    const { contextText: fullContext, totalRows } = prepareDataContext(forms, responses);
     
-    // On ne fait cette optimisation que si on a beaucoup de données (> 20 réponses)
-    if (responses.length > 20) {
-        relevantFieldIds = await identifyRelevantFields(forms, userPrompt);
-        console.log(`Optimisation IA : ${relevantFieldIds.length} champs sélectionnés sur ${forms[0]?.schema.length || 0} pour l'analyse.`);
-    }
+    let baseInstruction = `
+      Tu es MedataAI, un expert de classe mondiale en biostatistiques médicales, épidémiologie et méthodologie de recherche clinique.
+      Ton rôle est d'assister des étudiants en médecine dans l'analyse de leurs thèses.
 
-    // ÉTAPE 2 : Filtrage et Compression CSV
-    // Utilise le nouveau format Codebook + CSV
-    const filteredContext = prepareCompressedContext(forms, responses, relevantFieldIds.length > 0 ? relevantFieldIds : undefined);
-    
-    const systemInstruction = `
-      Tu es MedataAI, un expert de classe mondiale en biostatistiques médicales.
-      
-      IMPORTANT : FORMAT DES DONNÉES
-      Les données te sont fournies sous un format compressé comprenant :
-      1. Une LÉGENDE (Codebook) : Elle t'indique que 'Q1' correspond à telle question, et que le code '1' signifie 'Homme', etc.
-      2. Un CSV : Contenant les données brutes encodées.
-      
-      TA MISSION :
-      1. DÉCODER les données en utilisant la légende.
-      2. ANALYSER les données décodées pour répondre à la demande de l'utilisateur.
-      3. RAPPORTER tes résultats avec la rigueur d'un article scientifique.
+      DONNÉES FOURNIES :
+      - Tu as reçu exactement **${totalRows}** entrées (lignes de réponses patients).
+      - **CRITIQUE :** Tu dois baser tes calculs (n, pourcentages) sur la TOTALITÉ de ces ${totalRows} entrées. Ne fais aucune approximation sur le volume des données. Si tu comptes moins de ${totalRows}, recompte attentivement.
 
       CAPACITÉS D'EXPERT ATTENDUES :
-      - Identifie automatiquement les types de variables via la légende.
-      - Effectue les calculs (fréquences, moyennes, croisements) sur les données CSV.
-      - Suggère ou simule les tests statistiques appropriés (Chi-2, Student, etc.).
-      - Interprète les résultats cliniquement.
-
-      STRUCTURE DE LA RÉPONSE (Markdown) :
-      - **Résumé Méthodologique** : (Ex: "Analyse ciblée portant sur N=${responses.length} patients...")
-      - **Résultats Clés** : Chiffres marquants en gras.
-      - **Analyse Détaillée** : Réponses spécifiques au prompt.
-      - **Pistes de Réflexion** : Suggestions de tests statistiques à valider.
-
+      1. **Qualification des variables** : Identifie automatiquement si les variables sont qualitatives (nominales/ordinales) ou quantitatives (discrètes/continues).
+      2. **Choix des tests** : Suggère ou simule les tests appropriés (Chi-2, Fisher, Student, ANOVA, Pearson, etc.).
+      3. **Interprétation clinique** : Ne donne pas juste des chiffres. Explique ce qu'ils signifient médicalement.
+      
+      IMPORTANT - FORMAT DE SORTIE HTML :
+      - Tu dois générer le contenu de 'analysisText' en **HTML** pur.
+      - **N'UTILISE JAMAIS DE MARKDOWN** (pas de **, ##, ---, etc.).
+      - Utilise des balises sémantiques : <h3> pour les titres, <p> pour les paragraphes, <ul class="list-disc pl-5 space-y-1"> pour les listes, <li> pour les éléments de liste.
+      - Utilise des classes Tailwind CSS pour le style si nécessaire (ex: <span class="text-primary-600 font-bold">).
+      - Ne mets pas de balises <html> ou <body>, juste le contenu.
+      
       RÈGLES STRICTES :
-      - Utilise un langage médical précis.
+      - Utilise un langage médical précis mais pédagogique.
       - Génère TOUJOURS un graphique pertinent ('chartData') si des comparaisons chiffrées sont possibles.
-
-      CONTEXTE DES DONNÉES (Légende + CSV) :
-      ${filteredContext}
+      - Le format de sortie doit être un JSON conforme au schéma.
+      - Les données sont fournies sous forme de tableau texte (séparateur '|'). Chaque ligne est une réponse patient.
     `;
+
+    let userContent = "";
+
+    if (previousReport) {
+        // MODE MODIFICATION / RAFFINEMENT
+        baseInstruction += `
+        
+        CONTEXTE DE MODIFICATION :
+        L'utilisateur souhaite modifier ou approfondir un rapport existant.
+        Tu recevras le "Rapport Actuel" et la "Nouvelle Instruction".
+        Tu dois régénérer le JSON complet du rapport (analysisText et chartData) en appliquant les changements demandés.
+        
+        IMPORTANT - MISE EN ÉVIDENCE VISUELLE :
+        Pour que l'utilisateur repère immédiatement tes modifications dans le texte :
+        1. Entoure EXCLUSIVEMENT les phrases ajoutées ou les données modifiées avec la balise HTML suivante :
+           <span style="color: #6366f1; font-weight: bold;">...</span>
+        2. N'applique ce style QUE sur les changements. Le reste du texte doit rester inchangé (sauf si une suppression est nécessaire).
+        `;
+
+        userContent = `
+        DONNÉES (Format Tableau Texte - ${totalRows} lignes) :
+        ${fullContext}
+
+        RAPPORT ACTUEL (JSON) :
+        ${JSON.stringify(previousReport)}
+
+        NOUVELLE INSTRUCTION UTILISATEUR :
+        "${userPrompt}"
+        `;
+    } else {
+        // MODE CRÉATION
+        baseInstruction += `
+        
+        TA MISSION :
+        Analyser les données fournies et répondre à la demande de l'utilisateur avec la rigueur d'un article scientifique.
+        
+        STRUCTURE DE LA RÉPONSE (HTML dans 'analysisText') :
+        - <h3>Résumé Méthodologique</h3> (Indiquer clairement : n = ${totalRows} patients inclus)
+        - <h3>Résultats Clés</h3> (Chiffres marquants sous forme de liste)
+        - <h3>Analyse Détaillée</h3> (Paragraphes argumentés)
+        - <h3>Pistes de Réflexion</h3>
+        `;
+
+        userContent = `
+        DONNÉES (Format Tableau Texte - ${totalRows} lignes) :
+        ${fullContext}
+
+        DEMANDE UTILISATEUR :
+        "${userPrompt}"
+        `;
+    }
 
     const response = await ai.models.generateContent({
       model: ANALYSIS_MODEL,
-      contents: userPrompt,
+      contents: userContent,
       config: {
-        systemInstruction: systemInstruction,
+        systemInstruction: baseInstruction,
         responseMimeType: "application/json",
         responseSchema: analysisResponseSchema,
-        temperature: 0.2, // Température basse pour une analyse rigoureuse des chiffres
+        temperature: 0.2, // Température encore plus basse pour maximiser la précision des données
       },
     });
 
@@ -375,12 +324,12 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
 
   } catch (error: any) {
     console.error("Erreur Gemini Analysis:", error);
-    let errorMsg = "⚠️ Une erreur technique est survenue lors de l'analyse IA.";
+    let errorMsg = "<p class='text-red-600'>⚠️ Une erreur technique est survenue lors de l'analyse IA.</p>";
     const errorString = String(error);
     if (errorString.includes("leaked") || errorString.includes("API key not valid")) {
-        errorMsg = "⚠️ Clé API bloquée par Google (fuite détectée ou invalide). Veuillez générer une nouvelle clé sur Google AI Studio et mettre à jour Vercel.";
+        errorMsg = "<p class='text-red-600 font-bold'>⚠️ Clé API bloquée par Google (fuite détectée ou invalide). Veuillez générer une nouvelle clé sur Google AI Studio et mettre à jour Vercel.</p>";
     } else if (errorString.includes("429")) {
-        errorMsg = "⚠️ Trop de requêtes (Quota dépassé). Veuillez réessayer dans une minute.";
+        errorMsg = "<p class='text-yellow-600'>⚠️ Trop de requêtes (Quota dépassé). Veuillez réessayer dans une minute.</p>";
     }
     return {
       analysisText: errorMsg,
@@ -395,7 +344,7 @@ export const performSampledAnalysis = async (forms: Form[], responses: FormRespo
 };
 
 /**
- * Chatbot interactif avec streaming
+ * Chatbot interactif avec streaming (Reste inchangé pour le chatbot général)
  */
 export const getChatbotResponseStream = async (userRole: User['role'], history: ChatMessage[], settings: SystemSettings) => {
   if (!apiKey || apiKey === "MISSING_KEY") {

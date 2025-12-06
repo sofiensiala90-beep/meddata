@@ -5,21 +5,21 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import Spinner from '../components/Spinner';
 import ChartRenderer from '../components/ChartRenderer';
-import { getAnalysis, performSampledAnalysis, getAnalysisSuggestions } from '../services/geminiService';
+import { getAnalysis, getAnalysisSuggestions } from '../services/geminiService';
 import DownloadIcon from '../components/icons/DownloadIcon';
 import BarChartIcon from '../components/icons/BarChartIcon';
 import PieChartIcon from '../components/icons/PieChartIcon';
 import DoughnutChartIcon from '../components/icons/DoughnutChartIcon';
-import HistoryIcon from '../components/icons/HistoryIcon';
 import ConfirmationModal, { ConfirmationModalProps } from '../components/ConfirmationModal';
 import CoinIcon from '../components/icons/CoinIcon';
-
+import ChatIcon from '../components/icons/ChatIcon';
+import HistoryIcon from '../components/icons/HistoryIcon';
+import TrashIcon from '../components/icons/TrashIcon';
 
 interface AnalysisProps {
   user: User;
   forms: Form[];
   responses: FormResponse[];
-  // FIX: Updated prop type to handle async function returning a Promise.
   onTransaction: (userId: string, reason: TransactionReason, context?: { formIds?: string[], formTitles?: string[] }) => Promise<boolean>;
   analysisContext?: { formIds: string[] } | null;
   onNavigate: (page: string) => void;
@@ -30,113 +30,175 @@ interface AnalysisProps {
   systemSettings: SystemSettings;
 }
 
-const isValidHex = (color: string | undefined | null): color is string => {
-    if (!color) return false;
-    // Supports 3 and 6 digit hex codes
-    return /^#[0-9A-F]{6}$/i.test(color) || /^#[0-9A-F]{3}$/i.test(color);
-};
-
 const ChartTypeButton: React.FC<{ icon: React.ReactNode; label: string; isActive: boolean; onClick: () => void; }> = ({ icon, label, isActive, onClick }) => (
     <button
         onClick={onClick}
         title={`Afficher en graphique ${label.toLowerCase()}`}
-        className={`flex items-center space-x-2 px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${
+        className={`flex items-center space-x-2 px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${
             isActive
-            ? 'bg-white dark:bg-slate-800 text-primary-600 dark:text-primary-400 shadow-sm'
-            : 'text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-600/50'
+            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300'
+            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
         }`}
     >
         {icon}
-        <span>{label}</span>
+        <span className="hidden sm:inline">{label}</span>
     </button>
 );
 
+const ChatMessageBubble: React.FC<{ role: 'user' | 'ai'; text: string; isError?: boolean }> = ({ role, text, isError }) => (
+    <div className={`flex flex-col ${role === 'user' ? 'items-end' : 'items-start'} mb-4`}>
+        <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm whitespace-pre-wrap shadow-sm ${
+            role === 'user' 
+                ? 'bg-primary-600 text-white rounded-br-none' 
+                : isError 
+                    ? 'bg-red-50 text-red-700 border border-red-200 rounded-bl-none'
+                    : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 rounded-bl-none'
+        }`}>
+            {text}
+        </div>
+        <span className="text-[10px] text-slate-400 mt-1 px-1">
+            {role === 'user' ? 'Vous' : 'MedataAI'}
+        </span>
+    </div>
+);
+
+const HistoryModal: React.FC<{
+    history: AnalysisHistory[];
+    onClose: () => void;
+    onLoad: (item: AnalysisHistory) => void;
+    onDelete: (id: string) => void;
+}> = ({ history, onClose, onLoad, onDelete }) => {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <header className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-white dark:bg-slate-800 rounded-t-lg sticky top-0 z-10">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                        <HistoryIcon className="w-5 h-5 mr-2" />
+                        Historique des analyses
+                    </h3>
+                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-700 rounded-full">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </header>
+                <main className="flex-1 overflow-y-auto p-4 bg-slate-50 dark:bg-slate-900/50">
+                    {history.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-slate-500 dark:text-slate-400">
+                            <HistoryIcon className="w-12 h-12 mb-3 opacity-20" />
+                            <p>Aucune analyse enregistrée pour le moment.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {[...history].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(item => (
+                                <div key={item.id} className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-all">
+                                    <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center text-xs text-slate-500 dark:text-slate-400 mb-1">
+                                                <span className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded mr-2">
+                                                    {new Date(item.createdAt).toLocaleDateString()}
+                                                </span>
+                                                <span>{new Date(item.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                            </div>
+                                            <h4 className="font-semibold text-slate-800 dark:text-slate-200 truncate pr-2 mb-1">
+                                                {item.formTitles.join(', ')}
+                                            </h4>
+                                            <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2 bg-slate-50 dark:bg-slate-900/50 p-2 rounded italic border-l-2 border-primary-400">
+                                                "{item.userPrompt}"
+                                            </p>
+                                        </div>
+                                        <div className="flex sm:flex-col gap-2 shrink-0 w-full sm:w-auto">
+                                            <Button 
+                                                onClick={() => { onLoad(item); onClose(); }} 
+                                                className="flex-1 sm:w-24 justify-center !text-xs !py-2"
+                                            >
+                                                Charger
+                                            </Button>
+                                            <Button 
+                                                onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} 
+                                                variant="danger" 
+                                                className="flex-1 sm:w-24 justify-center !text-xs !py-2 !bg-white dark:!bg-transparent hover:!bg-red-50 dark:hover:!bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800"
+                                            >
+                                                Supprimer
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </main>
+            </div>
+        </div>
+    );
+};
+
 const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransaction, analysisContext, onNavigate, analysisHistory, saveAnalysisToHistory, deleteAnalysisHistory, unlockedAnalysis, systemSettings }) => {
+    // Selection State
     const [selectedFormId, setSelectedFormId] = useState<string>('');
+    const [selectedFormsForAnalysis, setSelectedFormsForAnalysis] = useState<Form[]>([]);
+    
+    // Chat & Analysis State
+    const [chatHistory, setChatHistory] = useState<Array<{role: 'user' | 'ai', text: string, isError?: boolean}>>([]);
     const [userPrompt, setUserPrompt] = useState<string>('');
     const [analysisResult, setAnalysisResult] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
     const [expertSuggestions, setExpertSuggestions] = useState<Array<{title: string, description: string, searchPrompt: string}>>([]);
-    const [error, setError] = useState<string>('');
     const [displayedChartType, setDisplayedChartType] = useState<string | null>(null);
-    const chartCanvasRef = useRef<HTMLCanvasElement>(null);
-    const resultsRef = useRef<HTMLDivElement>(null);
-    const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
-    const analysisContinuationRef = useRef<{ relevantFieldIds: string[] } | null>(null);
-
+    const [mobileTab, setMobileTab] = useState<'chat' | 'report'>('chat');
     
+    // UI Refs & Modal
+    const chartCanvasRef = useRef<HTMLCanvasElement>(null);
+    const chatEndRef = useRef<HTMLDivElement>(null);
+    const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
+    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+
     const isMultiFormMode = user.role === 'admin' && !!analysisContext?.formIds && analysisContext.formIds.length > 0;
-    const [selectedFormsForAnalysis, setSelectedFormsForAnalysis] = useState<Form[]>([]);
     const isSuspended = user.role === 'student' && user.status.startsWith('suspended');
 
+    // Initialization
     useEffect(() => {
         if (isMultiFormMode && analysisContext?.formIds) {
             const selected = forms.filter(f => analysisContext.formIds.includes(f.id));
             setSelectedFormsForAnalysis(selected);
-            setSelectedFormId(''); // Clear single form selection
+            setSelectedFormId(''); 
         } else {
             setSelectedFormsForAnalysis([]);
         }
     }, [analysisContext, forms, isMultiFormMode]);
 
-    // Reset suggestions when form changes
+    // Scroll to bottom of chat
     useEffect(() => {
-        setExpertSuggestions([]);
-        setUserPrompt('');
-        setAnalysisResult(null);
-    }, [selectedFormId, isMultiFormMode]);
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [chatHistory, isLoading]);
 
-    const getFormsToAnalyze = () => {
-        if (isMultiFormMode) {
-            return selectedFormsForAnalysis;
+    // Auto-switch to report tab on mobile when result arrives
+    useEffect(() => {
+        if (analysisResult) {
+            setMobileTab('report');
         }
+    }, [analysisResult]);
+
+    // Get active forms
+    const getFormsToAnalyze = () => {
+        if (isMultiFormMode) return selectedFormsForAnalysis;
         const form = forms.find(f => f.id === selectedFormId);
         return form ? [form] : [];
     };
 
-    // Vérifie si le(s) formulaire(s) sélectionné(s) sont déjà débloqués
+    // Check Access
     const isAccessUnlocked = useMemo(() => {
+        if (user.role === 'admin') return true;
         const targetForms = getFormsToAnalyze();
         if (targetForms.length === 0) return false;
-        
-        // Tous les formulaires ciblés doivent être dans la liste unlockedAnalysis
         return targetForms.every(form => 
             unlockedAnalysis.some(ua => ua.userId === user.id && ua.formId === form.id)
         );
-    }, [getFormsToAnalyze, unlockedAnalysis, user.id]);
+    }, [selectedFormId, selectedFormsForAnalysis, unlockedAnalysis, user.id, user.role]);
 
-
-    const executeSampledAnalysis = async () => {
-        const formsToAnalyze = getFormsToAnalyze();
-        if (formsToAnalyze.length === 0 || !analysisContinuationRef.current) return;
-        
-        setIsLoading(true);
-        setError('');
-        setAnalysisResult(null);
-
-        try {
-            const result = await performSampledAnalysis(formsToAnalyze, responses, userPrompt, analysisContinuationRef.current.relevantFieldIds);
-            setAnalysisResult(result);
-            if (result.chartData) setDisplayedChartType(result.chartData.type);
-            saveAnalysisToHistory(formsToAnalyze.map(f=>f.id), formsToAnalyze.map(f=>f.title), userPrompt, result);
-            setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-        } catch (e) {
-            setError('Une erreur est survenue lors de l\'analyse de l\'échantillon. Veuillez réessayer.');
-            console.error(e);
-        } finally {
-            setIsLoading(false);
-            analysisContinuationRef.current = null;
-        }
-    };
-
-    // Nouvelle fonction dédiée uniquement au déblocage (Paiement)
+    // Handle Unlock/Payment
     const handleUnlockAccess = async () => {
         const formsToAnalyze = getFormsToAnalyze();
-        if (formsToAnalyze.length === 0) {
-            setError(isMultiFormMode ? 'Aucun formulaire sélectionné.' : 'Veuillez sélectionner un formulaire.');
-            return;
-        }
+        if (formsToAnalyze.length === 0) return;
 
         const formsToUnlock = formsToAnalyze.filter(form => 
             !unlockedAnalysis.some(ua => ua.userId === user.id && ua.formId === form.id)
@@ -148,27 +210,25 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                 formIds: formsToAnalyze.map(f => f.id),
                 formTitles: formsToAnalyze.map(f => f.title),
             };
-            // La transaction mettra à jour unlockedAnalysis via Firebase, ce qui déclenchera le changement d'état via le useEffect/useMemo
             await onTransaction(user.id, TransactionReason.AiRequest, transactionContext);
         };
 
         if (cost > 0) {
             setConfirmation({
                 isOpen: true,
-                title: "Commencer les analyses AI",
+                title: "Débloquer l'analyse",
                 message: (
                     <div className="space-y-3">
-                        <p>Vous êtes sur le point d'accéder aux outils d'analyse pour :</p>
+                        <p>Accéder aux outils d'analyse pour :</p>
                         <ul className="list-disc list-inside bg-slate-100 dark:bg-slate-700 p-3 rounded-md text-sm font-medium">
                             {formsToUnlock.map(f => <li key={f.id}>{f.title}</li>)}
                         </ul>
                         <div className="flex justify-between items-center bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                            <span className="text-yellow-800 dark:text-yellow-200">Frais d'accès :</span>
+                            <span className="text-yellow-800 dark:text-yellow-200">Coût :</span>
                             <span className="font-bold text-lg text-yellow-700 dark:text-yellow-300 flex items-center">
                                 {cost} <CoinIcon className="w-5 h-5 ml-1" />
                             </span>
                         </div>
-                        <p className="text-sm text-slate-500">Une fois l'accès débloqué, vous pourrez effectuer autant d'analyses que vous le souhaitez sur ce formulaire, sans frais supplémentaires.</p>
                     </div>
                 ),
                 onConfirm: async () => {
@@ -177,63 +237,41 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                 },
                 onClose: () => setConfirmation(null),
                 variant: 'primary',
-                confirmText: `Payer et Commencer`,
+                confirmText: `Payer et Débloquer`,
             });
         } else {
-            // Déjà débloqué ou gratuit (ne devrait pas arriver souvent ici si isAccessUnlocked est checké, mais sécurité)
             await processUnlock();
         }
     };
 
-    // Fonction pour lancer l'analyse (une fois débloqué)
+    // Run Analysis (Creation or Refinement)
     const handleRunAnalysis = async (promptToUse?: string) => {
         const finalPrompt = promptToUse || userPrompt;
+        if (!finalPrompt.trim()) return;
 
-        if (!finalPrompt.trim()) {
-            setError("Veuillez décrire votre besoin d'analyse.");
-            return;
-        }
-        
         const formsToAnalyze = getFormsToAnalyze();
         
+        // Update UI state
+        setChatHistory(prev => [...prev, { role: 'user', text: finalPrompt }]);
+        setUserPrompt('');
         setIsLoading(true);
-        setError('');
-        setAnalysisResult(null);
-        setDisplayedChartType(null);
-        // Si on lance une analyse spécifique, on peut cacher les suggestions ou les garder.
-        // Pour l'instant on les garde visibles si l'utilisateur veut changer.
+        // We do NOT clear expertSuggestions here, so they persist
 
         try {
-            const result = await getAnalysis(formsToAnalyze, responses, finalPrompt);
+            // Pass previousResult to enable "Refinement Mode" in the service
+            const result = await getAnalysis(formsToAnalyze, responses, finalPrompt, analysisResult);
             
-            if (result.requiresConfirmation) {
-                analysisContinuationRef.current = { relevantFieldIds: result.relevantFieldIds };
-                setConfirmation({
-                    isOpen: true,
-                    title: "Confirmation d'Analyse sur Échantillon",
-                    message: result.message,
-                    onConfirm: () => {
-                        setConfirmation(null);
-                        executeSampledAnalysis();
-                    },
-                    onClose: () => {
-                        setConfirmation(null);
-                        setIsLoading(false);
-                    },
-                    variant: 'primary',
-                    confirmText: 'Oui, continuer',
-                    cancelText: 'Non, annuler',
-                });
-            } else {
-                setAnalysisResult(result);
-                if (result.chartData) setDisplayedChartType(result.chartData.type);
-                saveAnalysisToHistory(formsToAnalyze.map(f=>f.id), formsToAnalyze.map(f=>f.title), finalPrompt, result);
-                setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-                setIsLoading(false);
-            }
-        } catch (e) {
-            setError('Une erreur est survenue lors de l\'analyse. Veuillez réessayer.');
+            setAnalysisResult(result);
+            if (result.chartData) setDisplayedChartType(result.chartData.type);
+            
+            // Save to history (optional, keeping old behavior logic)
+            saveAnalysisToHistory(formsToAnalyze.map(f=>f.id), formsToAnalyze.map(f=>f.title), finalPrompt, result);
+            
+            setChatHistory(prev => [...prev, { role: 'ai', text: "Analyse mise à jour. Vous pouvez me demander de modifier le graphique, de simplifier le texte ou d'ajouter d'autres éléments." }]);
+        } catch (e: any) {
             console.error(e);
+            setChatHistory(prev => [...prev, { role: 'ai', text: "Erreur lors de l'analyse.", isError: true }]);
+        } finally {
             setIsLoading(false);
         }
     };
@@ -243,60 +281,43 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
         if (formsToAnalyze.length === 0) return;
 
         setIsGeneratingSuggestions(true);
-        setError('');
-        setExpertSuggestions([]);
-
         try {
             const suggestions = await getAnalysisSuggestions(formsToAnalyze, responses);
             setExpertSuggestions(suggestions);
         } catch (e) {
-            console.error("Error generating suggestions", e);
-            setError("Impossible de générer des suggestions pour le moment.");
+            console.error(e);
         } finally {
             setIsGeneratingSuggestions(false);
         }
     };
 
+    const handleLoadHistory = (item: AnalysisHistory) => {
+        setAnalysisResult(item.analysisResult);
+        if (item.analysisResult.chartData) {
+            setDisplayedChartType(item.analysisResult.chartData.type);
+        }
+        
+        // Try to select the forms if they exist in the current list
+        if (!isMultiFormMode && item.formIds.length === 1) {
+            if (forms.some(f => f.id === item.formIds[0])) {
+                setSelectedFormId(item.formIds[0]);
+            }
+        }
 
-    const handleLoadHistory = (historyItem: AnalysisHistory) => {
-        setError('');
-        setIsLoading(false);
-        setExpertSuggestions([]); // Clear suggestions when loading history
-        
-        setAnalysisResult(historyItem.analysisResult);
-        setUserPrompt(historyItem.userPrompt);
-    
-        if (isMultiFormMode) {
-          const selected = forms.filter(f => historyItem.formIds.includes(f.id));
-          setSelectedFormsForAnalysis(selected);
-        } else {
-          setSelectedFormId(historyItem.formIds[0] || '');
-        }
-        
-        if (historyItem.analysisResult.chartData) {
-          setDisplayedChartType(historyItem.analysisResult.chartData.type);
-        } else {
-          setDisplayedChartType(null);
-        }
-    
-        setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        setChatHistory([
+            { role: 'user', text: item.userPrompt },
+            { role: 'ai', text: "Analyse restaurée depuis l'historique." }
+        ]);
+        setMobileTab('report');
     };
-    
-    const handleDeleteHistoryClick = (item: AnalysisHistory) => {
+
+    const handleDeleteHistory = (id: string) => {
         setConfirmation({
             isOpen: true,
-            title: "Confirmer la suppression",
-            message: (
-                <>
-                    <p>Êtes-vous sûr de vouloir supprimer cet élément de l'historique ?</p>
-                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 border-l-4 border-slate-300 dark:border-slate-600 pl-3">
-                        "{item.userPrompt}"
-                    </p>
-                    <p className="text-red-600 dark:text-red-400 font-semibold mt-3">Cette action est irréversible.</p>
-                </>
-            ),
+            title: "Supprimer l'historique",
+            message: "Êtes-vous sûr de vouloir supprimer cette analyse de l'historique ?",
             onConfirm: () => {
-                deleteAnalysisHistory(item.id);
+                deleteAnalysisHistory(id);
                 setConfirmation(null);
             },
             onClose: () => setConfirmation(null),
@@ -307,380 +328,260 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
 
     const handleExportToWord = () => {
         if (!analysisResult) return;
-
         let chartImageHtml = '';
         if (analysisResult.chartData && chartCanvasRef.current) {
             try {
                 const chartImage = chartCanvasRef.current.toDataURL('image/png');
-                chartImageHtml = `
-                    <h2>Visualisation Graphique</h2>
-                    <p><img src="${chartImage}" alt="Chart Analysis" style="max-width: 540px; height: auto; border: 1px solid #cccccc;" /></p>
-                    <br />
-                `;
-            } catch (e) {
-                console.error("Could not generate chart image for export:", e);
-                chartImageHtml = '<h2>Visualisation Graphique</h2><p>L\'image du graphique n\'a pas pu être générée.</p>';
-            }
+                chartImageHtml = `<h2>Graphique</h2><p><img src="${chartImage}" width="500" /></p>`;
+            } catch (e) { console.error(e); }
         }
-
-        let chartDataTableHtml = '';
-        if (analysisResult.chartData) {
-            const { labels, datasets } = analysisResult.chartData.data;
-            const dataset = datasets[0];
-            const defaultColors = ['#60A5FA', '#34D399', '#FBBF24', '#F87171', '#A78BFA', '#FB923C', '#EC4899', '#14B8A6'];
-
-            chartDataTableHtml = `
-                <h2>Données du Graphique : ${dataset.label}</h2>
-                <table border="1" style="width:100%; border-collapse: collapse; font-family: Arial, sans-serif;">
-                    <thead>
-                        <tr style="background-color: #f2f2f2;">
-                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Label</th>
-                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Valeur</th>
-                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Couleur</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${labels.map((label: string, index: number) => {
-                            const color = isValidHex(dataset.backgroundColor?.[index]) 
-                                ? dataset.backgroundColor![index] 
-                                : defaultColors[index % defaultColors.length];
-                            return `
-                            <tr>
-                                <td style="padding: 8px; border: 1px solid #ddd;">${label}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd;">${dataset.data[index]}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd;">
-                                    <table border="0" cellpadding="0" cellspacing="0" style="border:none; font-family: Arial, sans-serif;">
-                                        <tr>
-                                            <td width="15" height="15" bgcolor="${color}" style="border: 1px solid #cccccc;"></td>
-                                            <td style="padding-left: 8px; vertical-align: middle; font-family: monospace;">${color}</td>
-                                        </tr>
-                                    </table>
-                                </td>
-                            </tr>
-                        `}).join('')}
-                    </tbody>
-                </table>
-            `;
-        }
-
+        
         const htmlContent = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>Analyse MedataAI</title>
-            </head>
-            <body style="font-family: Arial, sans-serif;">
-                <h1>Résultats de l'analyse MedataAI</h1>
-                <hr>
-                <h2>Analyse Textuelle</h2>
-                <div style="white-space: pre-wrap; font-family: inherit;">${analysisResult.analysisText.replace(/\n/g, '<br />')}</div>
-                <br>
-                ${chartImageHtml}
-                ${chartDataTableHtml}
-            </body>
-            </html>
+            <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Analyse MedataAI</title></head>
+            <body style="font-family: Arial;"><h1>Rapport MedataAI</h1>${analysisResult.analysisText}<br>${chartImageHtml}</body></html>
         `;
-
-        const blob = new Blob(['\ufeff', htmlContent], {
-            type: 'application/msword'
-        });
-
+        const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = 'analyse-medata-ai.doc';
+        link.download = 'analyse-medata.doc';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(url);
     };
-    
+
     const chartDataForRenderer = useMemo(() => {
         if (!analysisResult?.chartData || !displayedChartType) return null;
-        return {
-            ...analysisResult.chartData,
-            type: displayedChartType,
-        };
+        return { ...analysisResult.chartData, type: displayedChartType };
     }, [analysisResult, displayedChartType]);
 
+    // --- RENDER ---
 
     if (isSuspended) {
         return (
              <div className="space-y-6">
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Analyse IA</h2>
                 <Card className="!bg-red-50 dark:!bg-red-900/20 border border-red-200 dark:border-red-800">
-                    <div className="flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-red-500 dark:text-red-400 mr-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                        <div>
-                            <h3 className="text-lg font-semibold text-red-800 dark:text-red-200">Accès refusé</h3>
-                            {user.status === 'suspended_manual' ? (
-                                <p className="text-red-700 dark:text-red-300 text-sm mt-1">
-                                    L'analyse IA est désactivée car votre compte a été suspendu par un administrateur. Veuillez contacter le support pour plus d'informations.
-                                </p>
-                            ) : (
-                                <>
-                                    <p className="text-red-700 dark:text-red-300 text-sm mt-1">
-                                        L'analyse IA est désactivée car votre compte est suspendu. 
-                                        Veuillez recharger votre portefeuille pour y accéder à nouveau.
-                                    </p>
-                                    <Button variant="danger" className="!bg-red-500 hover:!bg-red-600 mt-3 !py-1.5 !px-3 !text-sm" onClick={() => onNavigate('portefeuille')}>
-                                        Aller au Portefeuille
-                                    </Button>
-                                </>
-                            )}
-                        </div>
-                    </div>
+                    <div className="text-red-700 dark:text-red-300">Votre compte est suspendu. Veuillez régulariser votre situation.</div>
                 </Card>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Analyse Expert IA</h2>
-            <Card>
-                <div className="space-y-6">
-                    {/* Étape 1 : Sélection du formulaire (Toujours visible) */}
-                    {isMultiFormMode ? (
-                        <div>
-                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                                Formulaires sélectionnés pour l'analyse
-                            </label>
-                            <div className="mt-1 p-3 bg-slate-100 dark:bg-slate-700/50 rounded-md border border-slate-200 dark:border-slate-600">
-                                <ul className="list-disc list-inside text-sm text-slate-800 dark:text-slate-200">
-                                    {selectedFormsForAnalysis.map(f => <li key={f.id}>{f.title}</li>)}
-                                </ul>
+        <div className="flex flex-col h-[calc(100vh-theme(spacing.24))] -m-4 sm:-m-6 relative">
+            
+            {/* Mobile Tab Switcher */}
+            <div className="lg:hidden flex border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shrink-0">
+                <button
+                    onClick={() => setMobileTab('chat')}
+                    className={`flex-1 py-3 text-sm font-medium transition-colors ${mobileTab === 'chat' ? 'text-primary-600 border-b-2 border-primary-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                >
+                    <span className="flex items-center justify-center">
+                        <ChatIcon className="w-4 h-4 mr-2" /> Discussion
+                    </span>
+                </button>
+                <button
+                    onClick={() => setMobileTab('report')}
+                    className={`flex-1 py-3 text-sm font-medium transition-colors ${mobileTab === 'report' ? 'text-primary-600 border-b-2 border-primary-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                >
+                    <span className="flex items-center justify-center">
+                        <BarChartIcon className="w-4 h-4 mr-2" /> Rapport
+                    </span>
+                </button>
+            </div>
+
+            <div className="flex-1 flex overflow-hidden">
+                
+                {/* --- LEFT PANEL: CHAT & CONTROLS --- */}
+                <div className={`${mobileTab === 'chat' ? 'flex' : 'hidden'} lg:flex w-full lg:w-[35%] flex-col bg-slate-50 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700`}>
+                    
+                    {/* Header: Form Selector */}
+                    <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                        <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">
+                            Source de données
+                        </label>
+                        {isMultiFormMode ? (
+                            <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded text-sm font-medium text-slate-900 dark:text-white truncate">
+                                {selectedFormsForAnalysis.length} formulaires sélectionnés
                             </div>
-                        </div>
-                    ) : (
-                        <div>
-                            <label htmlFor="form-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                                Sélectionner un formulaire
-                            </label>
+                        ) : (
                             <select
-                                id="form-select"
                                 value={selectedFormId}
-                                onChange={(e) => setSelectedFormId(e.target.value)}
-                                className="mt-1 block w-full pl-3 pr-10 py-3 text-base shadow-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+                                onChange={(e) => { setSelectedFormId(e.target.value); setAnalysisResult(null); setChatHistory([]); }}
+                                className="block w-full pl-3 pr-10 py-2 text-sm border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
                             >
-                                <option value="" disabled>Choisissez un formulaire validé</option>
+                                <option value="" disabled>Choisir un formulaire</option>
                                 {forms.filter(f => f.status === 'validated').map(form => (
-                                    <option key={form.id} value={form.id}>
-                                        {form.title}
-                                    </option>
+                                    <option key={form.id} value={form.id}>{form.title}</option>
                                 ))}
                             </select>
-                        </div>
-                    )}
+                        )}
+                    </div>
 
-                    {/* Étape 2 : Conditionnelle selon l'état de déblocage */}
-                    
-                    {!isAccessUnlocked ? (
-                        // CAS 1 : FORMULAIRE NON DÉBLOQUÉ (Demande de paiement)
-                        <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700 text-center">
-                            <div className="mx-auto w-16 h-16 bg-primary-100 dark:bg-primary-900/50 rounded-full flex items-center justify-center mb-4">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                </svg>
+                    {/* Chat Area */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {chatHistory.length === 0 && (
+                            <div className="text-center text-slate-500 dark:text-slate-400 mt-10 text-sm">
+                                <ChatIcon className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                                <p>Sélectionnez un formulaire et posez votre question pour générer un rapport.</p>
                             </div>
-                            <h3 className="text-lg font-medium text-slate-900 dark:text-white">Accès à l'analyse experte</h3>
-                            <p className="mt-2 text-slate-600 dark:text-slate-400 max-w-lg mx-auto">
-                                Débloquez la puissance de l'IA pour traiter vos données. L'accès inclut des analyses illimitées, la génération de graphiques et l'exportation de rapports.
-                            </p>
-                            <p className="mt-4 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                Coût unique : {systemSettings.coinCosts.aiAnalysis} Coins
-                            </p>
-                            <Button 
-                                onClick={handleUnlockAccess} 
-                                disabled={!selectedFormId && !isMultiFormMode}
-                                className="mt-6 w-full sm:w-auto px-8 py-3 text-lg"
-                            >
-                                Commencer les analyses AI
-                            </Button>
-                        </div>
-                    ) : (
-                        // CAS 2 : FORMULAIRE DÉBLOQUÉ (Interface d'analyse)
-                        <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700 animate-fadeIn">
-                            <div className="flex justify-between items-center mb-4">
-                                <label htmlFor="prompt-input" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                                   Votre demande d'analyse
-                                </label>
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                    Accès débloqué
-                                </span>
+                        )}
+                        
+                        {chatHistory.map((msg, idx) => (
+                            <ChatMessageBubble key={idx} role={msg.role} text={msg.text} isError={msg.isError} />
+                        ))}
+                        
+                        {isLoading && (
+                            <div className="flex items-center space-x-2 text-slate-500 text-sm pl-4">
+                                <Spinner className="w-4 h-4" />
+                                <span>MedataAI réfléchit...</span>
                             </div>
+                        )}
+                        <div ref={chatEndRef} />
+                    </div>
 
-                            <textarea
-                                id="prompt-input"
-                                rows={4}
-                                value={userPrompt}
-                                onChange={(e) => setUserPrompt(e.target.value)}
-                                placeholder="Ex: Quelle est la prévalence du diabète chez les hommes de plus de 50 ans ? Y a-t-il une corrélation avec l'IMC ?"
-                                className="mt-1 block w-full shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500 p-3"
-                            />
-                            
-                            <div className="mt-4 flex flex-col sm:flex-row gap-3 justify-between items-center">
-                                <Button 
-                                    onClick={handleGetSuggestions}
-                                    disabled={isLoading || isGeneratingSuggestions}
-                                    variant="secondary"
-                                    className="w-full sm:w-auto border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/10 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/30"
-                                >
-                                    {isGeneratingSuggestions ? <Spinner className="w-4 h-4 mr-2" /> : '✨'} Suggestion d'expert
-                                </Button>
-                                <Button 
-                                    onClick={() => handleRunAnalysis()} 
-                                    disabled={isLoading || !userPrompt.trim()}
-                                    className="w-full sm:w-auto px-6"
-                                >
-                                    {isLoading ? <Spinner /> : `Lancer l'analyse`}
+                    {/* Input Area */}
+                    <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+                        {!isAccessUnlocked && (getFormsToAnalyze().length > 0) ? (
+                            <div className="text-center">
+                                <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">Débloquez l'analyse experte pour ce formulaire.</p>
+                                <Button onClick={handleUnlockAccess} className="w-full">
+                                    Débloquer ({systemSettings.coinCosts.aiAnalysis} Coins)
                                 </Button>
                             </div>
-
-                            {/* Section des suggestions d'expert */}
-                            {expertSuggestions.length > 0 && (
-                                <div className="mt-6">
-                                    <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center">
-                                        <span className="mr-2">💡</span> Suggestions d'analyses pertinentes pour votre thèse
-                                    </h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {expertSuggestions.map((suggestion, index) => (
-                                            <button
-                                                key={index}
-                                                onClick={() => {
-                                                    setUserPrompt(suggestion.searchPrompt);
-                                                    handleRunAnalysis(suggestion.searchPrompt);
-                                                }}
-                                                className="text-left p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-primary-500 dark:hover:border-primary-500 hover:shadow-md transition-all group"
-                                            >
-                                                <h5 className="font-semibold text-slate-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400">
-                                                    {suggestion.title}
-                                                </h5>
-                                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
-                                                    {suggestion.description}
-                                                </p>
-                                            </button>
-                                        ))}
-                                    </div>
+                        ) : (
+                            <>
+                                {/* Suggestions Area */}
+                                <div className="mb-3">
+                                    {isGeneratingSuggestions ? (
+                                        <div className="flex items-center space-x-2 text-xs text-primary-600 dark:text-primary-400 p-2">
+                                            <Spinner className="w-3 h-3" />
+                                            <span>L'IA analyse votre formulaire pour trouver des pistes...</span>
+                                        </div>
+                                    ) : expertSuggestions.length > 0 ? (
+                                        <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-thin">
+                                            {expertSuggestions.map((s, i) => (
+                                                <button 
+                                                    key={i} 
+                                                    onClick={() => handleRunAnalysis(s.searchPrompt)} 
+                                                    className="flex-shrink-0 text-xs bg-primary-50 text-primary-700 border border-primary-200 px-3 py-1 rounded-full whitespace-nowrap hover:bg-primary-100 transition-colors"
+                                                    disabled={isLoading}
+                                                >
+                                                    ✨ {s.title}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : getFormsToAnalyze().length > 0 && (
+                                        <button 
+                                            onClick={handleGetSuggestions} 
+                                            className="text-xs text-primary-600 hover:underline flex items-center w-full mb-2"
+                                            disabled={isLoading}
+                                        >
+                                            ✨ Suggérer des analyses pertinentes
+                                        </button>
+                                    )}
                                 </div>
+                                
+                                <div className="relative">
+                                    <textarea
+                                        rows={3}
+                                        value={userPrompt}
+                                        onChange={(e) => setUserPrompt(e.target.value)}
+                                        onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRunAnalysis(); } }}
+                                        placeholder={analysisResult ? "Modifiez le rapport (ex: 'Ajoute un graphique sur l'âge')..." : "Décrivez votre besoin d'analyse..."}
+                                        className="block w-full pr-12 shadow-sm sm:text-sm border-slate-300 dark:border-slate-600 rounded-xl resize-none focus:ring-primary-500 focus:border-primary-500 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white"
+                                        disabled={isLoading || getFormsToAnalyze().length === 0}
+                                    />
+                                    <button 
+                                        onClick={() => handleRunAnalysis()} 
+                                        disabled={isLoading || !userPrompt.trim()}
+                                        className="absolute bottom-2 right-2 p-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* --- RIGHT PANEL: REPORT PREVIEW --- */}
+                <div className={`${mobileTab === 'report' ? 'flex' : 'hidden'} lg:flex flex-1 bg-slate-100 dark:bg-slate-900 flex-col overflow-hidden relative`}>
+                    {/* Toolbar */}
+                    <div className="h-14 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 sm:px-6 shadow-sm z-10 shrink-0">
+                        <h3 className="font-bold text-slate-700 dark:text-white truncate mr-2">Rapport d'Analyse</h3>
+                        <div className="flex space-x-2">
+                            <Button 
+                                onClick={() => setIsHistoryModalOpen(true)} 
+                                variant="secondary" 
+                                className="!py-1.5 !px-3 !text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 whitespace-nowrap"
+                            >
+                                <HistoryIcon className="w-4 h-4 mr-1 sm:mr-2 inline" />
+                                <span className="hidden sm:inline">Historique</span>
+                                <span className="sm:hidden">Hist.</span>
+                            </Button>
+                            {analysisResult && (
+                                <Button onClick={handleExportToWord} variant="secondary" className="!py-1.5 !px-3 !text-xs whitespace-nowrap">
+                                    <DownloadIcon className="w-4 h-4 mr-1 sm:mr-2 inline" />
+                                    <span className="hidden sm:inline">Word</span>
+                                    <span className="sm:hidden">Exp.</span>
+                                </Button>
                             )}
                         </div>
-                    )}
-                </div>
-            </Card>
-
-            {error && (
-                <Card>
-                    <p className="text-red-500 text-center">{error}</p>
-                </Card>
-            )}
-
-            {isLoading && !confirmation?.isOpen && (
-                <Card>
-                    <div className="flex flex-col items-center justify-center p-8">
-                        <Spinner className="w-12 h-12" />
-                        <p className="mt-4 font-medium text-slate-600 dark:text-slate-300">MedataAI analyse vos données...</p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Calcul des statistiques, recherche de corrélations et génération du rapport.</p>
                     </div>
-                </Card>
-            )}
 
-            {analysisResult && (
-                <div ref={resultsRef}>
-                    <Card>
-                        <div className="flex justify-between items-center pb-4 border-b border-slate-200 dark:border-slate-700 mb-6 -mt-2 -mx-6 px-6">
-                            <h3 className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white">
-                                Rapport d'Analyse
-                            </h3>
-                            <Button onClick={handleExportToWord} variant="secondary" className="!py-1.5 !px-3 !text-sm">
-                                <DownloadIcon className="w-4 h-4 mr-2" />
-                                Exporter en Word
-                            </Button>
-                        </div>
-                        <div className="prose dark:prose-invert max-w-none prose-p:whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: analysisResult.analysisText.replace(/\n/g, '<br />') }} />
-                        
-                        {analysisResult.chartData && (
-                            <div className="flex justify-between items-center mb-4 mt-6">
-                                <h4 className="text-base font-semibold text-slate-800 dark:text-slate-200">
-                                    Visualisation Graphique
-                                </h4>
-                                <div className="flex items-center space-x-1 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg">
-                                    <ChartTypeButton
-                                        icon={<BarChartIcon className="w-5 h-5" />}
-                                        label="Barres"
-                                        isActive={displayedChartType === 'bar'}
-                                        onClick={() => setDisplayedChartType('bar')}
-                                    />
-                                    <ChartTypeButton
-                                        icon={<PieChartIcon className="w-5 h-5" />}
-                                        label="Circulaire"
-                                        isActive={displayedChartType === 'pie'}
-                                        onClick={() => setDisplayedChartType('pie')}
-                                    />
-                                    <ChartTypeButton
-                                        icon={<DoughnutChartIcon className="w-5 h-5" />}
-                                        label="Donut"
-                                        isActive={displayedChartType === 'doughnut'}
-                                        onClick={() => setDisplayedChartType('doughnut')}
-                                    />
+                    {/* Content */}
+                    <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+                        {analysisResult ? (
+                            <div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 shadow-xl rounded-xl min-h-[calc(100vh-12rem)] p-6 sm:p-12 animate-fade-in-up">
+                                {/* Chart Section */}
+                                {analysisResult.chartData && (
+                                    <div className="mb-8 p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-100 dark:border-slate-700">
+                                        <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                                            <h4 className="font-semibold text-slate-700 dark:text-slate-200">Visualisation</h4>
+                                            <div className="flex space-x-1 bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
+                                                <ChartTypeButton icon={<BarChartIcon className="w-4 h-4"/>} label="Barres" isActive={displayedChartType === 'bar'} onClick={() => setDisplayedChartType('bar')} />
+                                                <ChartTypeButton icon={<PieChartIcon className="w-4 h-4"/>} label="Tarte" isActive={displayedChartType === 'pie'} onClick={() => setDisplayedChartType('pie')} />
+                                                <ChartTypeButton icon={<DoughnutChartIcon className="w-4 h-4"/>} label="Donut" isActive={displayedChartType === 'doughnut'} onClick={() => setDisplayedChartType('doughnut')} />
+                                            </div>
+                                        </div>
+                                        {chartDataForRenderer && <ChartRenderer ref={chartCanvasRef} chartData={chartDataForRenderer} />}
+                                    </div>
+                                )}
+
+                                {/* Text Report */}
+                                <div className="prose dark:prose-invert max-w-none prose-headings:text-slate-800 dark:prose-headings:text-slate-100 prose-p:text-slate-600 dark:prose-p:text-slate-300">
+                                    <div dangerouslySetInnerHTML={{ __html: analysisResult.analysisText }} />
                                 </div>
                             </div>
-                        )}
-
-                        {chartDataForRenderer && (
-                        <div className="mt-4">
-                            <ChartRenderer ref={chartCanvasRef} chartData={chartDataForRenderer} />
-                        </div>
-                        )}
-                    </Card>
-                </div>
-            )}
-
-            <Card>
-                <div className="flex items-center">
-                    <HistoryIcon className="w-6 h-6 mr-3 text-slate-500 dark:text-slate-400" />
-                    <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Historique d'Analyse</h3>
-                </div>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Revoyez vos rapports précédents gratuitement.
-                </p>
-
-                <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
-                    {analysisHistory.length > 0 ? (
-                        analysisHistory.map(item => (
-                            <div key={item.id} className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg flex justify-between items-center">
-                                <div className="flex-grow min-w-0">
-                                    <p className="font-semibold text-sm text-slate-800 dark:text-slate-200 truncate" title={item.userPrompt}>
-                                        {item.userPrompt}
-                                    </p>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                                        Analysé le {new Date(item.createdAt).toLocaleDateString()} sur : {item.formTitles.join(', ')}
-                                    </p>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400 text-center">
+                                <div className="w-24 h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg flex items-center justify-center mb-4 bg-slate-50 dark:bg-slate-800/50">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
                                 </div>
-                                <div className="flex space-x-2 flex-shrink-0 ml-4">
-                                    <Button onClick={() => handleLoadHistory(item)} variant="secondary" className="!text-xs !py-1.5 !px-3">
-                                        Revoir
-                                    </Button>
-                                    <Button 
-                                        onClick={() => handleDeleteHistoryClick(item)} 
-                                        variant="secondary" 
-                                        className="!text-xs !py-1.5 !px-3 !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
-                                        title="Supprimer l'analyse"
-                                    >
-                                        Supprimer
-                                    </Button>
-                                </div>
+                                <p>Le rapport généré apparaîtra ici.</p>
+                                <p className="text-sm mt-2 text-slate-500">Posez une question dans le panneau de discussion pour commencer.</p>
                             </div>
-                        ))
-                    ) : (
-                        <p className="text-center text-slate-500 dark:text-slate-400 py-8">
-                            Aucun historique d'analyse trouvé.
-                        </p>
-                    )}
+                        )}
+                    </div>
                 </div>
-            </Card>
-             {confirmation && <ConfirmationModal {...confirmation} />}
+            </div>
+            
+            {isHistoryModalOpen && (
+                <HistoryModal 
+                    history={analysisHistory} 
+                    onClose={() => setIsHistoryModalOpen(false)} 
+                    onLoad={handleLoadHistory}
+                    onDelete={handleDeleteHistory}
+                />
+            )}
+            
+            {confirmation && <ConfirmationModal {...confirmation} />}
         </div>
     );
 };

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User, Form, FormResponse, FormField, PurchasedForm, SystemSettings } from '../types';
 import Card from '../components/Card';
@@ -8,6 +9,8 @@ import ConfirmationModal, { ConfirmationModalProps } from '../components/Confirm
 import PlusIcon from '../components/icons/PlusIcon';
 import CoinIcon from '../components/icons/CoinIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import ArrowUpIcon from '../components/icons/ArrowUpIcon';
+import ArrowDownIcon from '../components/icons/ArrowDownIcon';
 
 interface FormsProps {
   user: User;
@@ -187,6 +190,9 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   const [formToAction, setFormToAction] = useState<Form | null>(null);
   const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
   const actionMenuRef = useRef<Record<string, HTMLDivElement | null>>({});
+  
+  // Reordering State
+  const [isReordering, setIsReordering] = useState(false);
 
 
   const isSuspended = user.role === 'student' && user.status.startsWith('suspended');
@@ -234,7 +240,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
 
   const filteredForms = useMemo(() => {
     if (user.role !== 'admin') {
-      return myCreationsAndCopies;
+      return myCreationsAndCopies; // Already sorted by orderIndex in App.tsx
     }
     return forms.filter(form => {
       const studentMatch = filters.studentId ? form.userId === filters.studentId : true;
@@ -459,6 +465,36 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   const handleConfirmPublish = (formId: string, price: number, pricePerResponse: number) => {
     publishForm(formId, price, pricePerResponse);
     setIsPublishModalOpen(false);
+  };
+
+  const handleMoveForm = async (index: number, direction: 'prev' | 'next') => {
+    if (direction === 'prev' && index === 0) return;
+    if (direction === 'next' && index === filteredForms.length - 1) return;
+
+    const formA = filteredForms[index];
+    const formB = filteredForms[index + (direction === 'next' ? 1 : -1)];
+
+    // Si orderIndex n'existe pas, on utilise l'index actuel comme fallback
+    // Cela permet de démarrer le tri même sur des données anciennes
+    let indexA = formA.orderIndex;
+    let indexB = formB.orderIndex;
+
+    if (indexA === undefined || indexA === null) indexA = index;
+    if (indexB === undefined || indexB === null) indexB = index + (direction === 'next' ? 1 : -1);
+
+    // Si collision (mêmes index), on force un décalage
+    if (indexA === indexB) {
+        if (direction === 'next') {
+            indexB = indexA + 1;
+        } else {
+            indexB = indexA - 1;
+        }
+    }
+
+    // Échange des positions : On assigne à A la position cible (B) et à B la position actuelle de A.
+    // Cela permet un échange "sur place" sans envoyer au début ou à la fin.
+    await updateForm({ ...formA, orderIndex: indexB });
+    await updateForm({ ...formB, orderIndex: indexA });
   };
 
   const renderFormField = (field: FormField, data: Record<string, any>, isReadOnly = false) => {
@@ -738,7 +774,22 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Gérez vos formulaires créés, les copies de formulaires achetés, et les ensembles de données que vous avez acquis.</p>
             )}
           </div>
-          {user.role === 'student' && activeTab === 'my_creations' && <Button onClick={handleStartCreating} disabled={isSuspended} className="w-full sm:w-auto">+ Créer un formulaire</Button>}
+          {user.role === 'student' && activeTab === 'my_creations' && (
+            <div className="flex space-x-2 w-full sm:w-auto">
+              {filteredForms.length > 1 && (
+                <Button 
+                  onClick={() => setIsReordering(!isReordering)} 
+                  variant={isReordering ? "primary" : "secondary"}
+                  disabled={isSuspended || filters.searchTerm.trim() !== ''}
+                  className="w-full sm:w-auto"
+                  title={filters.searchTerm.trim() !== '' ? "Impossible de réorganiser pendant une recherche" : "Changer l'ordre d'affichage"}
+                >
+                  {isReordering ? 'Terminer' : 'Organiser'}
+                </Button>
+              )}
+              <Button onClick={handleStartCreating} disabled={isSuspended || isReordering} className="w-full sm:w-auto">+ Créer un formulaire</Button>
+            </div>
+          )}
           {user.role === 'admin' && (
              <Button onClick={handleStartMultiFormAnalysis} disabled={selectedFormIds.length === 0} className="w-full sm:w-auto">
                 Analyse IA ({selectedFormIds.length})
@@ -749,8 +800,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
         {user.role === 'student' && (
             <div className="border-b border-slate-200 dark:border-slate-700">
                 <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                    <button onClick={() => setActiveTab('my_creations')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_creations' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Créations & Copies</button>
-                    <button onClick={() => setActiveTab('data_purchases')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'data_purchases' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Achats de Données</button>
+                    <button onClick={() => { setActiveTab('my_creations'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_creations' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Créations & Copies</button>
+                    <button onClick={() => { setActiveTab('data_purchases'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'data_purchases' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Achats de Données</button>
                 </nav>
             </div>
         )}
@@ -787,14 +838,14 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
 
                 {filteredForms.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {filteredForms.map(form => {
+                    {filteredForms.map((form, index) => {
                     const creator = users.find(u => u.id === form.userId);
                     const responseCount = getResponseCountForForm(form.id);
                     const matchingQuestions = form.schema.filter(q => filters.searchTerm.trim() && q.label.toLowerCase().includes(filters.searchTerm.trim().toLowerCase())).map(q => q.label);
                     const statusInfo = getStatusBadge(form.status);
 
                     return (
-                        <Card key={form.id} className="flex flex-col relative">
+                        <Card key={form.id} className={`flex flex-col relative transition-all ${isReordering ? 'border-dashed border-2 border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-slate-800/80' : ''}`}>
                         {user.role === 'admin' && (<div className="absolute top-4 right-4 z-10 bg-white dark:bg-slate-800 p-1 rounded-full"><input type="checkbox" checked={selectedFormIds.includes(form.id)} onChange={() => handleToggleFormSelection(form.id)} className="h-5 w-5 rounded-full border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-700 text-primary-600 focus:ring-primary-500" aria-label={`Sélectionner le formulaire ${form.title}`}/></div>)}
                         <div className="flex-grow p-4 sm:p-6">
                             <div className="flex justify-between items-start">
@@ -813,84 +864,112 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                             {matchingQuestions.length > 0 && (<div className="mt-3 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700 pt-2"><p className="font-semibold">Correspondance dans les questions :</p><ul className="list-disc list-inside ml-2 mt-1">{matchingQuestions.map((label, index) => (<li key={index} className="truncate" title={label}>{highlightMatch(label, filters.searchTerm)}</li>))}</ul></div>)}
                             <div className="mt-4 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
                             <span>Créé le : {new Date(form.createdAt).toLocaleDateString()}</span>
-                            {user.role === 'student' && form.status === 'validated' ? (<button onClick={() => responseCount > 0 && handleViewResponses(form)} disabled={responseCount === 0} className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default">{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</button>) : (<span>{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</span>)}
+                            {user.role === 'student' && form.status === 'validated' ? (<button onClick={() => responseCount > 0 && !isReordering && handleViewResponses(form)} disabled={responseCount === 0 || isReordering} className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default">{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</button>) : (<span>{responseCount} {responseCount !== 1 ? 'réponses' : 'réponse'}</span>)}
                             </div>
                         </div>
                         <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-3">
-                            {user.role === 'student' && (
+                            {isReordering ? (
+                                <div className="w-full flex justify-center items-center space-x-4">
+                                    <Button 
+                                        onClick={() => handleMoveForm(index, 'prev')} 
+                                        disabled={index === 0}
+                                        variant="secondary"
+                                        className="!px-3 sm:!px-4 flex items-center gap-2"
+                                        title="Reculer (Déplacer vers la position précédente)"
+                                    >
+                                        <ArrowUpIcon className="w-5 h-5 transform -rotate-90" />
+                                        <span className="hidden sm:inline">Reculer</span>
+                                    </Button>
+                                    <span className="font-mono font-bold text-slate-400 text-lg w-8 text-center">#{index + 1}</span>
+                                    <Button 
+                                        onClick={() => handleMoveForm(index, 'next')} 
+                                        disabled={index === filteredForms.length - 1}
+                                        variant="secondary"
+                                        className="!px-3 sm:!px-4 flex items-center gap-2"
+                                        title="Avancer (Déplacer vers la position suivante)"
+                                    >
+                                        <span className="hidden sm:inline">Avancer</span>
+                                        <ArrowDownIcon className="w-5 h-5 transform -rotate-90" />
+                                    </Button>
+                                </div>
+                            ) : (
                                 <>
-                                    {form.status === 'draft' && (
-                                        <div className="w-full flex items-center space-x-3">
-                                            <Button onClick={() => handleStartEditing(form)} variant="secondary" className="flex-grow" disabled={isSuspended}>Modifier</Button>
-                                            <Button 
-                                                onClick={() => handleDeleteFormClick(form)} 
-                                                variant="danger"
-                                                className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
-                                                title="Supprimer le formulaire"
-                                                disabled={isSuspended}
-                                            >
-                                                <TrashIcon className="w-5 h-5" />
-                                            </Button>
-                                        </div>
-                                    )}
-                                    {form.status === 'validated' && !form.isPublic && (
-                                        <div className="w-full flex items-center space-x-3">
-                                            <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
-                                                <PlusIcon className="w-4 h-4 mr-2 inline-block" />
-                                                Ajouter une réponse
-                                            </Button>
-                                            
-                                            {/* Bouton de suppression rouge */}
-                                            <Button 
-                                                onClick={() => handleDeleteFormClick(form)} 
-                                                variant="danger"
-                                                className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
-                                                title="Supprimer le formulaire"
-                                                disabled={isSuspended}
-                                            >
-                                                <TrashIcon className="w-5 h-5" />
-                                            </Button>
-
-                                            <div className="relative flex-shrink-0" ref={(el) => (actionMenuRef.current[form.id] = el)}>
+                                {user.role === 'student' && (
+                                    <>
+                                        {form.status === 'draft' && (
+                                            <div className="w-full flex items-center space-x-3">
+                                                <Button onClick={() => handleStartEditing(form)} variant="secondary" className="flex-grow" disabled={isSuspended}>Modifier</Button>
                                                 <Button 
-                                                    onClick={() => setOpenActionMenu(openActionMenu === form.id ? null : form.id)}
-                                                    variant="secondary"
-                                                    className="!px-3 !py-2 text-sm flex items-center"
+                                                    onClick={() => handleDeleteFormClick(form)} 
+                                                    variant="danger"
+                                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                                    title="Supprimer le formulaire"
                                                     disabled={isSuspended}
                                                 >
-                                                    Actions
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                    <TrashIcon className="w-5 h-5" />
                                                 </Button>
-                                                <div className={`absolute right-0 bottom-full mb-2 w-56 bg-white dark:bg-slate-800 rounded-md shadow-lg border dark:border-slate-700 z-20 transition-opacity ${openActionMenu === form.id ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
-                                                    <div className="py-1">
-                                                        <button onClick={() => { setFormToPublish(form); setIsPublishModalOpen(true); setOpenActionMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700" disabled={isSuspended}>Publier</button>
-                                                        <button onClick={() => { setFormToAction(form); setOpenActionMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700" disabled={isSuspended}>Demander une modification</button>
+                                            </div>
+                                        )}
+                                        {form.status === 'validated' && !form.isPublic && (
+                                            <div className="w-full flex items-center space-x-3">
+                                                <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
+                                                    <PlusIcon className="w-4 h-4 mr-2 inline-block" />
+                                                    Ajouter une réponse
+                                                </Button>
+                                                
+                                                {/* Bouton de suppression rouge */}
+                                                <Button 
+                                                    onClick={() => handleDeleteFormClick(form)} 
+                                                    variant="danger"
+                                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                                    title="Supprimer le formulaire"
+                                                    disabled={isSuspended}
+                                                >
+                                                    <TrashIcon className="w-5 h-5" />
+                                                </Button>
+
+                                                <div className="relative flex-shrink-0" ref={(el) => (actionMenuRef.current[form.id] = el)}>
+                                                    <Button 
+                                                        onClick={() => setOpenActionMenu(openActionMenu === form.id ? null : form.id)}
+                                                        variant="secondary"
+                                                        className="!px-3 !py-2 text-sm flex items-center"
+                                                        disabled={isSuspended}
+                                                    >
+                                                        Actions
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                                    </Button>
+                                                    <div className={`absolute right-0 bottom-full mb-2 w-56 bg-white dark:bg-slate-800 rounded-md shadow-lg border dark:border-slate-700 z-20 transition-opacity ${openActionMenu === form.id ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+                                                        <div className="py-1">
+                                                            <button onClick={() => { setFormToPublish(form); setIsPublishModalOpen(true); setOpenActionMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700" disabled={isSuspended}>Publier</button>
+                                                            <button onClick={() => { setFormToAction(form); setOpenActionMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700" disabled={isSuspended}>Demander une modification</button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
+                                        )}
+                                        {form.status === 'validated' && form.isPublic && (
+                                            <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses</Button>
+                                        )}
+                                        {form.status === 'awaiting_modification_decision' && (
+                                            <Button onClick={() => setFormToAction(form)} className="w-full" disabled={isSuspended}>
+                                                Reprendre la modification
+                                            </Button>
+                                        )}
+                                    </>
+                                )}
+                                {user.role === 'admin' && (
+                                    form.status === 'draft' ? (
+                                        <div className="w-full flex justify-end">
+                                            <Button onClick={() => handleDeleteFormClick(form)} variant="danger" className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700" title="Supprimer le formulaire"><TrashIcon className="w-5 h-5" /></Button>
                                         </div>
-                                    )}
-                                    {form.status === 'validated' && form.isPublic && (
-                                        <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses</Button>
-                                    )}
-                                     {form.status === 'awaiting_modification_decision' && (
-                                        <Button onClick={() => setFormToAction(form)} className="w-full" disabled={isSuspended}>
-                                            Reprendre la modification
-                                        </Button>
-                                    )}
+                                    ) : (
+                                        <div className="w-full flex items-center space-x-3">
+                                            <Button onClick={() => handleViewResponses(form)} className="flex-grow" disabled={responseCount === 0}>Voir les réponses ({responseCount})</Button>
+                                            <Button onClick={() => handleDeleteFormClick(form)} variant="danger" className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700" title="Supprimer le formulaire"><TrashIcon className="w-5 h-5" /></Button>
+                                        </div>
+                                    )
+                                )}
                                 </>
-                            )}
-                            {user.role === 'admin' && (
-                                form.status === 'draft' ? (
-                                    <div className="w-full flex justify-end">
-                                         <Button onClick={() => handleDeleteFormClick(form)} variant="danger" className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700" title="Supprimer le formulaire"><TrashIcon className="w-5 h-5" /></Button>
-                                    </div>
-                                ) : (
-                                    <div className="w-full flex items-center space-x-3">
-                                        <Button onClick={() => handleViewResponses(form)} className="flex-grow" disabled={responseCount === 0}>Voir les réponses ({responseCount})</Button>
-                                        <Button onClick={() => handleDeleteFormClick(form)} variant="danger" className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700" title="Supprimer le formulaire"><TrashIcon className="w-5 h-5" /></Button>
-                                    </div>
-                                )
                             )}
                         </div>
                         </Card>

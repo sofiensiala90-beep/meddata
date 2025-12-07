@@ -86,7 +86,8 @@ const App: React.FC = () => {
         const fillId = params.get('fill');
         if (fillId) {
             setFormIdToFill(fillId);
-            setCurrentPage('formulaires');
+            // Note: We do NOT change currentPage here if we want a standalone view.
+            // The render logic will handle the "direct fill mode" based on formIdToFill presence.
         }
     }
   }, [currentUser]);
@@ -749,21 +750,7 @@ const App: React.FC = () => {
 
   const handleRequestFormModification = async (form: Form, reason: string) => {
     if (!currentUser) return;
-    // Admin might not be loaded in 'users' array for students. 
-    // We send notification blindly to 'admin' users by query? No, rules restrict listing.
-    // Workaround: We'll assume there is a doc 'users/admin' or we query users where role == admin if possible? 
-    // Querying users by role is restricted.
-    // For now, if seller is missing (due to list restrictions), we proceed but cannot credit them directly in UI state instantly (Firebase will handle it backend if rules allowed write, but we are client side).
-    // CRITICAL: We need seller ID. formToBuy.userId has it. We can do a direct DB update blindly.
-    
-    // Safe approach: Create a notification where userId is a special value 'ADMIN' or handle via Cloud Function.
-    // For this frontend-only demo with restricted rules, we'll try to fetch the admin user directly if we cached it, or fail gracefully.
-    // Since 'users' list is empty for students, this will fail if we rely on 'users.find'.
-    // Fix: We'll just alert the user that this feature requires backend support in this mode.
-    // Or simpler: Just creating the notification document. The admin dashboard loads ALL notifications? No, it loads where userId == admin.id.
-    
-    // Real fix: Create a 'admin_notifications' collection or similar. 
-    // For this specific codebase, we'll just show a toast.
+    // Cannot fetch admin from 'users' list as student.
     showToast('Votre demande a été envoyée (Simulation - requires backend trigger).');
   };
 
@@ -1123,6 +1110,7 @@ const App: React.FC = () => {
                   initialFormIdToFill={formIdToFill}
                   clearFormIdToFill={() => setFormIdToFill(null)}
                   showToast={showToast}
+                  isStandalone={!!formIdToFill} // Pass this prop
                />;
       case 'bibliotheque':
         return <Library
@@ -1189,6 +1177,24 @@ const App: React.FC = () => {
   }
   
   const userNotifications = notifications.filter(n => n.userId === currentUser.id);
+
+  // If in "Direct Fill Mode" (Standalone), render a simplified layout
+  if (formIdToFill) {
+      return (
+        <div className="min-h-screen bg-slate-100 dark:bg-slate-900 font-sans p-4 flex flex-col items-center justify-center">
+            <div className="w-full max-w-4xl">
+                {renderPage()}
+            </div>
+            {toast && (
+                <Toast
+                message={toast.message}
+                type={toast.type}
+                onClose={() => setToast(null)}
+                />
+            )}
+        </div>
+      );
+  }
 
   return (
     <div className="relative min-h-screen bg-slate-100 dark:bg-slate-900 font-sans lg:flex">

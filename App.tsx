@@ -88,6 +88,8 @@ const App: React.FC = () => {
             setFormIdToFill(fillId);
             // Note: We do NOT change currentPage here if we want a standalone view.
             // The render logic will handle the "direct fill mode" based on formIdToFill presence.
+            // Forcing 'formulaires' page logic to run in the standalone render block
+            setCurrentPage('formulaires');
         }
     }
   }, [currentUser]);

@@ -11,6 +11,7 @@ import CoinIcon from '../components/icons/CoinIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ArrowUpIcon from '../components/icons/ArrowUpIcon';
 import ArrowDownIcon from '../components/icons/ArrowDownIcon';
+import LinkIcon from '../components/icons/LinkIcon';
 
 interface FormsProps {
   user: User;
@@ -30,6 +31,9 @@ interface FormsProps {
   handleRequestFormModification: (form: Form, reason: string) => void;
   onModificationDecision: (formId: string, keepResponses: boolean) => void;
   systemSettings: SystemSettings;
+  initialFormIdToFill?: string | null;
+  clearFormIdToFill?: () => void;
+  showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const PublishModal: React.FC<{
@@ -175,7 +179,7 @@ const ModificationDecisionModal: React.FC<{
   );
 };
 
-const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings }) => {
+const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings, initialFormIdToFill, clearFormIdToFill, showToast }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
   const [activeTab, setActiveTab] = useState<'my_creations' | 'data_purchases'>(user.role === 'admin' ? 'my_creations' : 'my_creations');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
@@ -211,6 +215,20 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [openActionMenu]);
+
+  useEffect(() => {
+    if (initialFormIdToFill && forms.length > 0) {
+        const form = forms.find(f => f.id === initialFormIdToFill);
+        if (form) {
+            handleStartFilling(form);
+            if (clearFormIdToFill) clearFormIdToFill();
+            // Clean URL query param without refreshing
+            const url = new URL(window.location.href);
+            url.searchParams.delete('fill');
+            window.history.replaceState({}, '', url.toString());
+        }
+    }
+  }, [initialFormIdToFill, forms, clearFormIdToFill]);
 
   const highlightMatch = (text: string, term: string) => {
     if (!term.trim()) {
@@ -915,6 +933,20 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                                 <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
                                                     <PlusIcon className="w-4 h-4 mr-2 inline-block" />
                                                     Ajouter une réponse
+                                                </Button>
+                                                
+                                                <Button
+                                                    onClick={() => {
+                                                        const url = `${window.location.origin}?fill=${form.id}`;
+                                                        navigator.clipboard.writeText(url);
+                                                        if (showToast) showToast("Lien copié !", 'success');
+                                                    }}
+                                                    variant="secondary"
+                                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-primary-50 dark:hover:!bg-primary-900/20 text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-800/50 hover:border-primary-300 dark:hover:border-primary-700"
+                                                    title="Copier le lien direct pour ajouter une réponse"
+                                                    disabled={isSuspended}
+                                                >
+                                                    <LinkIcon className="w-5 h-5" />
                                                 </Button>
                                                 
                                                 {/* Bouton de suppression rouge */}

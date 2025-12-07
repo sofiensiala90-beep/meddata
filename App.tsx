@@ -37,6 +37,7 @@ const App: React.FC = () => {
   const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<{ required: number; balance: number } | null>(null);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [formIdToFill, setFormIdToFill] = useState<string | null>(null);
 
   // App-wide state, now populated from Firestore
   const [users, setUsers] = useState<User[]>([]);
@@ -77,6 +78,18 @@ const App: React.FC = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  // Handle URL parameters for deep linking (Shortcut)
+  useEffect(() => {
+    if (currentUser) {
+        const params = new URLSearchParams(window.location.search);
+        const fillId = params.get('fill');
+        if (fillId) {
+            setFormIdToFill(fillId);
+            setCurrentPage('formulaires');
+        }
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     const authUnsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -1107,6 +1120,9 @@ const App: React.FC = () => {
                   handleRequestFormModification={handleRequestFormModification}
                   onModificationDecision={handleModificationDecision}
                   systemSettings={systemSettings}
+                  initialFormIdToFill={formIdToFill}
+                  clearFormIdToFill={() => setFormIdToFill(null)}
+                  showToast={showToast}
                />;
       case 'bibliotheque':
         return <Library

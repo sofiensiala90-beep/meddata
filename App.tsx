@@ -1,7 +1,5 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity, ActivityType, SystemSettings } from './types';
+import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity, ActivityType, SystemSettings, MedicalField } from './types';
 import { auth, db } from './services/firebase';
 import firebase from 'firebase/compat/app';
 
@@ -26,6 +24,21 @@ import Spinner from './components/Spinner';
 import AdminConfiguration from './pages/AdminConfiguration';
 import Toast from './components/Toast';
 
+// Utilisateur fictif pour le mode public/invité
+const GUEST_USER: User = {
+    id: 'guest',
+    name: 'Invité',
+    email: 'guest@medata.ai',
+    role: 'student',
+    coinBalance: 0,
+    university: '',
+    field: MedicalField.Other,
+    studyYear: 0,
+    phoneNumber: '',
+    createdAt: new Date().toISOString(),
+    status: 'active',
+};
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,6 +51,7 @@ const App: React.FC = () => {
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [formIdToFill, setFormIdToFill] = useState<string | null>(null);
+  const [isPublicMode, setIsPublicMode] = useState(false);
 
   // App-wide state, now populated from Firestore
   const [users, setUsers] = useState<User[]>([]);
@@ -79,22 +93,39 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Handle URL parameters for deep linking (Shortcut)
+  // Handle URL parameters & Auth Logic
   useEffect(() => {
-    if (currentUser) {
-        const params = new URLSearchParams(window.location.search);
-        const fillId = params.get('fill');
-        if (fillId) {
-            setFormIdToFill(fillId);
-            // Note: We do NOT change currentPage here if we want a standalone view.
-            // The render logic will handle the "direct fill mode" based on formIdToFill presence.
-            // Forcing 'formulaires' page logic to run in the standalone render block
-            setCurrentPage('formulaires');
-        }
-    }
-  }, [currentUser]);
+    const params = new URLSearchParams(window.location.search);
+    const fillId = params.get('fill');
 
-  useEffect(() => {
+    // Cas 1 : Mode Lien Direct / Public (Pas besoin d'Auth)
+    if (fillId) {
+        setIsPublicMode(true);
+        setFormIdToFill(fillId);
+        
+        // Charger uniquement le formulaire nécessaire
+        db.collection('forms').doc(fillId).get()
+            .then(doc => {
+                if (doc.exists) {
+                    const formData = { id: doc.id, ...doc.data() } as Form;
+                    setForms([formData]); // On met le formulaire seul dans l'état global
+                    setCurrentUser(GUEST_USER); // On définit l'utilisateur invité
+                    setCurrentPage('formulaires');
+                } else {
+                    showToast("Formulaire introuvable ou lien expiré.", 'error');
+                }
+                setIsLoading(false);
+            })
+            .catch(err => {
+                console.error("Erreur chargement formulaire public:", err);
+                setIsLoading(false);
+            });
+            
+        // Pas besoin d'écouter auth.onAuthStateChanged en mode public
+        return; 
+    }
+
+    // Cas 2 : Mode Application Normal (Nécessite Auth)
     const authUnsubscribe = auth.onAuthStateChanged(async (user) => {
         // Cleanup all main listeners
         listenersRef.current.forEach(unsubscribe => unsubscribe());
@@ -418,12 +449,15 @@ const App: React.FC = () => {
         }
     };
 
-    if (currentUser && currentUser.role === 'student') {
+    if (currentUser && currentUser.role === 'student' && !isPublicMode) {
         runMonthlyFeeCheck(currentUser);
     }
-  }, [currentUser, systemSettings]);
+  }, [currentUser, systemSettings, isPublicMode]);
 
   const handleAddActivity = async (type: ActivityType, userId: string, details: string, targetId?: string) => {
+    // No activity logging for guests to avoid clutter and permission issues
+    if (isPublicMode || userId === 'guest') return;
+
     const newActivity: any = {
       userId,
       type,
@@ -455,6 +489,10 @@ const App: React.FC = () => {
   };
   
   const handleTransaction = async (userId: string, reason: TransactionReason, context?: { form?: Form, formIds?: string[], formTitles?: string[] }): Promise<boolean> => {
+    // Si c'est un invité en mode public, on ne fait pas de transaction utilisateur standard ici.
+    // La logique de paiement propriétaire se fait dans handleAddFormResponse.
+    if (isPublicMode || userId === 'guest') return true;
+
     const user = users.find(u => u.id === userId);
     if (!user || user.role === 'admin') return true;
     
@@ -516,18 +554,78 @@ const App: React.FC = () => {
     return true;
   };
 
-  const handleAddFormResponse = async (formId: string, data: Record<string, any>) => {
-      if(!currentUser) return;
+  const handleAddFormResponse = async (formId: string, data: Record<string, any>): Promise<boolean> => {
       const form = forms.find(f => f.id === formId);
-      if (!form) return;
-      if (!await handleTransaction(currentUser.id, TransactionReason.FormResponse, { form })) return;
+      if (!form) return false;
+      
+      const cost = systemSettings.coinCosts.addResponse;
+
+      // Scénario 1 : Mode Invité (Public) -> C'est le propriétaire du formulaire qui paie
+      if (isPublicMode || (currentUser && currentUser.id === 'guest')) {
+          try {
+              // Utilisation d'une transaction Firestore pour garantir l'atomicité (Vérification solde + Débit)
+              await db.runTransaction(async (transaction: any) => {
+                  const ownerRef = db.collection('users').doc(form.userId);
+                  const ownerDoc = await transaction.get(ownerRef);
+
+                  if (!ownerDoc.exists) {
+                      throw new Error("Propriétaire du formulaire introuvable.");
+                  }
+
+                  const ownerData = ownerDoc.data() as User;
+                  if (ownerData.coinBalance < cost) {
+                      throw new Error("Le formulaire ne peut plus recevoir de réponses (Solde du propriétaire insuffisant).");
+                  }
+
+                  // 1. Débiter le propriétaire
+                  transaction.update(ownerRef, { 
+                      coinBalance: firebase.firestore.FieldValue.increment(-cost) 
+                  });
+
+                  // 2. Créer la transaction de débit pour le propriétaire
+                  const txRef = db.collection('transactions').doc();
+                  transaction.set(txRef, {
+                      userId: form.userId,
+                      type: TransactionType.Debit,
+                      amount: cost,
+                      reason: TransactionReason.FormResponse,
+                      details: `Réponse reçue d'un invité sur "${form.title}".`,
+                      createdAt: new Date().toISOString()
+                  });
+
+                  // 3. Enregistrer la réponse
+                  const responseRef = db.collection('responses').doc();
+                  transaction.set(responseRef, {
+                      userId: 'anonymous', // Marquer comme anonyme/invité
+                      formId,
+                      data,
+                      createdAt: new Date().toISOString()
+                  });
+              });
+
+              showToast("Réponse soumise avec succès !");
+              return true;
+
+          } catch (error: any) {
+              console.error("Erreur soumission invité:", error);
+              showToast(error.message || "Une erreur est survenue lors de la soumission.", 'error');
+              return false;
+          }
+      }
+
+      // Scénario 2 : Utilisateur connecté (Étudiant/Admin) -> L'utilisateur paie ses propres ajouts
+      if (!currentUser) return false;
+      
+      if (!await handleTransaction(currentUser.id, TransactionReason.FormResponse, { form })) return false;
 
       const newResponse: Omit<FormResponse, 'id'> = {
           userId: currentUser.id, formId, data, createdAt: new Date().toISOString()
       };
       await db.collection('responses').add(newResponse);
+      
       await handleAddActivity(ActivityType.RESPONSE_ADDED, currentUser.id, `Nouvelle réponse ajoutée au formulaire "${form.title}".`, form.id);
       showToast("Réponse soumise avec succès !");
+      return true;
   };
   
   const handleDeleteFormResponse = async (responseId: string) => {

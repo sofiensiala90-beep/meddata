@@ -19,7 +19,7 @@ interface FormsProps {
   allForms: Form[]; // All forms in the app, needed for purchases
   responses: FormResponse[];
   purchasedForms: PurchasedForm[];
-  addFormResponse: (formId: string, data: Record<string, any>) => void;
+  addFormResponse: (formId: string, data: Record<string, any>) => Promise<boolean>;
   deleteFormResponse: (responseId: string) => void;
   createForm: (form: Form) => void;
   updateForm: (form: Form) => void;
@@ -214,6 +214,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   const [formToAction, setFormToAction] = useState<Form | null>(null);
   const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false); // New state for standalone submit
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const actionMenuRef = useRef<Record<string, HTMLDivElement | null>>({});
   
   // Reordering State
@@ -425,7 +426,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     return sourceFieldValueFromData === sourceFieldValue;
   };
 
-  const handleSubmitResponse = () => {
+  const handleSubmitResponse = async () => {
     if (!selectedForm) return;
 
     const visibleFields = selectedForm.schema.filter(field => isFieldVisible(field, formData));
@@ -441,12 +442,16 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
       }
     }
     
-    addFormResponse(selectedForm.id, formData);
+    setIsSubmitting(true);
+    const success = await addFormResponse(selectedForm.id, formData);
+    setIsSubmitting(false);
     
-    if (isStandalone) {
-        setIsSubmitted(true);
-    } else {
-        handleBackToList();
+    if (success) {
+        if (isStandalone) {
+            setIsSubmitted(true);
+        } else {
+            handleBackToList();
+        }
     }
   };
   
@@ -795,8 +800,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
             )}
           </div>
           <div className="flex justify-end mt-6">
-            <Button onClick={handleSubmitResponse}>
-                Soumettre la réponse {user.role !== 'admin' && !isStandalone && `(${systemSettings.coinCosts.addResponse} Coins)`}
+            <Button onClick={handleSubmitResponse} disabled={isSubmitting}>
+                {isSubmitting ? 'Envoi...' : `Soumettre la réponse ${user.role !== 'admin' && !isStandalone ? `(${systemSettings.coinCosts.addResponse} Coins)` : ''}`}
             </Button>
           </div>
         </Card>

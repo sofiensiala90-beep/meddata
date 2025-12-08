@@ -23,6 +23,7 @@ import InsufficientFundsModal from './components/InsufficientFundsModal';
 import Spinner from './components/Spinner';
 import AdminConfiguration from './pages/AdminConfiguration';
 import Toast from './components/Toast';
+import Card from './components/Card'; // Added import for Error display
 
 // Utilisateur fictif pour le mode public/invité
 const GUEST_USER: User = {
@@ -42,6 +43,7 @@ const GUEST_USER: User = {
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingError, setLoadingError] = useState<string | null>(null); // New Error State
   // Initialise currentPage based on URL to prevent Dashboard flash in guest mode
   const [currentPage, setCurrentPage] = useState<string>(() => {
       const params = new URLSearchParams(window.location.search);
@@ -108,6 +110,7 @@ const App: React.FC = () => {
         setFormIdToFill(fillId);
         // Force page explicitly just in case initial state missed it
         setCurrentPage('formulaires');
+        setLoadingError(null);
         
         // Charger uniquement le formulaire nécessaire
         db.collection('forms').doc(fillId).get()
@@ -117,12 +120,13 @@ const App: React.FC = () => {
                     setForms([formData]); // On met le formulaire seul dans l'état global
                     setCurrentUser(GUEST_USER); // On définit l'utilisateur invité
                 } else {
-                    showToast("Formulaire introuvable ou lien expiré.", 'error');
+                    setLoadingError("Ce formulaire n'existe pas ou le lien est expiré.");
                 }
                 setIsLoading(false);
             })
             .catch(err => {
                 console.error("Erreur chargement formulaire public:", err);
+                setLoadingError("Une erreur est survenue lors du chargement du formulaire.");
                 setIsLoading(false);
             });
             
@@ -1275,6 +1279,24 @@ const App: React.FC = () => {
             <Spinner className="w-16 h-16 text-primary-600" />
         </div>
     );
+  }
+
+  // Display specific loading error for guest link
+  if (loadingError) {
+      return (
+          <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-900 p-4 text-center">
+              <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-lg max-w-md w-full">
+                  <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
+                      <svg className="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Erreur de chargement</h3>
+                  <p className="text-slate-600 dark:text-slate-400 mb-6">{loadingError}</p>
+                  <a href="/" className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                      Retour à l'accueil
+                  </a>
+              </div>
+          </div>
+      );
   }
 
   if (!currentUser) {

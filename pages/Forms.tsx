@@ -812,6 +812,16 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
       }
       
       // Sinon (chargement en cours), on affiche un Spinner
+      // Sécurité : si forms est vide, on n'affiche pas le spinner indéfiniment
+      if (!forms || forms.length === 0) {
+          return (
+              <div className="text-center text-slate-500 py-10">
+                  <p>Chargement du formulaire...</p>
+                  <div className="mt-4"><Spinner className="w-8 h-8 text-primary-500 mx-auto"/></div>
+              </div>
+          );
+      }
+
       return (
           <div className="flex justify-center items-center h-64">
               <Spinner className="w-12 h-12 text-primary-600" />

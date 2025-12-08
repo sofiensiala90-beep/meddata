@@ -11,6 +11,7 @@ import CoinIcon from '../components/icons/CoinIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ArrowUpIcon from '../components/icons/ArrowUpIcon';
 import ArrowDownIcon from '../components/icons/ArrowDownIcon';
+import LinkIcon from '../components/icons/LinkIcon';
 
 interface FormsProps {
   user: User;
@@ -30,6 +31,10 @@ interface FormsProps {
   handleRequestFormModification: (form: Form, reason: string) => void;
   onModificationDecision: (formId: string, keepResponses: boolean) => void;
   systemSettings: SystemSettings;
+  initialFormIdToFill?: string | null;
+  clearFormIdToFill?: () => void;
+  showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
+  isStandalone?: boolean;
 }
 
 const PublishModal: React.FC<{
@@ -175,7 +180,26 @@ const ModificationDecisionModal: React.FC<{
   );
 };
 
-const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings }) => {
+const SuccessCard: React.FC = () => (
+    <div className="max-w-md mx-auto mt-10">
+        <Card className="text-center py-10">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/50 mb-6">
+                <svg className="h-10 w-10 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Réponse soumise avec succès !</h3>
+            <p className="text-slate-600 dark:text-slate-400 mb-8">
+                Merci pour votre contribution.
+            </p>
+            <Button onClick={() => window.location.reload()}>
+                Remplir une autre réponse (Actualiser)
+            </Button>
+        </Card>
+    </div>
+);
+
+const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings, initialFormIdToFill, clearFormIdToFill, showToast, isStandalone }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
   const [activeTab, setActiveTab] = useState<'my_creations' | 'data_purchases'>(user.role === 'admin' ? 'my_creations' : 'my_creations');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
@@ -189,6 +213,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   const [formToPublish, setFormToPublish] = useState<Form | null>(null);
   const [formToAction, setFormToAction] = useState<Form | null>(null);
   const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
+  const [isSubmitted, setIsSubmitted] = useState(false); // New state for standalone submit
   const actionMenuRef = useRef<Record<string, HTMLDivElement | null>>({});
   
   // Reordering State
@@ -211,6 +236,24 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [openActionMenu]);
+
+  useEffect(() => {
+    if (initialFormIdToFill && forms.length > 0) {
+        const form = forms.find(f => f.id === initialFormIdToFill);
+        if (form) {
+            handleStartFilling(form);
+            if (clearFormIdToFill) clearFormIdToFill();
+            
+            // Only clear the URL if we are NOT in standalone/direct mode.
+            // In standalone mode, we want the URL to persist so a refresh reloads the form.
+            if (!isStandalone) {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('fill');
+                window.history.replaceState({}, '', url.toString());
+            }
+        }
+    }
+  }, [initialFormIdToFill, forms, clearFormIdToFill, isStandalone]);
 
   const highlightMatch = (text: string, term: string) => {
     if (!term.trim()) {
@@ -399,7 +442,12 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     }
     
     addFormResponse(selectedForm.id, formData);
-    handleBackToList();
+    
+    if (isStandalone) {
+        setIsSubmitted(true);
+    } else {
+        handleBackToList();
+    }
   };
   
     const handleDeleteResponse = (responseId: string) => {
@@ -724,11 +772,16 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     />
   }
 
+  // Success view for Standalone submission
+  if (isSubmitted) {
+      return <SuccessCard />;
+  }
+
   if (view === 'filling' && selectedForm) {
     const visibleFields = selectedForm.schema.filter(field => isFieldVisible(field, formData));
     return (
       <div className="space-y-6 max-w-4xl mx-auto">
-        <Button onClick={handleBackToList} variant="secondary">← Retour à la liste</Button>
+        {!isStandalone && <Button onClick={handleBackToList} variant="secondary">← Retour à la liste</Button>}
         <Card title={`Remplir : ${selectedForm.title}`}>
           <p className="mb-6 text-slate-600 dark:text-slate-400">{selectedForm.description}</p>
           <div className="space-y-6">
@@ -743,7 +796,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
           </div>
           <div className="flex justify-end mt-6">
             <Button onClick={handleSubmitResponse}>
-                Soumettre la réponse {user.role !== 'admin' && `(${systemSettings.coinCosts.addResponse} Coins)`}
+                Soumettre la réponse {user.role !== 'admin' && !isStandalone && `(${systemSettings.coinCosts.addResponse} Coins)`}
             </Button>
           </div>
         </Card>
@@ -915,6 +968,20 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                                 <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
                                                     <PlusIcon className="w-4 h-4 mr-2 inline-block" />
                                                     Ajouter une réponse
+                                                </Button>
+                                                
+                                                <Button
+                                                    onClick={() => {
+                                                        const url = `${window.location.origin}?fill=${form.id}`;
+                                                        navigator.clipboard.writeText(url);
+                                                        if (showToast) showToast("Lien copié !", 'success');
+                                                    }}
+                                                    variant="secondary"
+                                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-primary-50 dark:hover:!bg-primary-900/20 text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-800/50 hover:border-primary-300 dark:hover:border-primary-700"
+                                                    title="Copier le lien direct pour ajouter une réponse"
+                                                    disabled={isSuspended}
+                                                >
+                                                    <LinkIcon className="w-5 h-5" />
                                                 </Button>
                                                 
                                                 {/* Bouton de suppression rouge */}

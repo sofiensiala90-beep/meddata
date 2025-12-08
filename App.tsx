@@ -124,9 +124,13 @@ const App: React.FC = () => {
                 }
                 setIsLoading(false);
             })
-            .catch(err => {
+            .catch((err: any) => {
                 console.error("Erreur chargement formulaire public:", err);
-                setLoadingError("Une erreur est survenue lors du chargement du formulaire.");
+                if (err.code === 'permission-denied') {
+                    setLoadingError("Accès refusé : Veuillez configurer les règles Firestore pour autoriser l'accès public (voir instructions).");
+                } else {
+                    setLoadingError("Une erreur est survenue lors du chargement du formulaire.");
+                }
                 setIsLoading(false);
             });
             
@@ -617,7 +621,11 @@ const App: React.FC = () => {
 
           } catch (error: any) {
               console.error("Erreur soumission invité:", error);
-              showToast(error.message || "Une erreur est survenue lors de la soumission.", 'error');
+              if (error.code === 'permission-denied') {
+                  showToast("Erreur de permission : Impossible d'enregistrer la réponse. Vérifiez les règles Firestore.", 'error');
+              } else {
+                  showToast(error.message || "Une erreur est survenue lors de la soumission.", 'error');
+              }
               return false;
           }
       }

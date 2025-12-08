@@ -42,7 +42,11 @@ const GUEST_USER: User = {
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState<string>('tableau-de-bord');
+  // Initialise currentPage based on URL to prevent Dashboard flash in guest mode
+  const [currentPage, setCurrentPage] = useState<string>(() => {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('fill') ? 'formulaires' : 'tableau-de-bord';
+  });
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [analysisContext, setAnalysisContext] = useState<{ formIds: string[] } | null>(null);
   const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false);
@@ -102,6 +106,8 @@ const App: React.FC = () => {
     if (fillId) {
         setIsPublicMode(true);
         setFormIdToFill(fillId);
+        // Force page explicitly just in case initial state missed it
+        setCurrentPage('formulaires');
         
         // Charger uniquement le formulaire nécessaire
         db.collection('forms').doc(fillId).get()
@@ -110,7 +116,6 @@ const App: React.FC = () => {
                     const formData = { id: doc.id, ...doc.data() } as Form;
                     setForms([formData]); // On met le formulaire seul dans l'état global
                     setCurrentUser(GUEST_USER); // On définit l'utilisateur invité
-                    setCurrentPage('formulaires');
                 } else {
                     showToast("Formulaire introuvable ou lien expiré.", 'error');
                 }

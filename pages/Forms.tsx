@@ -12,6 +12,7 @@ import TrashIcon from '../components/icons/TrashIcon';
 import ArrowUpIcon from '../components/icons/ArrowUpIcon';
 import ArrowDownIcon from '../components/icons/ArrowDownIcon';
 import LinkIcon from '../components/icons/LinkIcon';
+import Spinner from '../components/Spinner';
 
 interface FormsProps {
   user: User;
@@ -777,9 +778,45 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     />
   }
 
-  // Success view for Standalone submission
-  if (isSubmitted) {
-      return <SuccessCard />;
+  // --- LOGIQUE POUR MODE STANDALONE (LIEN DIRECT) ---
+  if (isStandalone) {
+      if (isSubmitted) {
+          return <SuccessCard />;
+      }
+      
+      // Si le formulaire est chargé et sélectionné, on affiche l'interface de remplissage épurée
+      if (selectedForm) {
+          const visibleFields = selectedForm.schema.filter(field => isFieldVisible(field, formData));
+          return (
+            <div className="space-y-6 max-w-4xl mx-auto">
+                <Card title={`Remplir : ${selectedForm.title}`}>
+                <p className="mb-6 text-slate-600 dark:text-slate-400">{selectedForm.description}</p>
+                <div className="space-y-6">
+                    {visibleFields.map(field => 
+                    (
+                        <div key={field.id}>
+                        {field.type !== 'note' && <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{field.label}</label>}
+                        {renderFormField(field, formData)}
+                        </div>
+                    )
+                    )}
+                </div>
+                <div className="flex justify-end mt-6">
+                    <Button onClick={handleSubmitResponse} disabled={isSubmitting}>
+                        {isSubmitting ? 'Envoi...' : `Soumettre la réponse ${user.role !== 'admin' && !isStandalone ? `(${systemSettings.coinCosts.addResponse} Coins)` : ''}`}
+                    </Button>
+                </div>
+                </Card>
+            </div>
+          );
+      }
+      
+      // Sinon (chargement en cours), on affiche un Spinner
+      return (
+          <div className="flex justify-center items-center h-64">
+              <Spinner className="w-12 h-12 text-primary-600" />
+          </div>
+      );
   }
 
   if (view === 'filling' && selectedForm) {

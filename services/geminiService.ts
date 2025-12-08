@@ -26,6 +26,10 @@ const analysisResponseSchema: Schema = {
       type: Type.STRING,
       description: "Une analyse experte en biostatistiques et épidémiologie, formatée en HTML STRICT (pas de Markdown). Doit inclure : Méthodologie, Résultats Descriptifs, Analyse Inférentielle (si applicable), et Recommandations. Utiliser des balises <h3>, <p>, <ul>, <li>, <strong>.",
     },
+    chatResponse: {
+      type: Type.STRING,
+      description: "Un message conversationnel court et engageant adressé directement à l'utilisateur pour la fenêtre de discussion. Il doit résumer la découverte principale en une phrase et proposer proactivement 2 ou 3 prochaines étapes, tests statistiques spécifiques ou améliorations à apporter au rapport.",
+    },
     chartData: {
       type: Type.OBJECT,
       nullable: true,
@@ -82,7 +86,7 @@ const analysisResponseSchema: Schema = {
         nullable: true
     }
   },
-  required: ["analysisText"],
+  required: ["analysisText", "chatResponse"],
 };
 
 // Schéma pour les suggestions d'expert
@@ -154,6 +158,59 @@ const prepareDataContext = (forms: Form[], responses: FormResponse[]): { context
 };
 
 /**
+ * Génère un résumé statistique mathématiquement exact pour guider l'IA.
+ * Cela empêche les hallucinations sur les comptages simples.
+ */
+const generateStatisticalSummary = (forms: Form[], responses: FormResponse[]): string => {
+  let summary = "";
+
+  forms.forEach(form => {
+    // Filter responses for this specific form
+    const formResponses = responses.filter(r => r.formId === form.id);
+    const total = formResponses.length;
+    if (total === 0) return;
+
+    summary += `RÉSUMÉ STATISTIQUE POUR "${form.title}" (N=${total} participants) :\n`;
+
+    form.schema.forEach(field => {
+        if (field.type === 'note' || field.type === 'text' || field.type === 'textarea') return; // Skip non-analyzable simply
+
+        const validValues = formResponses
+            .map(r => r.data[field.id])
+            .filter(v => v !== undefined && v !== null && v !== '');
+
+        if (['number', 'range'].includes(field.type)) {
+            const nums = validValues.map(v => Number(v)).filter(n => !isNaN(n));
+            if (nums.length > 0) {
+                const min = Math.min(...nums);
+                const max = Math.max(...nums);
+                const sum = nums.reduce((a, b) => a + b, 0);
+                const avg = (sum / nums.length).toFixed(2);
+                summary += `- ${field.label} : Moyenne=${avg}, Min=${min}, Max=${max}\n`;
+            } else {
+                summary += `- ${field.label} : Aucune donnée numérique valide.\n`;
+            }
+        } else if (['choice', 'checkbox'].includes(field.type)) {
+            const counts: Record<string, number> = {};
+            validValues.forEach(val => {
+                const items = Array.isArray(val) ? val : [val];
+                items.forEach(item => {
+                    const strItem = String(item).trim();
+                    counts[strItem] = (counts[strItem] || 0) + 1;
+                });
+            });
+            const details = Object.entries(counts)
+                .map(([k, v]) => `${k}=${v} (${((v/total)*100).toFixed(1)}%)`)
+                .join(', ');
+            summary += `- ${field.label} : ${details}\n`;
+        }
+    });
+    summary += "\n";
+  });
+  return summary;
+};
+
+/**
  * Génère des suggestions d'analyse basées sur la structure du formulaire
  */
 export const getAnalysisSuggestions = async (forms: Form[], responses: FormResponse[]): Promise<Array<{title: string, description: string, searchPrompt: string}>> => {
@@ -218,6 +275,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
   if (!apiKey || apiKey === "MISSING_KEY") {
       return {
           analysisText: "<p class='text-red-500 font-bold'>⚠️ La clé API Gemini n'est pas configurée sur Vercel. Veuillez ajouter la variable API_KEY dans les settings.</p>",
+          chatResponse: "Je ne peux pas effectuer l'analyse car la clé API est manquante.",
           chartData: null,
           requiresConfirmation: false
       };
@@ -228,31 +286,60 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
     // On récupère le nombre exact de lignes pour l'injecter dans le prompt
     const { contextText: fullContext, totalRows } = prepareDataContext(forms, responses);
     
+    // CALCUL STATISTIQUE EXACT (Vérité Terrain)
+    const statisticalSummary = generateStatisticalSummary(forms, responses);
+    
     let baseInstruction = `
       Tu es MedataAI, un expert de classe mondiale en biostatistiques médicales, épidémiologie et méthodologie de recherche clinique.
       Ton rôle est d'assister des étudiants en médecine dans l'analyse de leurs thèses.
 
       DONNÉES FOURNIES :
       - Tu as reçu exactement **${totalRows}** entrées (lignes de réponses patients).
-      - **CRITIQUE :** Tu dois baser tes calculs (n, pourcentages) sur la TOTALITÉ de ces ${totalRows} entrées. Ne fais aucune approximation sur le volume des données. Si tu comptes moins de ${totalRows}, recompte attentivement.
+      
+      *** DIRECTIVE PRINCIPALE : RIGUEUR SCIENTIFIQUE + CRÉATIVITÉ D'INTERPRÉTATION ***
+      Tu dois diviser ton "cerveau" en deux modes :
+      
+      1. **MODE COMPTABLE (Rigueur Absolue)** :
+         - Pour citer des chiffres (fréquences, moyennes, nombres d'hommes/femmes), **UTILISE EXCLUSIVEMENT le "RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ" fourni ci-dessous**.
+         - Ce résumé est la vérité absolue mathématique. Ne le contredis jamais.
+         - Si tu dois citer un chiffre, copie-le du résumé. Ne recompte pas les lignes brutes.
+
+      2. **MODE CHERCHEUR (Créativité & Perspicacité)** :
+         - Pour *interpréter* ces chiffres, expliquer les causes, les conséquences cliniques ou suggérer des pistes de discussion, sois **CRÉATIF, NUANCÉ et PROFOND**.
+         - Ne te contente pas de dire "Il y a 15 hommes". Dis plutôt "On observe une prédominance féminine marquée, ce qui est cohérent avec la littérature sur cette pathologie..."
+         - Fais des liens inattendus mais plausibles médicalement.
 
       CAPACITÉS D'EXPERT ATTENDUES :
-      1. **Qualification des variables** : Identifie automatiquement si les variables sont qualitatives (nominales/ordinales) ou quantitatives (discrètes/continues).
-      2. **Choix des tests** : Suggère ou simule les tests appropriés (Chi-2, Fisher, Student, ANOVA, Pearson, etc.).
-      3. **Interprétation clinique** : Ne donne pas juste des chiffres. Explique ce qu'ils signifient médicalement.
+      1. **Qualification des variables** : Identifie automatiquement si les variables sont qualitatives ou quantitatives.
+      2. **Choix des tests** : Suggère ou simule les tests appropriés (Chi-2, Fisher, Student, ANOVA, Pearson, etc.) en te basant sur les chiffres du résumé.
+      3. **Interprétation clinique** : Explique ce que les chiffres signifient médicalement.
       
-      IMPORTANT - FORMAT DE SORTIE HTML :
+      IMPORTANT - FORMAT DE SORTIE HTML (champ 'analysisText') :
       - Tu dois générer le contenu de 'analysisText' en **HTML** pur.
-      - **N'UTILISE JAMAIS DE MARKDOWN** (pas de **, ##, ---, etc.).
-      - Utilise des balises sémantiques : <h3> pour les titres, <p> pour les paragraphes, <ul class="list-disc pl-5 space-y-1"> pour les listes, <li> pour les éléments de liste.
-      - Utilise des classes Tailwind CSS pour le style si nécessaire (ex: <span class="text-primary-600 font-bold">).
-      - Ne mets pas de balises <html> ou <body>, juste le contenu.
+      - **N'UTILISE JAMAIS DE MARKDOWN**.
+      - Utilise des balises sémantiques : <h3>, <p>, <ul class="list-disc pl-5 space-y-1">, <li>.
+      - Utilise des classes Tailwind CSS si nécessaire pour la mise en page.
+
+      IMPORTANT - INTERACTION CHAT (champ 'chatResponse') :
+      - Ce texte sera affiché directement dans la fenêtre de discussion pour guider l'étudiant.
+      - Ne dis pas simplement "Voici le rapport".
+      - **Résume** l'insight le plus percutant ou surprenant en une phrase.
+      - **Propose** proactivement 2 ou 3 pistes concrètes : des tests statistiques supplémentaires (ex: "Voulez-vous que je teste la corrélation X/Y ?") ou des améliorations méthodologiques.
+      - Sois un partenaire de recherche actif.
       
-      RÈGLES STRICTES :
-      - Utilise un langage médical précis mais pédagogique.
-      - Génère TOUJOURS un graphique pertinent ('chartData') si des comparaisons chiffrées sont possibles.
+      RÈGLES DE SORTIE :
+      - Génère TOUJOURS un graphique pertinent ('chartData') si des comparaisons sont possibles.
       - Le format de sortie doit être un JSON conforme au schéma.
-      - Les données sont fournies sous forme de tableau texte (séparateur '|'). Chaque ligne est une réponse patient.
+    `;
+
+    // Contexte combiné : Stats calculées + Données brutes
+    const contextWithStats = `
+    === RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ (SOURCE DE VÉRITÉ ABSOLUE) ===
+    ${statisticalSummary}
+    =================================================================
+
+    === DONNÉES BRUTES (Pour analyses croisées complexes uniquement) ===
+    ${fullContext}
     `;
 
     let userContent = "";
@@ -264,18 +351,14 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
         CONTEXTE DE MODIFICATION :
         L'utilisateur souhaite modifier ou approfondir un rapport existant.
         Tu recevras le "Rapport Actuel" et la "Nouvelle Instruction".
-        Tu dois régénérer le JSON complet du rapport (analysisText et chartData) en appliquant les changements demandés.
+        Tu dois régénérer le JSON complet du rapport (analysisText, chartData, et chatResponse).
         
         IMPORTANT - MISE EN ÉVIDENCE VISUELLE :
-        Pour que l'utilisateur repère immédiatement tes modifications dans le texte :
-        1. Entoure EXCLUSIVEMENT les phrases ajoutées ou les données modifiées avec la balise HTML suivante :
-           <span style="color: #6366f1; font-weight: bold;">...</span>
-        2. N'applique ce style QUE sur les changements. Le reste du texte doit rester inchangé (sauf si une suppression est nécessaire).
+        1. Entoure EXCLUSIVEMENT les phrases ajoutées ou modifiées dans le rapport avec : <span style="color: #6366f1; font-weight: bold;">...</span>
         `;
 
         userContent = `
-        DONNÉES (Format Tableau Texte - ${totalRows} lignes) :
-        ${fullContext}
+        ${contextWithStats}
 
         RAPPORT ACTUEL (JSON) :
         ${JSON.stringify(previousReport)}
@@ -288,18 +371,17 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
         baseInstruction += `
         
         TA MISSION :
-        Analyser les données fournies et répondre à la demande de l'utilisateur avec la rigueur d'un article scientifique.
+        Analyser les données fournies et répondre à la demande de l'utilisateur avec rigueur sur les chiffres et créativité sur l'analyse.
         
         STRUCTURE DE LA RÉPONSE (HTML dans 'analysisText') :
-        - <h3>Résumé Méthodologique</h3> (Indiquer clairement : n = ${totalRows} patients inclus)
-        - <h3>Résultats Clés</h3> (Chiffres marquants sous forme de liste)
-        - <h3>Analyse Détaillée</h3> (Paragraphes argumentés)
-        - <h3>Pistes de Réflexion</h3>
+        - <h3>Résumé Méthodologique</h3> (Indiquer n = ${totalRows})
+        - <h3>Résultats Clés</h3> (Utilise les stats pré-calculées obligatoirement)
+        - <h3>Analyse & Discussion</h3> (Sois créatif et perspicace ici)
+        - <h3>Recommandations</h3> (Propose des pistes d'amélioration ou de tests futurs)
         `;
 
         userContent = `
-        DONNÉES (Format Tableau Texte - ${totalRows} lignes) :
-        ${fullContext}
+        ${contextWithStats}
 
         DEMANDE UTILISATEUR :
         "${userPrompt}"
@@ -313,7 +395,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
         systemInstruction: baseInstruction,
         responseMimeType: "application/json",
         responseSchema: analysisResponseSchema,
-        temperature: 0.2, // Température encore plus basse pour maximiser la précision des données
+        temperature: 0.2,
       },
     });
 
@@ -333,6 +415,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
     }
     return {
       analysisText: errorMsg,
+      chatResponse: "Désolé, j'ai rencontré une erreur lors de l'analyse. Veuillez réessayer.",
       chartData: null,
       requiresConfirmation: false
     };

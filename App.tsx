@@ -1,5 +1,7 @@
+
+
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity, ActivityType, SystemSettings, MedicalField } from './types';
+import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity, ActivityType, SystemSettings } from './types';
 import { auth, db } from './services/firebase';
 import firebase from 'firebase/compat/app';
 
@@ -23,32 +25,11 @@ import InsufficientFundsModal from './components/InsufficientFundsModal';
 import Spinner from './components/Spinner';
 import AdminConfiguration from './pages/AdminConfiguration';
 import Toast from './components/Toast';
-import Card from './components/Card'; // Added import for Error display
-
-// Utilisateur fictif pour le mode public/invité
-const GUEST_USER: User = {
-    id: 'guest',
-    name: 'Invité',
-    email: 'guest@medata.ai',
-    role: 'student',
-    coinBalance: 0,
-    university: '',
-    field: MedicalField.Other,
-    studyYear: 0,
-    phoneNumber: '',
-    createdAt: new Date().toISOString(),
-    status: 'active',
-};
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadingError, setLoadingError] = useState<string | null>(null); // New Error State
-  // Initialise currentPage based on URL to prevent Dashboard flash in guest mode
-  const [currentPage, setCurrentPage] = useState<string>(() => {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('fill') ? 'formulaires' : 'tableau-de-bord';
-  });
+  const [currentPage, setCurrentPage] = useState<string>('tableau-de-bord');
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [analysisContext, setAnalysisContext] = useState<{ formIds: string[] } | null>(null);
   const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false);
@@ -56,8 +37,6 @@ const App: React.FC = () => {
   const [insufficientFundsInfo, setInsufficientFundsInfo] = useState<{ required: number; balance: number } | null>(null);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [formIdToFill, setFormIdToFill] = useState<string | null>(null);
-  const [isPublicMode, setIsPublicMode] = useState(false);
 
   // App-wide state, now populated from Firestore
   const [users, setUsers] = useState<User[]>([]);
@@ -99,46 +78,7 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Handle URL parameters & Auth Logic
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const fillId = params.get('fill');
-
-    // Cas 1 : Mode Lien Direct / Public (Pas besoin d'Auth)
-    if (fillId) {
-        setIsPublicMode(true);
-        setFormIdToFill(fillId);
-        // Force page explicitly just in case initial state missed it
-        setCurrentPage('formulaires');
-        setLoadingError(null);
-        
-        // Charger uniquement le formulaire nécessaire
-        db.collection('forms').doc(fillId).get()
-            .then(doc => {
-                if (doc.exists) {
-                    const formData = { id: doc.id, ...doc.data() } as Form;
-                    setForms([formData]); // On met le formulaire seul dans l'état global
-                    setCurrentUser(GUEST_USER); // On définit l'utilisateur invité
-                } else {
-                    setLoadingError("Ce formulaire n'existe pas ou le lien est expiré.");
-                }
-                setIsLoading(false);
-            })
-            .catch((err: any) => {
-                console.error("Erreur chargement formulaire public:", err);
-                if (err.code === 'permission-denied') {
-                    setLoadingError("Accès refusé : Veuillez configurer les règles Firestore pour autoriser l'accès public (voir instructions).");
-                } else {
-                    setLoadingError("Une erreur est survenue lors du chargement du formulaire.");
-                }
-                setIsLoading(false);
-            });
-            
-        // Pas besoin d'écouter auth.onAuthStateChanged en mode public
-        return; 
-    }
-
-    // Cas 2 : Mode Application Normal (Nécessite Auth)
     const authUnsubscribe = auth.onAuthStateChanged(async (user) => {
         // Cleanup all main listeners
         listenersRef.current.forEach(unsubscribe => unsubscribe());
@@ -462,15 +402,12 @@ const App: React.FC = () => {
         }
     };
 
-    if (currentUser && currentUser.role === 'student' && !isPublicMode) {
+    if (currentUser && currentUser.role === 'student') {
         runMonthlyFeeCheck(currentUser);
     }
-  }, [currentUser, systemSettings, isPublicMode]);
+  }, [currentUser, systemSettings]);
 
   const handleAddActivity = async (type: ActivityType, userId: string, details: string, targetId?: string) => {
-    // No activity logging for guests to avoid clutter and permission issues
-    if (isPublicMode || userId === 'guest') return;
-
     const newActivity: any = {
       userId,
       type,
@@ -502,10 +439,6 @@ const App: React.FC = () => {
   };
   
   const handleTransaction = async (userId: string, reason: TransactionReason, context?: { form?: Form, formIds?: string[], formTitles?: string[] }): Promise<boolean> => {
-    // Si c'est un invité en mode public, on ne fait pas de transaction utilisateur standard ici.
-    // La logique de paiement propriétaire se fait dans handleAddFormResponse.
-    if (isPublicMode || userId === 'guest') return true;
-
     const user = users.find(u => u.id === userId);
     if (!user || user.role === 'admin') return true;
     
@@ -567,82 +500,18 @@ const App: React.FC = () => {
     return true;
   };
 
-  const handleAddFormResponse = async (formId: string, data: Record<string, any>): Promise<boolean> => {
+  const handleAddFormResponse = async (formId: string, data: Record<string, any>) => {
+      if(!currentUser) return;
       const form = forms.find(f => f.id === formId);
-      if (!form) return false;
-      
-      const cost = systemSettings.coinCosts.addResponse;
-
-      // Scénario 1 : Mode Invité (Public) -> C'est le propriétaire du formulaire qui paie
-      if (isPublicMode || (currentUser && currentUser.id === 'guest')) {
-          try {
-              // Utilisation d'une transaction Firestore pour garantir l'atomicité (Vérification solde + Débit)
-              await db.runTransaction(async (transaction: any) => {
-                  const ownerRef = db.collection('users').doc(form.userId);
-                  const ownerDoc = await transaction.get(ownerRef);
-
-                  if (!ownerDoc.exists) {
-                      throw new Error("Propriétaire du formulaire introuvable.");
-                  }
-
-                  const ownerData = ownerDoc.data() as User;
-                  if (ownerData.coinBalance < cost) {
-                      throw new Error("Le formulaire ne peut plus recevoir de réponses (Solde du propriétaire insuffisant).");
-                  }
-
-                  // 1. Débiter le propriétaire
-                  transaction.update(ownerRef, { 
-                      coinBalance: firebase.firestore.FieldValue.increment(-cost) 
-                  });
-
-                  // 2. Créer la transaction de débit pour le propriétaire
-                  const txRef = db.collection('transactions').doc();
-                  transaction.set(txRef, {
-                      userId: form.userId,
-                      type: TransactionType.Debit,
-                      amount: cost,
-                      reason: TransactionReason.FormResponse,
-                      details: `Réponse reçue d'un invité sur "${form.title}".`,
-                      createdAt: new Date().toISOString()
-                  });
-
-                  // 3. Enregistrer la réponse
-                  const responseRef = db.collection('responses').doc();
-                  transaction.set(responseRef, {
-                      userId: 'anonymous', // Marquer comme anonyme/invité
-                      formId,
-                      data,
-                      createdAt: new Date().toISOString()
-                  });
-              });
-
-              showToast("Réponse soumise avec succès !");
-              return true;
-
-          } catch (error: any) {
-              console.error("Erreur soumission invité:", error);
-              if (error.code === 'permission-denied') {
-                  showToast("Erreur de permission : Impossible d'enregistrer la réponse. Vérifiez les règles Firestore.", 'error');
-              } else {
-                  showToast(error.message || "Une erreur est survenue lors de la soumission.", 'error');
-              }
-              return false;
-          }
-      }
-
-      // Scénario 2 : Utilisateur connecté (Étudiant/Admin) -> L'utilisateur paie ses propres ajouts
-      if (!currentUser) return false;
-      
-      if (!await handleTransaction(currentUser.id, TransactionReason.FormResponse, { form })) return false;
+      if (!form) return;
+      if (!await handleTransaction(currentUser.id, TransactionReason.FormResponse, { form })) return;
 
       const newResponse: Omit<FormResponse, 'id'> = {
           userId: currentUser.id, formId, data, createdAt: new Date().toISOString()
       };
       await db.collection('responses').add(newResponse);
-      
       await handleAddActivity(ActivityType.RESPONSE_ADDED, currentUser.id, `Nouvelle réponse ajoutée au formulaire "${form.title}".`, form.id);
       showToast("Réponse soumise avec succès !");
-      return true;
   };
   
   const handleDeleteFormResponse = async (responseId: string) => {
@@ -867,7 +736,21 @@ const App: React.FC = () => {
 
   const handleRequestFormModification = async (form: Form, reason: string) => {
     if (!currentUser) return;
-    // Cannot fetch admin from 'users' list as student.
+    // Admin might not be loaded in 'users' array for students. 
+    // We send notification blindly to 'admin' users by query? No, rules restrict listing.
+    // Workaround: We'll assume there is a doc 'users/admin' or we query users where role == admin if possible? 
+    // Querying users by role is restricted.
+    // For now, if seller is missing (due to list restrictions), we proceed but cannot credit them directly in UI state instantly (Firebase will handle it backend if rules allowed write, but we are client side).
+    // CRITICAL: We need seller ID. formToBuy.userId has it. We can do a direct DB update blindly.
+    
+    // Safe approach: Create a notification where userId is a special value 'ADMIN' or handle via Cloud Function.
+    // For this frontend-only demo with restricted rules, we'll try to fetch the admin user directly if we cached it, or fail gracefully.
+    // Since 'users' list is empty for students, this will fail if we rely on 'users.find'.
+    // Fix: We'll just alert the user that this feature requires backend support in this mode.
+    // Or simpler: Just creating the notification document. The admin dashboard loads ALL notifications? No, it loads where userId == admin.id.
+    
+    // Real fix: Create a 'admin_notifications' collection or similar. 
+    // For this specific codebase, we'll just show a toast.
     showToast('Votre demande a été envoyée (Simulation - requires backend trigger).');
   };
 
@@ -1224,10 +1107,6 @@ const App: React.FC = () => {
                   handleRequestFormModification={handleRequestFormModification}
                   onModificationDecision={handleModificationDecision}
                   systemSettings={systemSettings}
-                  initialFormIdToFill={formIdToFill}
-                  clearFormIdToFill={() => setFormIdToFill(null)}
-                  showToast={showToast}
-                  isStandalone={!!formIdToFill} // Pass this prop
                />;
       case 'bibliotheque':
         return <Library
@@ -1289,47 +1168,11 @@ const App: React.FC = () => {
     );
   }
 
-  // Display specific loading error for guest link
-  if (loadingError) {
-      return (
-          <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-900 p-4 text-center">
-              <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-lg max-w-md w-full">
-                  <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
-                      <svg className="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  </div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Erreur de chargement</h3>
-                  <p className="text-slate-600 dark:text-slate-400 mb-6">{loadingError}</p>
-                  <a href="/" className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
-                      Retour à l'accueil
-                  </a>
-              </div>
-          </div>
-      );
-  }
-
   if (!currentUser) {
     return <AuthPage onLogin={handleLogin} />;
   }
   
   const userNotifications = notifications.filter(n => n.userId === currentUser.id);
-
-  // If in "Direct Fill Mode" (Standalone), render a simplified layout
-  if (formIdToFill) {
-      return (
-        <div className="min-h-screen bg-slate-100 dark:bg-slate-900 font-sans p-4 flex flex-col items-center justify-center">
-            <div className="w-full max-w-4xl">
-                {renderPage()}
-            </div>
-            {toast && (
-                <Toast
-                message={toast.message}
-                type={toast.type}
-                onClose={() => setToast(null)}
-                />
-            )}
-        </div>
-      );
-  }
 
   return (
     <div className="relative min-h-screen bg-slate-100 dark:bg-slate-900 font-sans lg:flex">

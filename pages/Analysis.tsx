@@ -267,7 +267,9 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
             // Save to history (optional, keeping old behavior logic)
             saveAnalysisToHistory(formsToAnalyze.map(f=>f.id), formsToAnalyze.map(f=>f.title), finalPrompt, result);
             
-            setChatHistory(prev => [...prev, { role: 'ai', text: "Analyse mise à jour. Vous pouvez me demander de modifier le graphique, de simplifier le texte ou d'ajouter d'autres éléments." }]);
+            // Afficher le message dynamique de l'IA (chatResponse)
+            const aiMessage = result.chatResponse || "Analyse mise à jour. Vous pouvez me demander de modifier le graphique, de simplifier le texte ou d'ajouter d'autres éléments.";
+            setChatHistory(prev => [...prev, { role: 'ai', text: aiMessage }]);
         } catch (e: any) {
             console.error(e);
             setChatHistory(prev => [...prev, { role: 'ai', text: "Erreur lors de l'analyse.", isError: true }]);
@@ -306,7 +308,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
 
         setChatHistory([
             { role: 'user', text: item.userPrompt },
-            { role: 'ai', text: "Analyse restaurée depuis l'historique." }
+            { role: 'ai', text: item.analysisResult.chatResponse || "Analyse restaurée depuis l'historique." }
         ]);
         setMobileTab('report');
     };

@@ -11,8 +11,6 @@ import CoinIcon from '../components/icons/CoinIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ArrowUpIcon from '../components/icons/ArrowUpIcon';
 import ArrowDownIcon from '../components/icons/ArrowDownIcon';
-import LinkIcon from '../components/icons/LinkIcon';
-import Spinner from '../components/Spinner';
 
 interface FormsProps {
   user: User;
@@ -20,7 +18,7 @@ interface FormsProps {
   allForms: Form[]; // All forms in the app, needed for purchases
   responses: FormResponse[];
   purchasedForms: PurchasedForm[];
-  addFormResponse: (formId: string, data: Record<string, any>) => Promise<boolean>;
+  addFormResponse: (formId: string, data: Record<string, any>) => void;
   deleteFormResponse: (responseId: string) => void;
   createForm: (form: Form) => void;
   updateForm: (form: Form) => void;
@@ -32,10 +30,6 @@ interface FormsProps {
   handleRequestFormModification: (form: Form, reason: string) => void;
   onModificationDecision: (formId: string, keepResponses: boolean) => void;
   systemSettings: SystemSettings;
-  initialFormIdToFill?: string | null;
-  clearFormIdToFill?: () => void;
-  showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
-  isStandalone?: boolean;
 }
 
 const PublishModal: React.FC<{
@@ -181,26 +175,7 @@ const ModificationDecisionModal: React.FC<{
   );
 };
 
-const SuccessCard: React.FC = () => (
-    <div className="max-w-md mx-auto mt-10">
-        <Card className="text-center py-10">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/50 mb-6">
-                <svg className="h-10 w-10 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                </svg>
-            </div>
-            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Réponse soumise avec succès !</h3>
-            <p className="text-slate-600 dark:text-slate-400 mb-8">
-                Merci pour votre contribution.
-            </p>
-            <Button onClick={() => window.location.reload()}>
-                Remplir une autre réponse (Actualiser)
-            </Button>
-        </Card>
-    </div>
-);
-
-const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings, initialFormIdToFill, clearFormIdToFill, showToast, isStandalone }) => {
+const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
   const [activeTab, setActiveTab] = useState<'my_creations' | 'data_purchases'>(user.role === 'admin' ? 'my_creations' : 'my_creations');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
@@ -214,8 +189,6 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   const [formToPublish, setFormToPublish] = useState<Form | null>(null);
   const [formToAction, setFormToAction] = useState<Form | null>(null);
   const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
-  const [isSubmitted, setIsSubmitted] = useState(false); // New state for standalone submit
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const actionMenuRef = useRef<Record<string, HTMLDivElement | null>>({});
   
   // Reordering State
@@ -238,24 +211,6 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [openActionMenu]);
-
-  useEffect(() => {
-    if (initialFormIdToFill && forms.length > 0) {
-        const form = forms.find(f => f.id === initialFormIdToFill);
-        if (form) {
-            handleStartFilling(form);
-            if (clearFormIdToFill) clearFormIdToFill();
-            
-            // Only clear the URL if we are NOT in standalone/direct mode.
-            // In standalone mode, we want the URL to persist so a refresh reloads the form.
-            if (!isStandalone) {
-                const url = new URL(window.location.href);
-                url.searchParams.delete('fill');
-                window.history.replaceState({}, '', url.toString());
-            }
-        }
-    }
-  }, [initialFormIdToFill, forms, clearFormIdToFill, isStandalone]);
 
   const highlightMatch = (text: string, term: string) => {
     if (!term.trim()) {
@@ -427,7 +382,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     return sourceFieldValueFromData === sourceFieldValue;
   };
 
-  const handleSubmitResponse = async () => {
+  const handleSubmitResponse = () => {
     if (!selectedForm) return;
 
     const visibleFields = selectedForm.schema.filter(field => isFieldVisible(field, formData));
@@ -443,17 +398,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
       }
     }
     
-    setIsSubmitting(true);
-    const success = await addFormResponse(selectedForm.id, formData);
-    setIsSubmitting(false);
-    
-    if (success) {
-        if (isStandalone) {
-            setIsSubmitted(true);
-        } else {
-            handleBackToList();
-        }
-    }
+    addFormResponse(selectedForm.id, formData);
+    handleBackToList();
   };
   
     const handleDeleteResponse = (responseId: string) => {
@@ -778,62 +724,11 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     />
   }
 
-  // --- LOGIQUE POUR MODE STANDALONE (LIEN DIRECT) ---
-  if (isStandalone) {
-      if (isSubmitted) {
-          return <SuccessCard />;
-      }
-      
-      // Si le formulaire est chargé et sélectionné, on affiche l'interface de remplissage épurée
-      if (selectedForm) {
-          const visibleFields = selectedForm.schema.filter(field => isFieldVisible(field, formData));
-          return (
-            <div className="space-y-6 max-w-4xl mx-auto">
-                <Card title={`Remplir : ${selectedForm.title}`}>
-                <p className="mb-6 text-slate-600 dark:text-slate-400">{selectedForm.description}</p>
-                <div className="space-y-6">
-                    {visibleFields.map(field => 
-                    (
-                        <div key={field.id}>
-                        {field.type !== 'note' && <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{field.label}</label>}
-                        {renderFormField(field, formData)}
-                        </div>
-                    )
-                    )}
-                </div>
-                <div className="flex justify-end mt-6">
-                    <Button onClick={handleSubmitResponse} disabled={isSubmitting}>
-                        {isSubmitting ? 'Envoi...' : `Soumettre la réponse ${user.role !== 'admin' && !isStandalone ? `(${systemSettings.coinCosts.addResponse} Coins)` : ''}`}
-                    </Button>
-                </div>
-                </Card>
-            </div>
-          );
-      }
-      
-      // Sinon (chargement en cours), on affiche un Spinner
-      // Sécurité : si forms est vide, on n'affiche pas le spinner indéfiniment
-      if (!forms || forms.length === 0) {
-          return (
-              <div className="text-center text-slate-500 py-10">
-                  <p>Chargement du formulaire...</p>
-                  <div className="mt-4"><Spinner className="w-8 h-8 text-primary-500 mx-auto"/></div>
-              </div>
-          );
-      }
-
-      return (
-          <div className="flex justify-center items-center h-64">
-              <Spinner className="w-12 h-12 text-primary-600" />
-          </div>
-      );
-  }
-
   if (view === 'filling' && selectedForm) {
     const visibleFields = selectedForm.schema.filter(field => isFieldVisible(field, formData));
     return (
       <div className="space-y-6 max-w-4xl mx-auto">
-        {!isStandalone && <Button onClick={handleBackToList} variant="secondary">← Retour à la liste</Button>}
+        <Button onClick={handleBackToList} variant="secondary">← Retour à la liste</Button>
         <Card title={`Remplir : ${selectedForm.title}`}>
           <p className="mb-6 text-slate-600 dark:text-slate-400">{selectedForm.description}</p>
           <div className="space-y-6">
@@ -847,8 +742,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
             )}
           </div>
           <div className="flex justify-end mt-6">
-            <Button onClick={handleSubmitResponse} disabled={isSubmitting}>
-                {isSubmitting ? 'Envoi...' : `Soumettre la réponse ${user.role !== 'admin' && !isStandalone ? `(${systemSettings.coinCosts.addResponse} Coins)` : ''}`}
+            <Button onClick={handleSubmitResponse}>
+                Soumettre la réponse {user.role !== 'admin' && `(${systemSettings.coinCosts.addResponse} Coins)`}
             </Button>
           </div>
         </Card>
@@ -1020,20 +915,6 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                                 <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
                                                     <PlusIcon className="w-4 h-4 mr-2 inline-block" />
                                                     Ajouter une réponse
-                                                </Button>
-                                                
-                                                <Button
-                                                    onClick={() => {
-                                                        const url = `${window.location.origin}?fill=${form.id}`;
-                                                        navigator.clipboard.writeText(url);
-                                                        if (showToast) showToast("Lien copié !", 'success');
-                                                    }}
-                                                    variant="secondary"
-                                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-primary-50 dark:hover:!bg-primary-900/20 text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-800/50 hover:border-primary-300 dark:hover:border-primary-700"
-                                                    title="Copier le lien direct pour ajouter une réponse"
-                                                    disabled={isSuspended}
-                                                >
-                                                    <LinkIcon className="w-5 h-5" />
                                                 </Button>
                                                 
                                                 {/* Bouton de suppression rouge */}

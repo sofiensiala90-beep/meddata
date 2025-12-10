@@ -47,6 +47,7 @@ export interface Form {
   isPublic: boolean;
   price: number;
   pricePerResponse: number;
+  responseCount?: number;
   origin?: 'created' | 'purchased';
   orderIndex?: number;
 }

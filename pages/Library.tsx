@@ -1,23 +1,24 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { User, Form, FormResponse, PurchasedForm, FormField, SystemSettings } from '../types';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import CoinIcon from '../components/icons/CoinIcon';
 import CheckSquareIcon from '../components/icons/CheckSquareIcon';
 import FormsIcon from '../components/icons/FormsIcon';
+import { db } from '../services/firebase';
 
 interface PurchaseModalProps {
     form: Form;
-    responseCount: number;
     currentUser: User;
     onClose: () => void;
     // FIX: Updated prop type to handle async function returning a Promise.
     onPurchase: (form: Form, withResponses: boolean) => Promise<boolean | void>;
 }
 
-const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, responseCount, currentUser, onClose, onPurchase }) => {
+const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, currentUser, onClose, onPurchase }) => {
     const [purchaseOption, setPurchaseOption] = useState<'form_only' | 'form_with_responses' | null>(null);
 
+    const responseCount = form.responseCount || 0;
     const formOnlyCost = form.price;
     const formWithResponsesCost = form.price + (responseCount * form.pricePerResponse);
 
@@ -156,22 +157,100 @@ const renderFormFieldPreview = (field: FormField) => {
     }
 };
 
-const PreviewModal: React.FC<{form: Form; onClose: () => void; onPurchaseClick: () => void}> = ({ form, onClose, onPurchaseClick }) => (
+const PreviewModal: React.FC<{form: Form; onClose: () => void; onPurchaseClick: () => void}> = ({ form, onClose, onPurchaseClick }) => {
+    const [sampleResponses, setSampleResponses] = useState<any[]>([]);
+    const [loadingPreview, setLoadingPreview] = useState(false);
+    const [previewError, setPreviewError] = useState('');
+
+    useEffect(() => {
+        const fetchPreview = async () => {
+            if (!form.responseCount || form.responseCount === 0) return;
+            setLoadingPreview(true);
+            try {
+                // Attempt to fetch up to 3 responses to show as preview
+                // This requires Firestore Rules to allow 'read' if request.auth != null (or specific logic)
+                const snapshot = await db.collection('responses')
+                    .where('formId', '==', form.id)
+                    .limit(3)
+                    .get();
+                
+                const data = snapshot.docs.map(doc => doc.data());
+                setSampleResponses(data);
+            } catch (err) {
+                console.error("Failed to load preview responses:", err);
+                setPreviewError("Impossible de charger l'aperçu des réponses (Permissions insuffisantes ou erreur réseau).");
+            } finally {
+                setLoadingPreview(false);
+            }
+        };
+        fetchPreview();
+    }, [form.id, form.responseCount]);
+
+    return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
       <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <header className="p-4 border-b border-slate-200 dark:border-slate-700">
             <h3 className="text-xl font-bold text-slate-900 dark:text-white">Aperçu : {form.title}</h3>
         </header>
-        <main className="p-6 space-y-4 overflow-y-auto">
-            <p className="mb-4 text-slate-600 dark:text-slate-400">{form.description}</p>
-            <div className="space-y-6">
-            {form.schema.map(field => (
-              <div key={field.id}>
-                {field.type !== 'note' && <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{field.label}</label>}
-                {renderFormFieldPreview(field)}
-              </div>
-            ))}
-          </div>
+        <main className="p-6 space-y-6 overflow-y-auto">
+            <div>
+                <h4 className="text-md font-semibold text-slate-900 dark:text-white mb-2">Description</h4>
+                <p className="text-sm text-slate-600 dark:text-slate-400">{form.description}</p>
+            </div>
+
+            <div>
+                <h4 className="text-md font-semibold text-slate-900 dark:text-white mb-2">Structure du Formulaire</h4>
+                <div className="space-y-4 border border-slate-200 dark:border-slate-700 p-4 rounded-lg bg-slate-50 dark:bg-slate-900/50">
+                    {form.schema.map(field => (
+                    <div key={field.id}>
+                        {field.type !== 'note' && <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">{field.label}</label>}
+                        {renderFormFieldPreview(field)}
+                    </div>
+                    ))}
+                </div>
+            </div>
+
+            {(form.responseCount || 0) > 0 && (
+                <div>
+                    <h4 className="text-md font-semibold text-slate-900 dark:text-white mb-2">Aperçu des Données ({form.responseCount} réponses)</h4>
+                    
+                    {loadingPreview ? (
+                        <p className="text-sm text-slate-500 italic">Chargement de l'aperçu...</p>
+                    ) : previewError ? (
+                        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 text-sm rounded-md border border-red-200 dark:border-red-800">
+                            {previewError}
+                        </div>
+                    ) : sampleResponses.length > 0 ? (
+                        <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+                            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-xs">
+                                <thead className="bg-slate-100 dark:bg-slate-700">
+                                    <tr>
+                                        {form.schema.slice(0, 3).map(field => (
+                                            <th key={field.id} className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-300">{field.label}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
+                                    {sampleResponses.map((resp, idx) => (
+                                        <tr key={idx}>
+                                            {form.schema.slice(0, 3).map(field => (
+                                                <td key={field.id} className="px-3 py-2 text-slate-700 dark:text-slate-300 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">
+                                                    {String(resp.data[field.id] || '-')}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            <div className="p-2 text-center text-xs text-slate-500 bg-slate-50 dark:bg-slate-900/50">
+                                ... et {Math.max(0, (form.responseCount || 0) - 3)} autres réponses.
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-sm text-slate-500">Aucune donnée disponible pour l'aperçu.</p>
+                    )}
+                </div>
+            )}
         </main>
         <footer className="flex justify-end space-x-3 p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 rounded-b-lg">
             <Button onClick={onClose} variant="secondary">Fermer</Button>
@@ -179,7 +258,8 @@ const PreviewModal: React.FC<{form: Form; onClose: () => void; onPurchaseClick: 
         </footer>
       </div>
     </div>
-);
+    );
+};
 
 
 interface LibraryProps {
@@ -234,7 +314,7 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {formsForDisplay.map(form => {
                         const creator = users.find(u => u.id === form.userId);
-                        const responseCount = responses.filter(r => r.formId === form.id).length;
+                        const responseCount = form.responseCount || 0;
                         const isPurchased = purchasedFormIds.has(form.id);
                         return (
                             <Card key={form.id} className="flex flex-col !p-0">
@@ -273,7 +353,7 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
             )}
 
             {formToPreview && <PreviewModal form={formToPreview} onClose={() => setFormToPreview(null)} onPurchaseClick={() => { setFormToBuy(formToPreview); setFormToPreview(null); }} />}
-            {formToBuy && <PurchaseModal form={formToBuy} responseCount={responses.filter(r => r.formId === formToBuy.id).length} currentUser={currentUser} onClose={() => setFormToBuy(null)} onPurchase={onPurchase} />}
+            {formToBuy && <PurchaseModal form={formToBuy} currentUser={currentUser} onClose={() => setFormToBuy(null)} onPurchase={onPurchase} />}
         </div>
     );
 };

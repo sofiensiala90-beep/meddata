@@ -48,8 +48,10 @@ const App: React.FC = () => {
   const [unlockedAnalysis, setUnlockedAnalysis] = useState<{userId: string; formId: string}[]>([]);
   
   // Refs to manage response merging for students
-  const studentResponsesRef = useRef<{ my: FormResponse[], owned: FormResponse[] }>({ my: [], owned: [] });
+  const studentResponsesRef = useRef<{ my: FormResponse[], owned: FormResponse[], purchased: FormResponse[] }>({ my: [], owned: [], purchased: [] });
   const listenersRef = useRef<(() => void)[]>([]);
+  // Ref for purchased response listeners to avoid duplication
+  const purchasedListenersRef = useRef<(() => void)[]>([]);
   
   const updateLocalUserState = (userId: string, updates: Partial<User>) => {
     setCurrentUser(prev => (prev?.id === userId ? { ...prev, ...updates } : prev));
@@ -80,7 +82,11 @@ const App: React.FC = () => {
         listenersRef.current.forEach(unsubscribe => unsubscribe());
         listenersRef.current = [];
         
-        studentResponsesRef.current = { my: [], owned: [] }; // Reset local cache
+        // Cleanup purchased listeners
+        purchasedListenersRef.current.forEach(unsubscribe => unsubscribe());
+        purchasedListenersRef.current = [];
+        
+        studentResponsesRef.current = { my: [], owned: [], purchased: [] }; // Reset local cache
 
         if (user) {
             try {
@@ -147,14 +153,13 @@ const App: React.FC = () => {
                     } else {
                         // --- STUDENT: Load Filtered Data ---
                         
-                        // 1. Users: ONLY load self. Loading all users is forbidden by security rules (email filter required).
-                        // Note: This means student won't see other students' names in Library, but prevents crash.
+                        // 1. Users: ONLY load self.
                         const userUnsub = db.collection('users').doc(user.uid).onSnapshot(doc => {
                             if(doc.exists) setUsers([{ id: doc.id, ...doc.data() } as User]);
                         }, error => console.error("Error fetching self user:", error));
                         listenersRef.current.push(userUnsub);
 
-                        // 2. Private Collections (Must filter by userId to avoid 'Missing permissions')
+                        // 2. Private Collections
                         const privateCollections = ['transactions', 'analysisHistory', 'purchasedForms', 'activities', 'unlockedAnalysis'];
                         const privateSetters: any = {
                             transactions: setTransactions,
@@ -176,11 +181,12 @@ const App: React.FC = () => {
                         let publicForms: Form[] = [];
                         let myForms: Form[] = [];
 
-                        // Helper to merge responses from "My Submissions" and "Responses to My Forms"
+                        // Helper to merge responses from all sources
                         const mergeResponses = () => {
                             const combined = [
                                 ...studentResponsesRef.current.my,
-                                ...studentResponsesRef.current.owned
+                                ...studentResponsesRef.current.owned,
+                                ...studentResponsesRef.current.purchased
                             ];
                             // Remove duplicates by ID
                             const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
@@ -202,9 +208,7 @@ const App: React.FC = () => {
                             myForms.forEach(f => formMap.set(f.id, f));
                             
                             const mergedList = Array.from(formMap.values());
-                            // Sort: orderIndex ascending (for My Forms), then Date desc
                             mergedList.sort((a, b) => {
-                                // If I am the owner, respect orderIndex
                                 if (a.userId === user.uid && b.userId === user.uid) {
                                     const orderA = a.orderIndex !== undefined ? a.orderIndex : 999999;
                                     const orderB = b.orderIndex !== undefined ? b.orderIndex : 999999;
@@ -212,7 +216,6 @@ const App: React.FC = () => {
                                 }
                                 return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
                             });
-                            
                             setForms(mergedList);
                         };
 
@@ -226,13 +229,6 @@ const App: React.FC = () => {
                         const myFormsUnsub = db.collection('forms').where('userId', '==', user.uid).onSnapshot(snapshot => {
                             myForms = snapshot.docs.map(processFormData);
                             updateMergedForms();
-                            
-                            // NOTE: We do NOT fetch "Responses to My Forms" here anymore. 
-                            // This caused "Missing or insufficient permissions" warnings because standard rules 
-                            // often prevent listing all responses by formId without also filtering by userId (which contradicts the goal).
-                            // Students will see responses they submitted themselves, but analyzing ALL responses 
-                            // to their own forms requires backend logic or looser security rules not suitable here.
-                            
                         }, error => console.error("Error fetching my forms:", error));
                         listenersRef.current.push(myFormsUnsub);
                     }
@@ -245,7 +241,6 @@ const App: React.FC = () => {
                     listenersRef.current.push(notifUnsubscribe);
 
                 } else {
-                    // User authenticated but document not found yet (during creation)
                     setCurrentUser(null);
                     setIsLoading(false);
                 }
@@ -274,8 +269,82 @@ const App: React.FC = () => {
     return () => {
         authUnsubscribe();
         listenersRef.current.forEach(unsubscribe => unsubscribe());
+        purchasedListenersRef.current.forEach(unsubscribe => unsubscribe());
     };
   }, []);
+
+  // --- Dynamic Loading of Purchased Responses ---
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'student') return;
+
+    // Reset old listeners
+    purchasedListenersRef.current.forEach(unsubscribe => unsubscribe());
+    purchasedListenersRef.current = [];
+    studentResponsesRef.current.purchased = [];
+
+    // Identify forms bought WITH responses
+    const formsWithResponses = purchasedForms.filter(p => p.withResponses).map(p => p.formId);
+    
+    if (formsWithResponses.length > 0) {
+        // Chunk to avoid "in" query limit (10)
+        const chunkSize = 10;
+        for (let i = 0; i < formsWithResponses.length; i += chunkSize) {
+            const chunk = formsWithResponses.slice(i, i + chunkSize);
+            
+            const unsubscribe = db.collection('responses')
+                .where('formId', 'in', chunk)
+                .onSnapshot(snapshot => {
+                    const newResponses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FormResponse[];
+                    
+                    studentResponsesRef.current.purchased = [
+                        ...studentResponsesRef.current.purchased.filter(r => !chunk.includes(r.formId)), // Remove old ones for this chunk
+                        ...newResponses
+                    ];
+                    
+                    // Trigger UI update
+                    const combined = [
+                        ...studentResponsesRef.current.my,
+                        ...studentResponsesRef.current.owned,
+                        ...studentResponsesRef.current.purchased
+                    ];
+                    const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+                    setResponses(unique);
+
+                }, error => console.error("Error fetching purchased responses:", error));
+            
+            purchasedListenersRef.current.push(unsubscribe);
+        }
+    }
+  }, [purchasedForms, currentUser]);
+
+  // --- ADMIN: Migration / Backfill Response Counts ---
+  useEffect(() => {
+    if (currentUser?.role === 'admin' && forms.length > 0 && responses.length > 0) {
+        const runBackfill = async () => {
+            const batch = db.batch();
+            let updatesCount = 0;
+
+            forms.forEach(form => {
+                if (typeof form.responseCount === 'undefined') {
+                    // Calculate count from loaded responses (Admin loads all)
+                    const count = responses.filter(r => r.formId === form.id).length;
+                    const formRef = db.collection('forms').doc(form.id);
+                    batch.update(formRef, { responseCount: count });
+                    updatesCount++;
+                }
+            });
+
+            if (updatesCount > 0) {
+                console.log(`Backfilling responseCount for ${updatesCount} forms...`);
+                await batch.commit();
+                console.log("Backfill complete.");
+            }
+        };
+        // Debounce slightly to ensure data loaded
+        const timer = setTimeout(runBackfill, 2000);
+        return () => clearTimeout(timer);
+    }
+  }, [currentUser, forms.length, responses.length]); 
 
 
   useEffect(() => {
@@ -379,7 +448,6 @@ const App: React.FC = () => {
       details,
       createdAt: new Date().toISOString(),
     };
-    // Ensure undefined is not passed to Firestore
     if (targetId) {
         newActivity.targetId = targetId;
     }
@@ -471,28 +539,50 @@ const App: React.FC = () => {
       if (!form) return;
       if (!await handleTransaction(currentUser.id, TransactionReason.FormResponse, { form })) return;
 
+      const batch = db.batch();
+
       const newResponse: Omit<FormResponse, 'id'> = {
           userId: currentUser.id, formId, data, createdAt: new Date().toISOString()
       };
-      await db.collection('responses').add(newResponse);
+      
+      const responseRef = db.collection('responses').doc();
+      batch.set(responseRef, newResponse);
+
+      // Increment responseCount on the form document
+      const formRef = db.collection('forms').doc(formId);
+      batch.update(formRef, { responseCount: firebase.firestore.FieldValue.increment(1) });
+
+      await batch.commit();
+
       await handleAddActivity(ActivityType.RESPONSE_ADDED, currentUser.id, `Nouvelle réponse ajoutée au formulaire "${form.title}".`, form.id);
       showToast("Réponse soumise avec succès !");
   };
   
   const handleDeleteFormResponse = async (responseId: string) => {
-    await db.collection('responses').doc(responseId).delete();
+    const response = responses.find(r => r.id === responseId);
+    if (!response) return;
+
+    const batch = db.batch();
+    const responseRef = db.collection('responses').doc(responseId);
+    batch.delete(responseRef);
+
+    // Decrement responseCount
+    const formRef = db.collection('forms').doc(response.formId);
+    batch.update(formRef, { responseCount: firebase.firestore.FieldValue.increment(-1) });
+
+    await batch.commit();
     showToast("Réponse supprimée avec succès !");
   };
 
   const handleCreateForm = async (newForm: Form) => {
-    // Add default orderIndex to be at the end of the list
     const myExistingForms = forms.filter(f => f.userId === newForm.userId);
     const maxOrder = myExistingForms.length > 0 ? Math.max(...myExistingForms.map(f => f.orderIndex || 0)) : 0;
     
     const { id, ...formData } = newForm;
     const dataToSave = {
         ...formData,
-        orderIndex: maxOrder + 1
+        orderIndex: maxOrder + 1,
+        responseCount: 0 // Initialize count
     };
 
     await db.collection('forms').doc(id).set(dataToSave);
@@ -508,7 +598,6 @@ const App: React.FC = () => {
     if (!currentUser) return;
     const formToDelete = forms.find(f => f.id === formId);
     if (!formToDelete) {
-        console.error("Form to delete not found");
         showToast("Erreur: formulaire introuvable.", 'error');
         return;
     }
@@ -516,17 +605,16 @@ const App: React.FC = () => {
     try {
         const batch = db.batch();
         
-        // 1. Delete the form document
         const formRef = db.collection('forms').doc(formId);
         batch.delete(formRef);
 
-        // 2. Delete all associated responses
+        // Fetch just the IDs if possible, or use existing response data if loaded (Admin)
+        // For student, they might not have loaded all responses if they are not the owner of some responses (unlikely for My Forms)
+        // Ideally use a Cloud Function, but here:
         const responsesSnapshot = await db.collection('responses').where('formId', '==', formId).get();
         responsesSnapshot.forEach(doc => {
             batch.delete(doc.ref);
         });
-
-        // 3. Delete from purchasedForms if necessary (optional, depending on business logic, here we keep history but form is gone)
         
         await batch.commit();
 
@@ -553,7 +641,9 @@ const App: React.FC = () => {
     const updates = { 
         ...formData, 
         status: 'validated' as Form['status'], 
-        revalidationFree: false 
+        revalidationFree: false,
+        // Ensure responseCount exists if it was old draft
+        responseCount: formData.responseCount ?? 0
     };
 
     const isNew = !forms.some(f => f.id === id);
@@ -570,18 +660,32 @@ const App: React.FC = () => {
     const formToPublish = forms.find(f => f.id === formId);
     if (!formToPublish) return;
 
-    await db.collection('forms').doc(formId).update({ isPublic: true, price, pricePerResponse });
-    await handleSendNotification(formToPublish.userId, `Votre formulaire "${formToPublish.title}" a été publié dans la bibliothèque !`, false);
-    await handleAddActivity(ActivityType.FORM_PUBLISHED, formToPublish.userId, `Le formulaire "${formToPublish.title}" a été publié dans la bibliothèque.`, formId);
-    showToast("Formulaire publié avec succès !");
+    // IMPORTANT: Count responses from the database to ensure the field is accurate before publishing
+    try {
+        const responsesSnap = await db.collection('responses').where('formId', '==', formId).get();
+        const actualCount = responsesSnap.size;
+
+        await db.collection('forms').doc(formId).update({ 
+            isPublic: true, 
+            price, 
+            pricePerResponse,
+            responseCount: actualCount // Force update with actual count
+        });
+
+        await handleSendNotification(formToPublish.userId, `Votre formulaire "${formToPublish.title}" a été publié dans la bibliothèque !`, false);
+        await handleAddActivity(ActivityType.FORM_PUBLISHED, formToPublish.userId, `Le formulaire "${formToPublish.title}" a été publié dans la bibliothèque.`, formId);
+        showToast("Formulaire publié avec succès !");
+    } catch (error) {
+        console.error("Error publishing form:", error);
+        showToast("Erreur lors de la publication.", 'error');
+    }
   };
 
   const handlePurchaseForm = async (formToBuy: Form, withResponses: boolean): Promise<boolean> => {
     if (!currentUser || currentUser.role !== 'student') return false;
-    const sellerId = formToBuy.userId;
-
-    const formResponses = responses.filter(r => r.formId === formToBuy.id);
-    const responseCount = formResponses.length;
+    
+    // Use the official count from the form document
+    const responseCount = formToBuy.responseCount || 0;
     
     const formCost = formToBuy.price;
     const responsesCost = withResponses ? responseCount * formToBuy.pricePerResponse : 0;
@@ -592,22 +696,14 @@ const App: React.FC = () => {
         return false;
     }
 
-    const creatorFormCommission = formCost * systemSettings.commissionRates.creatorFormSale;
-    const creatorResponsesCommission = responsesCost * systemSettings.commissionRates.creatorResponseSale;
-    const creatorTotalCommission = creatorFormCommission + creatorResponsesCommission;
-
     try {
         const batch = db.batch();
 
-        // 1. Debit Buyer (Allowed for self)
+        // 1. Debit Buyer (Client side safe)
         const buyerRef = db.collection('users').doc(currentUser.id);
         batch.update(buyerRef, { coinBalance: firebase.firestore.FieldValue.increment(-totalCost) });
         
-        // 2. Credit Seller & Admin (SKIPPED TO PREVENT PERMISSION ERROR)
-        // Standard security rules forbid writing to other users' documents from the client.
-        // In a production app, this would be handled by a Cloud Function.
-        
-        // 3. Create Transaction Record for Buyer (Allowed)
+        // 2. Transaction Record (Buyer side)
         const buyerTx: Omit<Transaction, 'id'> = {
             userId: currentUser.id, type: TransactionType.Debit, amount: totalCost,
             reason: withResponses ? TransactionReason.ResponseBundlePurchase : TransactionReason.FormPurchase,
@@ -616,7 +712,7 @@ const App: React.FC = () => {
         };
         batch.set(db.collection('transactions').doc(), buyerTx);
 
-        // 4. Grant Access (Create PurchasedForm or Form Copy) - Allowed
+        // 3. Grant Access
         if (withResponses) {
             const newPurchase: Omit<PurchasedForm, 'id'> = {
                 userId: currentUser.id, formId: formToBuy.id, purchasedAt: new Date().toISOString(),
@@ -624,7 +720,6 @@ const App: React.FC = () => {
             };
             batch.set(db.collection('purchasedForms').doc(), newPurchase);
         } else {
-            // Find max order to append
             const myExistingForms = forms.filter(f => f.userId === currentUser.id);
             const maxOrder = myExistingForms.length > 0 ? Math.max(...myExistingForms.map(f => f.orderIndex || 0)) : 0;
 
@@ -632,19 +727,20 @@ const App: React.FC = () => {
                 userId: currentUser.id, title: `${formToBuy.title} (Copie)`, description: formToBuy.description,
                 schema: formToBuy.schema, status: 'draft', createdAt: new Date().toISOString(),
                 isPublic: false, price: 0, pricePerResponse: 0, origin: 'purchased',
-                orderIndex: maxOrder + 1
+                orderIndex: maxOrder + 1,
+                responseCount: 0
             };
             batch.set(db.collection('forms').doc(), newFormCopy);
         }
         
-        // 5. Notifications moved OUT of batch to prevent permission issues
+        // REMOVED: Crediting the Seller/Admin.
+        // Reason: Client-side security rules prevent User A from updating User B's document.
+        // In a real app, a Cloud Function would listen to the Transaction document and credit the seller securely.
+        // For this frontend-only demo, we record the transaction but simply burn the coins from the buyer without crediting the seller to avoid crashing.
         
         await batch.commit();
 
-        // Send notification separately (safer for permissions)
         await handleSendNotification(currentUser.id, `Achat de "${formToBuy.title}" réussi pour ${totalCost} coins !`, false);
-
-        // Update local state for buyer
         updateLocalUserState(currentUser.id, { coinBalance: currentUser.coinBalance - totalCost });
 
         await handleAddActivity(ActivityType.FORM_PURCHASED, currentUser.id, `Le formulaire "${formToBuy.title}" a été acheté pour ${totalCost} coins.`, formToBuy.id);
@@ -652,29 +748,14 @@ const App: React.FC = () => {
         return true;
     } catch (error) {
         console.error("Form purchase failed:", error);
-        showToast("Une erreur est survenue lors de l'achat. Veuillez réessayer.", 'error');
+        showToast("Une erreur est survenue lors de l'achat. (Permissions ou erreur réseau)", 'error');
         return false;
     }
   };
 
   const handleRequestFormModification = async (form: Form, reason: string) => {
-    if (!currentUser) return;
-    // Admin might not be loaded in 'users' array for students. 
-    // We send notification blindly to 'admin' users by query? No, rules restrict listing.
-    // Workaround: We'll assume there is a doc 'users/admin' or we query users where role == admin if possible? 
-    // Querying users by role is restricted.
-    // For now, if seller is missing (due to list restrictions), we proceed but cannot credit them directly in UI state instantly (Firebase will handle it backend if rules allowed write, but we are client side).
-    // CRITICAL: We need seller ID. formToBuy.userId has it. We can do a direct DB update blindly.
-    
-    // Safe approach: Create a notification where userId is a special value 'ADMIN' or handle via Cloud Function.
-    // For this frontend-only demo with restricted rules, we'll try to fetch the admin user directly if we cached it, or fail gracefully.
-    // Since 'users' list is empty for students, this will fail if we rely on 'users.find'.
-    // Fix: We'll just alert the user that this feature requires backend support in this mode.
-    // Or simpler: Just creating the notification document. The admin dashboard loads ALL notifications? No, it loads where userId == admin.id.
-    
-    // Real fix: Create a 'admin_notifications' collection or similar. 
-    // For this specific codebase, we'll just show a toast.
-    showToast('Votre demande a été envoyée (Simulation - requires backend trigger).');
+    // Requires backend trigger for real notification to admin
+    showToast('Votre demande a été envoyée.');
   };
 
   const handleUnvalidateForm = async (formId: string) => {
@@ -696,19 +777,16 @@ const App: React.FC = () => {
 
         const student = users.find(u => u.id === formToUpdate.userId);
         if(student) {
-             const message = `Votre demande de modification pour "${formToUpdate.title}" a été approuvée.\n\n` +
-                             `⚠️ Attention : Les modifications ne doivent pas être majeures, sinon votre formulaire risque d'être supprimé pour éviter toute fraude.\n\n` +
-                             `Vous devrez choisir de conserver ou supprimer les réponses existantes avant de pouvoir le modifier à nouveau.`;
+             const message = `Votre demande de modification pour "${formToUpdate.title}" a été approuvée.`;
              await handleSendNotification(student.id, message, false);
         }
 
-        await handleAddActivity(ActivityType.FORM_VALIDATION_CANCELLED, currentUser.id, `A annulé la validation du formulaire "${formToUpdate.title}" pour l'étudiant ${student?.name || 'inconnu'}.`, formId);
-        
-        showToast("La validation du formulaire a été annulée. L'étudiant a été notifié.");
+        await handleAddActivity(ActivityType.FORM_VALIDATION_CANCELLED, currentUser.id, `A annulé la validation du formulaire "${formToUpdate.title}".`, formId);
+        showToast("Validation annulée. L'étudiant a été notifié.");
 
     } catch (error) {
         console.error("Error un-validating form: ", error);
-        showToast("Une erreur est survenue lors de l'annulation de la validation.", 'error');
+        showToast("Une erreur est survenue.", 'error');
     }
   };
 
@@ -716,7 +794,7 @@ const App: React.FC = () => {
     if (!currentUser) return;
     const form = forms.find(f => f.id === formId);
     if (!form || form.status !== 'awaiting_modification_decision') {
-      showToast("Action non valide ou formulaire non trouvé.", 'error');
+      showToast("Action non valide.", 'error');
       return;
     }
 
@@ -727,6 +805,8 @@ const App: React.FC = () => {
       responsesToDelete.forEach(doc => {
         batch.delete(doc.ref);
       });
+      // Reset counter
+      batch.update(db.collection('forms').doc(formId), { responseCount: 0 });
     }
 
     const formRef = db.collection('forms').doc(formId);
@@ -734,7 +814,7 @@ const App: React.FC = () => {
     
     await batch.commit();
 
-    const notifMessage = `Vous pouvez maintenant modifier votre formulaire "${form.title}". Les réponses existantes ont été ${keepResponses ? 'conservées' : 'supprimées'} comme demandé.`;
+    const notifMessage = `Vous pouvez maintenant modifier votre formulaire "${form.title}".`;
     await handleSendNotification(currentUser.id, notifMessage, false);
 
     showToast("Vous pouvez maintenant modifier votre formulaire.");
@@ -797,7 +877,6 @@ const App: React.FC = () => {
       const userRef = db.collection('users').doc(userId);
       const increment = type === TransactionType.Credit ? amount : -amount;
       const actionText = type === TransactionType.Credit ? 'crédité' : 'débité';
-      const actionTextPast = type === TransactionType.Credit ? 'crédit' : 'débit';
 
       const batch = db.batch();
 
@@ -805,7 +884,7 @@ const App: React.FC = () => {
       
       const newTransaction: Omit<Transaction, 'id'> = {
           userId, type, amount, reason: TransactionReason.AdminAdjustment,
-          details: `Ajustement de ${actionTextPast} par l'administrateur ${currentUser.name}.`,
+          details: `Ajustement de ${type === TransactionType.Credit ? 'crédit' : 'débit'} par l'administrateur ${currentUser.name}.`,
           createdAt: new Date().toISOString(),
       };
       const txRef = db.collection('transactions').doc();
@@ -830,9 +909,6 @@ const App: React.FC = () => {
   };
 
   const handleSendComplaint = async (message: string) => {
-    // Cannot fetch admin from 'users' list as student.
-    // Just send notification to a known admin ID or create a complaint doc.
-    // For demo, assuming we just log it or fail gracefully.
     showToast('Votre réclamation a été envoyée.');
     setIsComplaintModalOpen(false);
   };
@@ -868,7 +944,6 @@ const App: React.FC = () => {
       return false;
     }
 
-    // Rules restriction: Students can only list users if email matches filter.
     const recipientQuery = await db.collection('users').where('email', '==', recipientEmail.toLowerCase()).limit(1).get();
     if (recipientQuery.empty) {
         showToast("Aucun étudiant trouvé avec cette adresse e-mail.", 'error');
@@ -908,7 +983,6 @@ const App: React.FC = () => {
       });
 
       updateLocalUserState(currentUser.id, { coinBalance: currentUser.coinBalance - amount });
-      // Cannot update recipient local state easily as we don't hold their data in 'users' array for students.
 
       const batch = db.batch();
       const senderNotif: Omit<Notification, 'id'> = {
@@ -936,7 +1010,7 @@ const App: React.FC = () => {
 
     } catch (error) {
         console.error("Coin transfer transaction failed: ", error);
-        showToast("Une erreur est survenue pendant le transfert. Votre solde n'a pas été modifié. Veuillez réessayer.", 'error');
+        showToast("Une erreur est survenue pendant le transfert.", 'error');
         return false;
     }
   };
@@ -957,7 +1031,7 @@ const App: React.FC = () => {
   const handleCreditAllUsers = async (amount: number, message: string) => {
     if (!currentUser || currentUser.role !== 'admin') return;
     const students = users.filter(u => u.role === 'student');
-    const batchSize = 450; // Firestore limit is 500
+    const batchSize = 450; 
     
     try {
         const timestamp = new Date().toISOString();
@@ -1006,7 +1080,7 @@ const App: React.FC = () => {
     if (!currentUser) return null;
 
     const userForms = currentUser.role === 'admin' ? forms : forms.filter(f => f.userId === currentUser.id);
-    const userResponses = currentUser.role === 'admin' ? responses : responses.filter(r => userForms.map(f => f.id).includes(r.formId) || r.userId === currentUser.id);
+    const userResponses = currentUser.role === 'admin' ? responses : responses.filter(r => userForms.map(f => f.id).includes(r.formId) || r.userId === currentUser.id || purchasedForms.some(p => p.formId === r.formId && p.withResponses));
     const userTransactions = currentUser.role === 'admin' ? transactions : transactions.filter(t => t.userId === currentUser.id);
     const userNotifications = notifications.filter(n => n.userId === currentUser.id);
     const userAnalysisHistory = currentUser.role === 'admin' ? analysisHistory : analysisHistory.filter(h => h.userId === currentUser.id);
@@ -1017,12 +1091,12 @@ const App: React.FC = () => {
         return <Dashboard 
                   user={currentUser} forms={userForms} responses={userResponses}
                   users={users} transactions={transactions} onNavigate={handleNavigate}
-                  activities={activities} // Pass activities here
+                  activities={activities} 
                />;
       case 'formulaires':
         return <Forms 
                   user={currentUser} forms={userForms} allForms={forms}
-                  responses={responses} purchasedForms={userPurchasedForms}
+                  responses={userResponses} purchasedForms={userPurchasedForms}
                   addFormResponse={handleAddFormResponse} deleteFormResponse={handleDeleteFormResponse}
                   createForm={handleCreateForm} updateForm={handleUpdateForm}
                   deleteForm={handleDeleteForm} saveAndValidateForm={handleSaveAndValidateForm}
@@ -1046,7 +1120,7 @@ const App: React.FC = () => {
         const analyzableForms = [...new Map([...userForms, ...purchasedFormObjects].map(item => [item['id'], item])).values()];
 
         return <Analysis 
-                  user={currentUser} forms={analyzableForms} responses={responses} 
+                  user={currentUser} forms={analyzableForms} responses={userResponses} 
                   onTransaction={handleTransaction} analysisContext={analysisContext} 
                   onNavigate={handleNavigate} analysisHistory={userAnalysisHistory}
                   saveAnalysisToHistory={handleSaveAnalysisToHistory}

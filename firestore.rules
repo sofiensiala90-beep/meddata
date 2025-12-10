@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- HELPER FUNCTIONS ---
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- COLLECTION RULES ---
+
+    // USERS
+    // Read: Allowed for all authenticated users (needed to see "Created by [Name]" in library)
+    // Update: Allowed for self (deduct coins) or Admin
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isOwner(userId) || isAdmin();
+    }
+
+    // FORMS
+    // Read: Public forms OR Owner OR Admin
+    match /forms/{formId} {
+      allow read: if resource.data.isPublic == true || isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // RESPONSES
+    // Read: Allowed for all authenticated users. 
+    // This fixes the "0 responses" issue and allows the Preview feature in the Library.
+    match /responses/{responseId} {
+      allow read: if isSignedIn(); 
+      allow create: if isSignedIn();
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // TRANSACTIONS
+    // Create: Allowed for any logged-in user (needed for purchasing/validating)
+    match /transactions/{transactionId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn();
+    }
+
+    // PURCHASED FORMS
+    // Create: Allowed for any logged-in user (needed when buying a form)
+    match /purchasedForms/{purchaseId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn();
+    }
+
+    // NOTIFICATIONS
+    match /notifications/{notificationId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isSignedIn(); // Allow app to send notifications (e.g. from admin)
+      allow update: if isOwner(resource.data.userId); // Mark as read
+    }
+
+    // ACTIVITY LOGS
+    match /activities/{activityId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+    }
+    
+    // AI ANALYSIS HISTORY
+    match /analysisHistory/{historyId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn();
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+    
+    // UNLOCKED ANALYSIS
+    match /unlockedAnalysis/{unlockId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn();
+    }
+
+    // SYSTEM SETTINGS
+    match /settings/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

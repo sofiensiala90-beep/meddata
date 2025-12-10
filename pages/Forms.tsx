@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User, Form, FormResponse, FormField, PurchasedForm, SystemSettings } from '../types';
 import Card from '../components/Card';
@@ -606,7 +604,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     }
   };
 
-  const getResponseCountForForm = (formId: string) => responses.filter(r => r.formId === formId).length;
+  const getResponseCountForForm = (form: Form) => form.responseCount || 0;
   
   const getStatusBadge = (status: Form['status']) => {
     switch (status) {
@@ -840,7 +838,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {filteredForms.map((form, index) => {
                     const creator = users.find(u => u.id === form.userId);
-                    const responseCount = getResponseCountForForm(form.id);
+                    const responseCount = getResponseCountForForm(form);
                     const matchingQuestions = form.schema.filter(q => filters.searchTerm.trim() && q.label.toLowerCase().includes(filters.searchTerm.trim().toLowerCase())).map(q => q.label);
                     const statusInfo = getStatusBadge(form.status);
 
@@ -1028,7 +1026,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
       {confirmation && <ConfirmationModal {...confirmation} />}
       {isPublishModalOpen && formToPublish && <PublishModal form={formToPublish} onClose={() => setIsPublishModalOpen(false)} onConfirm={handleConfirmPublish} settings={systemSettings} />}
       {formToAction?.status === 'validated' && <ModificationRequestModal form={formToAction} onClose={() => setFormToAction(null)} onSubmit={handleRequestFormModification} />}
-      {formToAction?.status === 'awaiting_modification_decision' && <ModificationDecisionModal form={formToAction} responseCount={getResponseCountForForm(formToAction.id)} onClose={() => setFormToAction(null)} onDecision={onModificationDecision} />}
+      {formToAction?.status === 'awaiting_modification_decision' && <ModificationDecisionModal form={formToAction} responseCount={getResponseCountForForm(formToAction)} onClose={() => setFormToAction(null)} onDecision={onModificationDecision} />}
     </>
   );
 };

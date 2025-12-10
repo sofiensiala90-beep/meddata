@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, forwardRef } from 'react';
 
 interface ChartData {
@@ -14,6 +15,7 @@ interface ChartData {
 
 interface ChartRendererProps {
   chartData: ChartData;
+  customColors?: string[];
 }
 
 const isValidHex = (color: string | undefined | null): color is string => {
@@ -21,7 +23,7 @@ const isValidHex = (color: string | undefined | null): color is string => {
     return /^#[0-9A-F]{6}$/i.test(color) || /^#[0-9A-F]{3}$/i.test(color);
 };
 
-const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chartData }, ref) => {
+const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chartData, customColors }, ref) => {
   const internalCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = ref || internalCanvasRef;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -49,10 +51,27 @@ const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chart
 
         const { type, data: { labels, datasets } } = chartData;
         const dataset = datasets[0];
+        
+        // Use custom colors if provided, otherwise fallback to AI provided colors, then default
         const defaultColors = ['#60A5FA', '#34D399', '#FBBF24', '#F87171', '#A78BFA', '#FB923C', '#EC4899', '#14B8A6'];
-        const colors = dataset.data.map((_, index) => 
-            isValidHex(dataset.backgroundColor?.[index]) ? dataset.backgroundColor![index] : defaultColors[index % defaultColors.length]
-        );
+        
+        let palette = defaultColors;
+        if (customColors && customColors.length > 0) {
+            palette = customColors;
+        }
+
+        const colors = dataset.data.map((_, index) => {
+            // Prioritize custom palette override if provided
+            if (customColors && customColors.length > 0) {
+                return customColors[index % customColors.length];
+            }
+            // Then check for AI provided colors
+            if (isValidHex(dataset.backgroundColor?.[index])) {
+                return dataset.backgroundColor![index];
+            }
+            // Fallback to default
+            return defaultColors[index % defaultColors.length];
+        });
 
         const drawBarChart = () => {
             const paddingBottom = 50;
@@ -186,7 +205,7 @@ const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chart
     resizeObserver.observe(container);
 
     return () => resizeObserver.disconnect();
-  }, [chartData, canvasRef]);
+  }, [chartData, canvasRef, customColors]);
 
   if (!chartData || !chartData.data?.datasets?.[0]?.data) {
     return <p className="text-slate-500 dark:text-slate-400">Données du graphique non valides.</p>;

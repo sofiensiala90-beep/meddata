@@ -1162,8 +1162,8 @@ const App: React.FC = () => {
   
   if (isLoading) {
     return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-900">
-            <Spinner className="w-16 h-16 text-primary-600" />
+        <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900">
+            <Spinner className="w-16 h-16 text-primary-500" />
         </div>
     );
   }
@@ -1175,7 +1175,7 @@ const App: React.FC = () => {
   const userNotifications = notifications.filter(n => n.userId === currentUser.id);
 
   return (
-    <div className="relative min-h-screen bg-slate-100 dark:bg-slate-900 font-sans lg:flex">
+    <div className="relative min-h-screen bg-gradient-to-br from-slate-50 to-primary-50 dark:from-slate-900 dark:to-slate-800 font-sans text-slate-800 dark:text-slate-100 selection:bg-primary-200 selection:text-primary-900 lg:flex">
       <Sidebar
         user={currentUser}
         currentPage={currentPage}
@@ -1184,15 +1184,18 @@ const App: React.FC = () => {
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
       />
-      <div className="flex-1 flex flex-col overflow-hidden lg:ml-64">
+      
+      <div className="flex-1 flex flex-col overflow-hidden lg:ml-72 transition-all duration-300">
         <Header 
           user={currentUser} onLogout={handleLogout} currentPage={currentPage}
           notifications={userNotifications} onMarkNotificationsRead={() => handleMarkNotificationsRead(currentUser.id)}
           theme={theme} onToggleTheme={handleToggleTheme}
           onNavigate={handleNavigate} setIsSidebarOpen={setIsSidebarOpen}
         />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 pb-24 lg:pb-6">
-          {renderPage()}
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-8 pb-24 lg:pb-8">
+          <div className="max-w-7xl mx-auto">
+            {renderPage()}
+          </div>
         </main>
       </div>
       <Chatbot user={currentUser} onNavigate={handleNavigate} systemSettings={systemSettings} />

@@ -12,17 +12,18 @@
   <style type="text/tailwindcss">
     @layer base {
       :root {
-        /* Define primary color palette for light mode */
-        --color-primary-50: 239 246 255;
-        --color-primary-100: 224 231 255;
-        --color-primary-200: 199 210 254;
-        --color-primary-300: 165 180 252;
-        --color-primary-400: 129 140 248;
-        --color-primary-500: 99 102 241;
-        --color-primary-600: 79 70 229;
-        --color-primary-700: 67 56 202;
-        --color-primary-800: 55 48 163;
-        --color-primary-900: 49 46 129;
+        /* New Palette: Teal/Emerald (Medical Tech Feel) */
+        /* Replaces the old Indigo palette */
+        --color-primary-50: 240 253 250;
+        --color-primary-100: 204 251 241;
+        --color-primary-200: 153 246 228;
+        --color-primary-300: 94 234 212;
+        --color-primary-400: 45 212 191;
+        --color-primary-500: 20 184 166;
+        --color-primary-600: 13 148 136;
+        --color-primary-700: 15 118 110;
+        --color-primary-800: 17 94 89;
+        --color-primary-900: 19 78 74;
       }
     }
     @layer components {
@@ -33,24 +34,28 @@
         color: theme('colors.slate.300');
       }
       .prose h1, .prose h2, .prose h3, .prose h4 {
-        color: theme('colors.slate.900');
+        color: theme('colors.teal.900');
       }
       .dark .prose h1, .dark .prose h2, .dark .prose h3, .dark .prose h4 {
         color: theme('colors.white');
       }
       .prose strong {
-         color: theme('colors.slate.900');
+         color: theme('colors.teal.800');
       }
       .dark .prose strong {
-         color: theme('colors.white');
+         color: theme('colors.teal.200');
       }
        .prose blockquote {
         border-left-color: theme('colors.primary.500');
         color: theme('colors.slate.600');
+        background-color: theme('colors.primary.50');
+        padding: 1rem;
+        border-radius: 0.5rem;
       }
       .dark .prose blockquote {
          border-left-color: theme('colors.primary.400');
          color: theme('colors.slate.400');
+         background-color: theme('colors.slate.800');
       }
       @keyframes blink {
         50% { opacity: 0; }
@@ -65,6 +70,16 @@
       .dark .blinking-cursor {
         background-color: theme('colors.slate.300');
       }
+      
+      /* Glassmorphism Utilities */
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+      .dark .glass-panel {
+        background: rgba(30, 41, 59, 0.7);
+      }
     }
   </style>
 
@@ -74,6 +89,9 @@
       darkMode: 'class',
       theme: {
         extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+          },
           colors: {
             primary: {
               50: 'rgb(var(--color-primary-50) / <alpha-value>)',
@@ -87,6 +105,10 @@
               800: 'rgb(var(--color-primary-800) / <alpha-value>)',
               900: 'rgb(var(--color-primary-900) / <alpha-value>)',
             },
+          },
+          boxShadow: {
+            'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+            'glow': '0 0 15px rgba(20, 184, 166, 0.3)',
           }
         }
       }
@@ -109,9 +131,10 @@
   }
 }
 </script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-slate-100 dark:bg-slate-900">
+<body class="bg-gradient-to-br from-slate-50 to-primary-50 dark:from-slate-900 dark:to-slate-800 bg-fixed min-h-screen text-slate-800 dark:text-slate-100 font-sans antialiased selection:bg-primary-200 selection:text-primary-900">
   <noscript>You need to enable JavaScript to run this app.</noscript>
   <div id="root"></div>
   <script type="module" src="/index.tsx"></script>

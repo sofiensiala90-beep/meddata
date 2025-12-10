@@ -30,50 +30,54 @@ const analysisResponseSchema: Schema = {
       type: Type.STRING,
       description: "Un message conversationnel court et engageant adressé directement à l'utilisateur pour la fenêtre de discussion. Il doit résumer la découverte principale en une phrase et proposer proactivement 2 ou 3 prochaines étapes, tests statistiques spécifiques ou améliorations à apporter au rapport.",
     },
-    chartData: {
-      type: Type.OBJECT,
-      nullable: true,
-      description: "Données structurées pour générer un graphique (Chart.js) illustrant le point le plus important de l'analyse.",
-      properties: {
-        type: {
-          type: Type.STRING,
-          enum: ["bar", "pie", "doughnut"],
-          description: "Le type de graphique le plus adapté aux données.",
-        },
-        data: {
-          type: Type.OBJECT,
-          properties: {
-            labels: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "Les étiquettes de l'axe X ou de la légende.",
-            },
-            datasets: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  label: { type: Type.STRING, description: "Titre du jeu de données" },
-                  data: { 
-                    type: Type.ARRAY, 
-                    items: { type: Type.NUMBER },
-                    description: "Les valeurs numériques correspondantes aux étiquettes."
+    charts: {
+      type: Type.ARRAY,
+      description: "Liste des graphiques pertinents à générer (1 à 3 graphiques maximum).",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: "Titre spécifique du graphique." },
+          type: {
+            type: Type.STRING,
+            enum: ["bar", "pie", "doughnut"],
+            description: "Le type de graphique le plus adapté aux données.",
+          },
+          data: {
+            type: Type.OBJECT,
+            properties: {
+              labels: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: "Les étiquettes de l'axe X ou de la légende.",
+              },
+              datasets: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    label: { type: Type.STRING, description: "Titre du jeu de données" },
+                    data: { 
+                      type: Type.ARRAY, 
+                      items: { type: Type.NUMBER },
+                      description: "Les valeurs numériques correspondantes aux étiquettes."
+                    },
+                    backgroundColor: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                      nullable: true,
+                      description: "Tableau de codes couleurs hexadécimaux (optionnel, laisser null pour auto)."
+                    }
                   },
-                  backgroundColor: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                    nullable: true,
-                    description: "Tableau de codes couleurs hexadécimaux pour chaque segment/barre."
-                  }
+                  required: ["label", "data"],
                 },
-                required: ["label", "data"],
               },
             },
+            required: ["labels", "datasets"],
           },
-          required: ["labels", "datasets"],
         },
+        required: ["title", "type", "data"]
       },
-      required: ["type", "data"],
+      nullable: true
     },
     requiresConfirmation: {
       type: Type.BOOLEAN,
@@ -276,7 +280,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
       return {
           analysisText: "<p class='text-red-500 font-bold'>⚠️ La clé API Gemini n'est pas configurée sur Vercel. Veuillez ajouter la variable API_KEY dans les settings.</p>",
           chatResponse: "Je ne peux pas effectuer l'analyse car la clé API est manquante.",
-          chartData: null,
+          charts: [],
           requiresConfirmation: false
       };
   }
@@ -327,9 +331,11 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
       - **Propose** proactivement 2 ou 3 pistes concrètes : des tests statistiques supplémentaires (ex: "Voulez-vous que je teste la corrélation X/Y ?") ou des améliorations méthodologiques.
       - Sois un partenaire de recherche actif.
       
-      RÈGLES DE SORTIE :
-      - Génère TOUJOURS un graphique pertinent ('chartData') si des comparaisons sont possibles.
-      - Le format de sortie doit être un JSON conforme au schéma.
+      RÈGLES DE SORTIE - GRAPHIQUES ('charts') :
+      - Tu peux générer **PLUSIEURS graphiques** si cela aide à la compréhension (maximum 3).
+      - Par exemple : un graphique pour la démographie, un autre pour les symptômes principaux.
+      - Remplis le tableau 'charts' avec les données pour Chart.js.
+      - Si aucune comparaison n'est pertinente, laisse le tableau vide.
     `;
 
     // Contexte combiné : Stats calculées + Données brutes
@@ -351,7 +357,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
         CONTEXTE DE MODIFICATION :
         L'utilisateur souhaite modifier ou approfondir un rapport existant.
         Tu recevras le "Rapport Actuel" et la "Nouvelle Instruction".
-        Tu dois régénérer le JSON complet du rapport (analysisText, chartData, et chatResponse).
+        Tu dois régénérer le JSON complet du rapport (analysisText, charts, et chatResponse).
         
         IMPORTANT - MISE EN ÉVIDENCE VISUELLE :
         1. Entoure EXCLUSIVEMENT les phrases ajoutées ou modifiées dans le rapport avec : <span style="color: #6366f1; font-weight: bold;">...</span>
@@ -416,7 +422,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
     return {
       analysisText: errorMsg,
       chatResponse: "Désolé, j'ai rencontré une erreur lors de l'analyse. Veuillez réessayer.",
-      chartData: null,
+      charts: [],
       requiresConfirmation: false
     };
   }

@@ -27,14 +27,14 @@ const NavItem: React.FC<{ icon: React.ReactNode; label: string; isActive: boolea
   <button
     onClick={onClick}
     disabled={disabled}
-    className={`flex items-center w-full px-4 py-3 text-sm font-medium transition-colors duration-200 ${
+    className={`group flex items-center w-full px-4 py-3 text-sm font-medium transition-all duration-300 rounded-2xl mb-1 ${
       isActive
-        ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300'
-        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700'
-    } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        ? 'bg-primary-600 text-white shadow-glow shadow-primary-500/30'
+        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700/50 hover:pl-6'
+    } ${disabled ? 'opacity-50 cursor-not-allowed hover:pl-4' : ''}`}
     title={disabled ? "Cette fonctionnalité est désactivée car votre compte est suspendu." : ""}
   >
-    <span className="mr-3">{icon}</span>
+    <span className={`mr-3 transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>{icon}</span>
     <span>{label}</span>
   </button>
 );
@@ -73,37 +73,55 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
   const navItems = user.role === 'admin' ? adminNavItems : studentNavItems;
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-30 flex flex-col w-64 h-screen bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
-      <div className="flex items-center justify-center h-20 border-b border-slate-200 dark:border-slate-700">
-        <LogoIcon className="h-16 w-auto" />
-      </div>
-      <div className="flex-1 flex flex-col justify-between">
-        <nav className="py-4">
-          {navItems.map(item => (
-            <NavItem
-              key={item.id}
-              icon={item.icon}
-              label={item.label}
-              isActive={currentPage === item.id}
-              onClick={() => handleNavigation(item.id)}
-              disabled={item.disabled}
-            />
-          ))}
-        </nav>
+    <>
+      {/* Overlay for mobile */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+      
+      <aside className={`fixed inset-y-0 left-0 z-50 flex flex-col w-72 h-[96vh] m-2 lg:m-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-2xl rounded-3xl transform transition-transform duration-300 ease-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-[120%]'} lg:translate-x-0`}>
+        <div className="flex items-center justify-center h-24 border-b border-slate-100 dark:border-slate-700/50">
+          <LogoIcon className="h-16 w-auto drop-shadow-md" />
+        </div>
         
-        {user.role === 'student' && (
-          <div className="p-4 border-t border-slate-200 dark:border-slate-700">
-            <button
-              onClick={onOpenComplaintModal}
-              className="flex items-center w-full px-4 py-3 text-sm font-medium transition-colors duration-200 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 rounded-lg"
-            >
-              <HelpIcon className="w-5 h-5 mr-3" />
-              <span>Faire une réclamation</span>
-            </button>
-          </div>
-        )}
-      </div>
-    </aside>
+        <div className="flex-1 flex flex-col justify-between overflow-y-auto py-6 px-4 scrollbar-hide">
+          <nav className="space-y-1">
+            {navItems.map(item => (
+              <NavItem
+                key={item.id}
+                icon={item.icon}
+                label={item.label}
+                isActive={currentPage === item.id}
+                onClick={() => handleNavigation(item.id)}
+                disabled={item.disabled}
+              />
+            ))}
+          </nav>
+          
+          {user.role === 'student' && (
+            <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700/50">
+              <button
+                onClick={onOpenComplaintModal}
+                className="flex items-center w-full px-4 py-3 text-sm font-medium transition-colors duration-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 rounded-2xl"
+              >
+                <HelpIcon className="w-5 h-5 mr-3" />
+                <span>Support & Aide</span>
+              </button>
+            </div>
+          )}
+        </div>
+        
+        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-b-3xl">
+            <div className="flex items-center gap-3 px-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Système opérationnel</p>
+            </div>
+        </div>
+      </aside>
+    </>
   );
 };
 

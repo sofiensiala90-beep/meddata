@@ -30,10 +30,21 @@ interface AnalysisProps {
   systemSettings: SystemSettings;
 }
 
+const PALETTES = [
+    { name: 'Standard', colors: [] }, // Empty uses AI default or renderer default
+    { name: 'Océan', colors: ['#0ea5e9', '#38bdf8', '#7dd3fc', '#0284c7', '#0369a1'] },
+    { name: 'Forêt', colors: ['#10b981', '#34d399', '#6ee7b7', '#059669', '#047857'] },
+    { name: 'Chaud', colors: ['#f59e0b', '#fbbf24', '#fcd34d', '#d97706', '#b45309'] },
+    { name: 'Violet', colors: ['#8b5cf6', '#a78bfa', '#c4b5fd', '#7c3aed', '#6d28d9'] },
+    { name: 'Vibrant', colors: ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'] },
+    { name: 'Pastel', colors: ['#fca5a5', '#fdba74', '#86efac', '#93c5fd', '#c4b5fd'] },
+    { name: 'Gris', colors: ['#94a3b8', '#cbd5e1', '#64748b', '#475569', '#334155'] },
+];
+
 const ChartTypeButton: React.FC<{ icon: React.ReactNode; label: string; isActive: boolean; onClick: () => void; }> = ({ icon, label, isActive, onClick }) => (
     <button
         onClick={onClick}
-        title={`Afficher en graphique ${label.toLowerCase()}`}
+        title={`Afficher tous les graphiques en ${label.toLowerCase()}`}
         className={`flex items-center space-x-2 px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${
             isActive
             ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300'
@@ -144,10 +155,10 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
     const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
     const [expertSuggestions, setExpertSuggestions] = useState<Array<{title: string, description: string, searchPrompt: string}>>([]);
     const [displayedChartType, setDisplayedChartType] = useState<string | null>(null);
+    const [colorPaletteIndex, setColorPaletteIndex] = useState(0);
     const [mobileTab, setMobileTab] = useState<'chat' | 'report'>('chat');
     
     // UI Refs & Modal
-    const chartCanvasRef = useRef<HTMLCanvasElement>(null);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -194,6 +205,18 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
             unlockedAnalysis.some(ua => ua.userId === user.id && ua.formId === form.id)
         );
     }, [selectedFormId, selectedFormsForAnalysis, unlockedAnalysis, user.id, user.role]);
+
+    // Helper to normalize charts (backward compatibility)
+    const getCharts = useMemo(() => {
+        if (!analysisResult) return [];
+        if (analysisResult.charts && Array.isArray(analysisResult.charts)) {
+            return analysisResult.charts;
+        }
+        if (analysisResult.chartData) {
+            return [{ ...analysisResult.chartData, title: 'Visualisation principale' }];
+        }
+        return [];
+    }, [analysisResult]);
 
     // Handle Unlock/Payment
     const handleUnlockAccess = async () => {
@@ -262,13 +285,13 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
             const result = await getAnalysis(formsToAnalyze, responses, finalPrompt, analysisResult);
             
             setAnalysisResult(result);
-            if (result.chartData) setDisplayedChartType(result.chartData.type);
+            setDisplayedChartType(null); // Reset forced chart type on new analysis
             
             // Save to history (optional, keeping old behavior logic)
             saveAnalysisToHistory(formsToAnalyze.map(f=>f.id), formsToAnalyze.map(f=>f.title), finalPrompt, result);
             
             // Afficher le message dynamique de l'IA (chatResponse)
-            const aiMessage = result.chatResponse || "Analyse mise à jour. Vous pouvez me demander de modifier le graphique, de simplifier le texte ou d'ajouter d'autres éléments.";
+            const aiMessage = result.chatResponse || "Analyse mise à jour. Vous pouvez me demander de modifier les graphiques, de simplifier le texte ou d'ajouter d'autres éléments.";
             setChatHistory(prev => [...prev, { role: 'ai', text: aiMessage }]);
         } catch (e: any) {
             console.error(e);
@@ -295,9 +318,7 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
 
     const handleLoadHistory = (item: AnalysisHistory) => {
         setAnalysisResult(item.analysisResult);
-        if (item.analysisResult.chartData) {
-            setDisplayedChartType(item.analysisResult.chartData.type);
-        }
+        setDisplayedChartType(null);
         
         // Try to select the forms if they exist in the current list
         if (!isMultiFormMode && item.formIds.length === 1) {
@@ -330,17 +351,60 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
 
     const handleExportToWord = () => {
         if (!analysisResult) return;
-        let chartImageHtml = '';
-        if (analysisResult.chartData && chartCanvasRef.current) {
-            try {
-                const chartImage = chartCanvasRef.current.toDataURL('image/png');
-                chartImageHtml = `<h2>Graphique</h2><p><img src="${chartImage}" width="500" /></p>`;
-            } catch (e) { console.error(e); }
-        }
         
+        let chartsHtml = "";
+        const charts = getCharts; // Utilise le helper existant
+
+        if (charts.length > 0) {
+            chartsHtml += `<br><br><hr><br><h2>Annexes : Données des Graphiques</h2><p>Vous trouverez ci-dessous les tableaux de données utilisés pour les graphiques. Vous pouvez sélectionner ces tableaux dans Word pour insérer un graphique modifiable (Insertion > Graphique).</p>`;
+
+            charts.forEach((chart: any) => {
+                chartsHtml += `<h3>${chart.title || 'Graphique'}</h3>`;
+                chartsHtml += `<table border="1" style="border-collapse: collapse; width: 100%; margin-bottom: 20px;">`;
+                
+                // En-têtes
+                chartsHtml += `<thead style="background-color: #f0f0f0;"><tr>`;
+                chartsHtml += `<th style="padding: 8px; text-align: left;">Catégorie / Étiquette</th>`;
+                chart.data.datasets.forEach((ds: any) => {
+                    chartsHtml += `<th style="padding: 8px; text-align: left;">${ds.label || 'Valeur'}</th>`;
+                });
+                chartsHtml += `</tr></thead>`;
+
+                // Corps
+                chartsHtml += `<tbody>`;
+                chart.data.labels.forEach((label: string, index: number) => {
+                    chartsHtml += `<tr>`;
+                    chartsHtml += `<td style="padding: 8px;">${label}</td>`;
+                    chart.data.datasets.forEach((ds: any) => {
+                        chartsHtml += `<td style="padding: 8px;">${ds.data[index]}</td>`;
+                    });
+                    chartsHtml += `</tr>`;
+                });
+                chartsHtml += `</tbody></table><br>`;
+            });
+        }
+
         const htmlContent = `
-            <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Analyse MedataAI</title></head>
-            <body style="font-family: Arial;"><h1>Rapport MedataAI</h1>${analysisResult.analysisText}<br>${chartImageHtml}</body></html>
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Analyse MedataAI</title>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    h1 { color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; }
+                    h2 { color: #1e40af; margin-top: 30px; }
+                    h3 { color: #334155; }
+                    table { border: 1px solid #ccc; }
+                    th, td { border: 1px solid #ccc; }
+                </style>
+            </head>
+            <body>
+                <h1>Rapport d'Analyse MedataAI</h1>
+                ${analysisResult.analysisText}
+                ${chartsHtml}
+            </body>
+            </html>
         `;
         const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword' });
         const url = URL.createObjectURL(blob);
@@ -352,10 +416,9 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
         document.body.removeChild(link);
     };
 
-    const chartDataForRenderer = useMemo(() => {
-        if (!analysisResult?.chartData || !displayedChartType) return null;
-        return { ...analysisResult.chartData, type: displayedChartType };
-    }, [analysisResult, displayedChartType]);
+    const toggleColorPalette = () => {
+        setColorPaletteIndex((prev) => (prev + 1) % PALETTES.length);
+    };
 
     // --- RENDER ---
 
@@ -539,18 +602,50 @@ const Analysis: React.FC<AnalysisProps> = ({ user, forms, responses, onTransacti
                     <div className="flex-1 overflow-y-auto p-4 sm:p-8">
                         {analysisResult ? (
                             <div className="max-w-4xl mx-auto bg-white dark:bg-slate-800 shadow-xl rounded-xl min-h-[calc(100vh-12rem)] p-6 sm:p-12 animate-fade-in-up">
-                                {/* Chart Section */}
-                                {analysisResult.chartData && (
-                                    <div className="mb-8 p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-100 dark:border-slate-700">
+                                {/* Charts Section */}
+                                {getCharts.length > 0 && (
+                                    <div className="mb-8">
                                         <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
-                                            <h4 className="font-semibold text-slate-700 dark:text-slate-200">Visualisation</h4>
-                                            <div className="flex space-x-1 bg-white dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-600">
-                                                <ChartTypeButton icon={<BarChartIcon className="w-4 h-4"/>} label="Barres" isActive={displayedChartType === 'bar'} onClick={() => setDisplayedChartType('bar')} />
-                                                <ChartTypeButton icon={<PieChartIcon className="w-4 h-4"/>} label="Tarte" isActive={displayedChartType === 'pie'} onClick={() => setDisplayedChartType('pie')} />
-                                                <ChartTypeButton icon={<DoughnutChartIcon className="w-4 h-4"/>} label="Donut" isActive={displayedChartType === 'doughnut'} onClick={() => setDisplayedChartType('doughnut')} />
+                                            <h4 className="font-semibold text-slate-700 dark:text-slate-200">
+                                                Visualisation ({getCharts.length})
+                                            </h4>
+                                            
+                                            <div className="flex flex-wrap gap-2">
+                                                {/* Color Toggle Button */}
+                                                <button
+                                                    onClick={toggleColorPalette}
+                                                    title={`Palette actuelle: ${PALETTES[colorPaletteIndex].name}`}
+                                                    className="flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors"
+                                                >
+                                                    <span className="mr-2 text-lg">🎨</span>
+                                                    {PALETTES[colorPaletteIndex].name}
+                                                </button>
+
+                                                <div className="flex space-x-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
+                                                    <ChartTypeButton icon={<BarChartIcon className="w-4 h-4"/>} label="Barres" isActive={displayedChartType === 'bar'} onClick={() => setDisplayedChartType('bar')} />
+                                                    <ChartTypeButton icon={<PieChartIcon className="w-4 h-4"/>} label="Tarte" isActive={displayedChartType === 'pie'} onClick={() => setDisplayedChartType('pie')} />
+                                                    <ChartTypeButton icon={<DoughnutChartIcon className="w-4 h-4"/>} label="Donut" isActive={displayedChartType === 'doughnut'} onClick={() => setDisplayedChartType('doughnut')} />
+                                                </div>
                                             </div>
                                         </div>
-                                        {chartDataForRenderer && <ChartRenderer ref={chartCanvasRef} chartData={chartDataForRenderer} />}
+                                        
+                                        <div className={`grid grid-cols-1 ${getCharts.length > 1 ? 'md:grid-cols-2' : ''} gap-6`}>
+                                            {getCharts.map((chart: any, idx: number) => (
+                                                <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-100 dark:border-slate-700 flex flex-col">
+                                                    {chart.title && (
+                                                        <h5 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3 text-center">
+                                                            {chart.title}
+                                                        </h5>
+                                                    )}
+                                                    <div className="flex-1 min-h-[300px]">
+                                                        <ChartRenderer 
+                                                            chartData={{ ...chart, type: displayedChartType || chart.type }} 
+                                                            customColors={PALETTES[colorPaletteIndex].colors}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
 

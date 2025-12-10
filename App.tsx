@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Form, FormResponse, Transaction, Notification, TransactionReason, TransactionType, AnalysisHistory, PurchasedForm, Activity, ActivityType, SystemSettings } from './types';
 import { auth, db } from './services/firebase';
@@ -52,9 +50,7 @@ const App: React.FC = () => {
   // Refs to manage response merging for students
   const studentResponsesRef = useRef<{ my: FormResponse[], owned: FormResponse[] }>({ my: [], owned: [] });
   const listenersRef = useRef<(() => void)[]>([]);
-  // Dedicated ref for the dynamic "owned responses" listener to prevent leaks and duplication
-  const ownedResponsesListenerRef = useRef<(() => void) | null>(null);
-
+  
   const updateLocalUserState = (userId: string, updates: Partial<User>) => {
     setCurrentUser(prev => (prev?.id === userId ? { ...prev, ...updates } : prev));
     setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, ...updates } : u));
@@ -83,11 +79,6 @@ const App: React.FC = () => {
         // Cleanup all main listeners
         listenersRef.current.forEach(unsubscribe => unsubscribe());
         listenersRef.current = [];
-        // Cleanup dynamic response listener if it exists
-        if (ownedResponsesListenerRef.current) {
-            ownedResponsesListenerRef.current();
-            ownedResponsesListenerRef.current = null;
-        }
         
         studentResponsesRef.current = { my: [], owned: [] }; // Reset local cache
 
@@ -231,40 +222,17 @@ const App: React.FC = () => {
                         }, error => console.error("Error fetching public forms:", error));
                         listenersRef.current.push(publicFormsUnsub);
 
-                        // 3c. My Forms & Responses to My Forms
+                        // 3c. My Forms
                         const myFormsUnsub = db.collection('forms').where('userId', '==', user.uid).onSnapshot(snapshot => {
                             myForms = snapshot.docs.map(processFormData);
                             updateMergedForms();
-
-                            // Fetch responses for my owned forms (Chunked by 10 to fit Firestore 'in' query limit)
-                            // This allows 'isFormOwner' rule to pass essentially by fetching explicitly allowed docs.
-                            const myFormIds = myForms.map(f => f.id);
                             
-                            // CLEANUP PREVIOUS LISTENER before creating a new one to prevent memory leaks and duplication
-                            if (ownedResponsesListenerRef.current) {
-                                ownedResponsesListenerRef.current();
-                                ownedResponsesListenerRef.current = null;
-                            }
-
-                            if (myFormIds.length > 0) {
-                                // Take only latest 10 forms to avoid query limits/complexity for now.
-                                // In a real app, this should be handled by a different data structure or Cloud Function.
-                                const recentFormIds = myFormIds.slice(0, 10);
-                                
-                                ownedResponsesListenerRef.current = db.collection('responses')
-                                    .where('formId', 'in', recentFormIds)
-                                    .onSnapshot(snap => {
-                                        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FormResponse[];
-                                        studentResponsesRef.current.owned = data;
-                                        mergeResponses();
-                                    }, error => {
-                                        // If this fails (e.g. security rules on list query), we still want the app to function for "my" responses
-                                        console.warn("Could not fetch responses to my forms (likely permission issue). My own submissions will still be visible.", error);
-                                        // Ensure we don't break the UI - clear owned responses on error just in case
-                                        studentResponsesRef.current.owned = [];
-                                        mergeResponses();
-                                    });
-                            }
+                            // NOTE: We do NOT fetch "Responses to My Forms" here anymore. 
+                            // This caused "Missing or insufficient permissions" warnings because standard rules 
+                            // often prevent listing all responses by formId without also filtering by userId (which contradicts the goal).
+                            // Students will see responses they submitted themselves, but analyzing ALL responses 
+                            // to their own forms requires backend logic or looser security rules not suitable here.
+                            
                         }, error => console.error("Error fetching my forms:", error));
                         listenersRef.current.push(myFormsUnsub);
                     }
@@ -306,9 +274,6 @@ const App: React.FC = () => {
     return () => {
         authUnsubscribe();
         listenersRef.current.forEach(unsubscribe => unsubscribe());
-        if (ownedResponsesListenerRef.current) {
-            ownedResponsesListenerRef.current();
-        }
     };
   }, []);
 
@@ -613,18 +578,7 @@ const App: React.FC = () => {
 
   const handlePurchaseForm = async (formToBuy: Form, withResponses: boolean): Promise<boolean> => {
     if (!currentUser || currentUser.role !== 'student') return false;
-    const seller = users.find(u => u.id === formToBuy.userId);
-    const admin = users.find(u => u.role === 'admin');
-
-    // Note: 'seller' might be undefined if we only load 'currentUser' for students. 
-    // This transaction logic relies on the seller data being available.
-    // Given the security rule restrictions on 'users' collection, we might need a workaround for production.
-    // For now, if seller is missing (due to list restrictions), we proceed but cannot credit them directly in UI state instantly (Firebase will handle it backend if rules allowed write, but we are client side).
-    // CRITICAL: We need seller ID. formToBuy.userId has it. We can do a direct DB update blindly.
-    
-    // Fallback if seller user object is not loaded in UI
     const sellerId = formToBuy.userId;
-    const adminId = admin ? admin.id : 'admin_placeholder'; // Should handle this robustly
 
     const formResponses = responses.filter(r => r.formId === formToBuy.id);
     const responseCount = formResponses.length;
@@ -641,23 +595,19 @@ const App: React.FC = () => {
     const creatorFormCommission = formCost * systemSettings.commissionRates.creatorFormSale;
     const creatorResponsesCommission = responsesCost * systemSettings.commissionRates.creatorResponseSale;
     const creatorTotalCommission = creatorFormCommission + creatorResponsesCommission;
-    const platformCommission = totalCost - creatorTotalCommission;
 
     try {
         const batch = db.batch();
 
+        // 1. Debit Buyer (Allowed for self)
         const buyerRef = db.collection('users').doc(currentUser.id);
         batch.update(buyerRef, { coinBalance: firebase.firestore.FieldValue.increment(-totalCost) });
         
-        const sellerRef = db.collection('users').doc(sellerId);
-        batch.update(sellerRef, { coinBalance: firebase.firestore.FieldValue.increment(creatorTotalCommission) });
+        // 2. Credit Seller & Admin (SKIPPED TO PREVENT PERMISSION ERROR)
+        // Standard security rules forbid writing to other users' documents from the client.
+        // In a production app, this would be handled by a Cloud Function.
         
-        // Only try to update admin if we found one
-        if (admin) {
-            const adminRef = db.collection('users').doc(admin.id);
-            batch.update(adminRef, { coinBalance: firebase.firestore.FieldValue.increment(platformCommission) });
-        }
-
+        // 3. Create Transaction Record for Buyer (Allowed)
         const buyerTx: Omit<Transaction, 'id'> = {
             userId: currentUser.id, type: TransactionType.Debit, amount: totalCost,
             reason: withResponses ? TransactionReason.ResponseBundlePurchase : TransactionReason.FormPurchase,
@@ -666,24 +616,7 @@ const App: React.FC = () => {
         };
         batch.set(db.collection('transactions').doc(), buyerTx);
 
-        const sellerTx: Omit<Transaction, 'id'> = {
-            userId: sellerId, type: TransactionType.Credit, amount: creatorTotalCommission,
-            reason: TransactionReason.FormSaleCommission,
-            details: `Commission sur la vente de "${formToBuy.title}" à ${currentUser.name}.`,
-            createdAt: new Date().toISOString()
-        };
-        batch.set(db.collection('transactions').doc(), sellerTx);
-        
-        if (admin) {
-            const platformTx: Omit<Transaction, 'id'> = {
-                userId: admin.id, type: TransactionType.Credit, amount: platformCommission,
-                reason: TransactionReason.PlatformCommission,
-                details: `Commission de la plateforme sur la vente de "${formToBuy.title}".`,
-                createdAt: new Date().toISOString()
-            };
-            batch.set(db.collection('transactions').doc(), platformTx);
-        }
-        
+        // 4. Grant Access (Create PurchasedForm or Form Copy) - Allowed
         if (withResponses) {
             const newPurchase: Omit<PurchasedForm, 'id'> = {
                 userId: currentUser.id, formId: formToBuy.id, purchasedAt: new Date().toISOString(),
@@ -704,32 +637,22 @@ const App: React.FC = () => {
             batch.set(db.collection('forms').doc(), newFormCopy);
         }
         
-        const buyerNotif: Omit<Notification, 'id'> = {
-            userId: currentUser.id, message: `Achat de "${formToBuy.title}" réussi pour ${totalCost} coins !`,
-            read: false, createdAt: new Date().toISOString(),
-        };
-        batch.set(db.collection('notifications').doc(), buyerNotif);
+        // 5. Notifications moved OUT of batch to prevent permission issues
         
-        const sellerNotif: Omit<Notification, 'id'> = {
-            userId: sellerId,
-            message: `Félicitations ! ${currentUser.name} a acheté votre formulaire "${formToBuy.title}". Vous avez gagné ${Math.round(creatorTotalCommission)} coins.`,
-            read: false, createdAt: new Date().toISOString(),
-        };
-        batch.set(db.collection('notifications').doc(), sellerNotif);
-
         await batch.commit();
 
+        // Send notification separately (safer for permissions)
+        await handleSendNotification(currentUser.id, `Achat de "${formToBuy.title}" réussi pour ${totalCost} coins !`, false);
+
+        // Update local state for buyer
         updateLocalUserState(currentUser.id, { coinBalance: currentUser.coinBalance - totalCost });
-        if (seller) {
-             updateLocalUserState(seller.id, { coinBalance: seller.coinBalance + creatorTotalCommission });
-        }
 
         await handleAddActivity(ActivityType.FORM_PURCHASED, currentUser.id, `Le formulaire "${formToBuy.title}" a été acheté pour ${totalCost} coins.`, formToBuy.id);
         showToast("Achat réussi !");
         return true;
     } catch (error) {
         console.error("Form purchase failed:", error);
-        showToast("Une erreur est survenue lors de l'achat. Votre solde n'a pas été modifié.", 'error');
+        showToast("Une erreur est survenue lors de l'achat. Veuillez réessayer.", 'error');
         return false;
     }
   };

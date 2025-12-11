@@ -14,6 +14,7 @@ interface ModalProps {
     onUpdateUserStatus: (userId: string, status: User['status']) => void;
     onAdminCoinAdjustment: (userId: string, amount: number, type: TransactionType) => void;
     onUnvalidateForm: (formId: string) => void;
+    initialTab?: string;
 }
 
 const translateField = (field: MedicalField) => {
@@ -32,8 +33,8 @@ const TabButton: React.FC<{ label: string; isActive: boolean; onClick: () => voi
     </button>
 );
 
-const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, responses, onClose, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment, onUnvalidateForm }) => {
-    const [activeTab, setActiveTab] = useState('info');
+const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, responses, onClose, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment, onUnvalidateForm, initialTab = 'info' }) => {
+    const [activeTab, setActiveTab] = useState(initialTab);
     const [coinAmount, setCoinAmount] = useState<string>('');
     const [notificationMessage, setNotificationMessage] = useState('');
     const [viewingFormResponses, setViewingFormResponses] = useState<Form | null>(null);
@@ -213,11 +214,18 @@ const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, response
             <div className="space-y-4 max-h-96 overflow-y-auto">
                 {forms.length > 0 ? forms.map(form => {
                     const responseCount = responses.filter(r => r.formId === form.id).length;
+                    const isUnvalidateAvailable = (form.status === 'validated' || form.status === 'awaiting_modification_decision') && !form.isPublic;
+                    
                     return (
-                        <div key={form.id} className="p-3 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                        <div key={form.id} className={`p-3 bg-slate-100 dark:bg-slate-700 rounded-lg ${form.status === 'awaiting_modification_decision' ? 'border-2 border-blue-400 dark:border-blue-600' : ''}`}>
                             <div className="flex justify-between items-start">
                                 <div className="flex-grow">
-                                    <p className="font-semibold text-slate-900 dark:text-white">{form.title}</p>
+                                    <p className="font-semibold text-slate-900 dark:text-white flex items-center">
+                                        {form.title}
+                                        {form.status === 'awaiting_modification_decision' && (
+                                            <span className="ml-2 px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">Demande Modif</span>
+                                        )}
+                                    </p>
                                     <p className="text-sm text-slate-500 dark:text-slate-400">Statut: {getStatusText(form.status)}</p>
                                 </div>
                                 <div className="text-right ml-4 flex-shrink-0">
@@ -226,7 +234,7 @@ const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, response
                                 </div>
                             </div>
                              <div className="mt-2 text-right flex items-center justify-end space-x-2">
-                                {form.status === 'validated' && !form.isPublic && (
+                                {isUnvalidateAvailable && (
                                     <Button 
                                         onClick={() => handleUnvalidateClick(form)}
                                         variant="danger"

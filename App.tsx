@@ -48,8 +48,9 @@ const App: React.FC = () => {
   const [unlockedAnalysis, setUnlockedAnalysis] = useState<{userId: string; formId: string}[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
 
-  // --- Navigation Context (e.g., for Analysis) ---
+  // --- Navigation Context ---
   const [analysisContext, setAnalysisContext] = useState<{ formIds: string[] } | null>(null);
+  const [studentContext, setStudentContext] = useState<{ studentId: string; initialTab?: string } | null>(null);
 
   // --- Theme Initialization ---
   useEffect(() => {
@@ -215,11 +216,35 @@ const App: React.FC = () => {
   const handleNavigate = (page: string, context?: any) => {
     setCurrentPage(page);
     setIsSidebarOpen(false);
+    // Reset specific contexts when navigating away
+    setAnalysisContext(null);
+    setStudentContext(null);
+
     if (page === 'analyse' && context) {
       setAnalysisContext(context);
-    } else {
-      setAnalysisContext(null);
+    } 
+    // Handle redirection to student management from notification
+    if (page === 'etudiants' && context) {
+        setStudentContext(context);
     }
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+      // 1. Mark as read
+      if (!notification.read) {
+          db.collection('notifications').doc(notification.id).update({ read: true });
+      }
+
+      // 2. Handle Action based on metadata
+      if (currentUser?.role === 'admin' && notification.metadata?.type === 'modification_request') {
+          const { studentId } = notification.metadata;
+          if (studentId) {
+              handleNavigate('etudiants', { studentId, initialTab: 'forms' });
+          }
+      } else {
+          // Default: Go to notifications page
+          handleNavigate('notifications');
+      }
   };
 
   const handleLogout = async () => {
@@ -481,12 +506,18 @@ const App: React.FC = () => {
 
           admins.forEach(admin => {
               const notifRef = db.collection('notifications').doc();
-              batch.set(notifRef, {
+              const notification: Omit<Notification, 'id'> = {
                   userId: admin.id,
-                  message: `Demande de modification pour "${form.title}" par ${currentUser?.name}.\nRaison: ${reason}`,
+                  message: `DEMANDE DE MODIFICATION\nUtilisateur : ${currentUser?.name}\nFormulaire : "${form.title}"\nRaison : ${reason}`,
                   read: false,
-                  createdAt: new Date().toISOString()
-              });
+                  createdAt: new Date().toISOString(),
+                  metadata: {
+                      type: 'modification_request',
+                      studentId: currentUser?.id,
+                      formId: form.id
+                  }
+              };
+              batch.set(notifRef, notification);
           });
           await batch.commit();
           showToast('Demande envoyée aux administrateurs.');
@@ -959,6 +990,7 @@ const App: React.FC = () => {
             onToggleTheme={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
             onNavigate={handleNavigate}
             setIsSidebarOpen={setIsSidebarOpen}
+            onNotificationClick={handleNotificationClick}
           />
           
           <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-100 dark:bg-slate-900 p-4 lg:p-6 scroll-smooth">
@@ -1036,7 +1068,10 @@ const App: React.FC = () => {
                  />
              )}
              {currentPage === 'notifications' && (
-                 <NotificationsPage notifications={notifications} />
+                 <NotificationsPage 
+                    notifications={notifications}
+                    onNotificationClick={handleNotificationClick} 
+                 />
              )}
              
              {/* Admin Pages */}
@@ -1049,6 +1084,7 @@ const App: React.FC = () => {
                     onUpdateUserStatus={handleUpdateUserStatus}
                     onAdminCoinAdjustment={handleAdminCoinAdjustment}
                     onUnvalidateForm={handleUnvalidateForm}
+                    context={studentContext}
                  />
              )}
              {currentUser.role === 'admin' && currentPage === 'finances' && (

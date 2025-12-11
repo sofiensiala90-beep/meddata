@@ -75,6 +75,11 @@ export interface Notification {
   message: string;
   read: boolean;
   createdAt: string;
+  metadata?: {
+    type: 'modification_request' | 'info';
+    studentId?: string;
+    formId?: string;
+  };
 }
 
 export enum TransactionType {

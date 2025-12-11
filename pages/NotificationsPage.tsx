@@ -5,9 +5,10 @@ import BellIcon from '../components/icons/BellIcon';
 
 interface NotificationsPageProps {
   notifications: Notification[];
+  onNotificationClick?: (notification: Notification) => void;
 }
 
-const NotificationsPage: React.FC<NotificationsPageProps> = ({ notifications }) => {
+const NotificationsPage: React.FC<NotificationsPageProps> = ({ notifications, onNotificationClick }) => {
   const sortedNotifications = [...notifications].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   return (
@@ -18,7 +19,11 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ notifications }) 
         {sortedNotifications.length > 0 ? (
           <div className="divide-y divide-slate-200 dark:divide-slate-700">
             {sortedNotifications.map(notif => (
-              <div key={notif.id} className="p-4 flex items-start space-x-4 relative">
+              <div 
+                key={notif.id} 
+                className={`p-4 flex items-start space-x-4 relative transition-colors ${onNotificationClick ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50' : ''}`}
+                onClick={() => onNotificationClick && onNotificationClick(notif)}
+              >
                 {!notif.read && (
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 h-2 w-2 bg-primary-500 rounded-full" title="Non lue"></span>
                 )}

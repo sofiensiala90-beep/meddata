@@ -17,6 +17,7 @@ interface StudentsProps {
   onUpdateUserStatus: (userId: string, status: User['status']) => void;
   onAdminCoinAdjustment: (userId: string, amount: number, type: TransactionType) => void;
   onUnvalidateForm: (formId: string) => void;
+  context?: { studentId: string; initialTab?: string } | null;
 }
 
 const translateField = (field: MedicalField) => {
@@ -42,13 +43,23 @@ const getStatusInfo = (status: User['status']) => {
     }
 };
 
-const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment, onUnvalidateForm }) => {
+const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment, onUnvalidateForm, context }) => {
   const [filters, setFilters] = useState({ name: '', university: '', field: '', studyYear: '' });
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [isNotifyAllModalOpen, setIsNotifyAllModalOpen] = useState(false);
   const [notifyAllMessage, setNotifyAllMessage] = useState('');
   const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: keyof User; direction: 'ascending' | 'descending' }>({ key: 'name', direction: 'ascending' });
+
+  // Handle Context Navigation (e.g. from Notification)
+  useEffect(() => {
+      if (context && context.studentId) {
+          const student = users.find(u => u.id === context.studentId);
+          if (student) {
+              setSelectedStudent(student);
+          }
+      }
+  }, [context, users]);
 
   useEffect(() => {
     // If a student is selected and the main users list updates,
@@ -233,6 +244,7 @@ const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNoti
           onUpdateUserStatus={onUpdateUserStatus}
           onAdminCoinAdjustment={onAdminCoinAdjustment}
           onUnvalidateForm={onUnvalidateForm}
+          initialTab={context?.studentId === selectedStudent.id ? context.initialTab : undefined}
         />
       )}
 

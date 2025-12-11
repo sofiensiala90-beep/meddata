@@ -117,16 +117,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
         
         <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-b-3xl shrink-0">
             <div className="flex flex-col gap-2 px-2 text-center">
-                <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">System Ready</p>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-400 bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded">v2.1</span>
-                </div>
-                
-                <div className="border-t border-slate-200 dark:border-slate-700/50 my-2"></div>
-                
                 <div className="flex flex-col items-center justify-center space-y-0.5">
                     <span className="text-lg font-bold tracking-tight text-slate-700 dark:text-white">DASS</span>
                     <span className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">Data Analysis Statistical System</span>

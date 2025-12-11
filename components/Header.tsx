@@ -16,9 +16,10 @@ interface HeaderProps {
   onToggleTheme: () => void;
   onNavigate: (page: string) => void;
   setIsSidebarOpen: (isOpen: boolean) => void;
+  onNotificationClick?: (notification: Notification) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notifications, onMarkNotificationsRead, theme, onToggleTheme, onNavigate, setIsSidebarOpen }) => {
+const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notifications, onMarkNotificationsRead, theme, onToggleTheme, onNavigate, setIsSidebarOpen, onNotificationClick }) => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -51,9 +52,18 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notificati
     }
   };
   
-  const handleNotificationClick = () => {
+  const handleViewAllNotifications = () => {
     onNavigate('notifications');
     setIsNotificationsOpen(false);
+  };
+
+  const handleSingleNotificationClick = (notif: Notification) => {
+      if (onNotificationClick) {
+          onNotificationClick(notif);
+      } else {
+          onNavigate('notifications');
+      }
+      setIsNotificationsOpen(false);
   };
 
   const pageTitles: { [key: string]: string } = {
@@ -122,14 +132,14 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notificati
               <div className="absolute right-0 mt-4 w-80 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 z-50 overflow-hidden transform origin-top-right transition-all">
                 <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
                     <span className="font-bold text-slate-800 dark:text-white">Notifications</span>
-                    <button onClick={handleNotificationClick} className="text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400">Voir tout</button>
+                    <button onClick={handleViewAllNotifications} className="text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400">Voir tout</button>
                 </div>
                 <div className="max-h-80 overflow-y-auto">
                   {notifications.length > 0 ? (
                     [...notifications].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(notif => (
                       <button 
                         key={notif.id} 
-                        onClick={handleNotificationClick}
+                        onClick={() => handleSingleNotificationClick(notif)}
                         className={`w-full text-left p-4 text-sm border-b border-slate-50 dark:border-slate-700/50 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${!notif.read ? 'bg-primary-50/50 dark:bg-primary-900/10' : ''}`}
                       >
                         <div className="flex items-start gap-3">

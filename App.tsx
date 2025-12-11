@@ -378,6 +378,16 @@ const App: React.FC = () => {
       showToast('Erreur lors de la suppression.', 'error');
     }
   };
+  
+  const handleDeletePurchasedForm = async (purchaseId: string) => {
+      try {
+          await db.collection('purchasedForms').doc(purchaseId).delete();
+          showToast('Achat supprimé de votre bibliothèque.');
+      } catch (error) {
+          console.error(error);
+          showToast("Erreur lors de la suppression de l'achat.", 'error');
+      }
+  };
 
   const handleSaveAndValidateForm = async (form: Form) => {
     if (!currentUser) return;
@@ -975,6 +985,7 @@ const App: React.FC = () => {
                     createForm={handleCreateForm}
                     updateForm={handleUpdateForm}
                     deleteForm={handleDeleteForm}
+                    deletePurchasedForm={handleDeletePurchasedForm}
                     saveAndValidateForm={handleSaveAndValidateForm}
                     publishForm={handlePublishForm}
                     users={users}

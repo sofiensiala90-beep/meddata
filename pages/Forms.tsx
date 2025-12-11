@@ -22,6 +22,7 @@ interface FormsProps {
   createForm: (form: Form) => void;
   updateForm: (form: Form) => void;
   deleteForm: (formId: string) => void;
+  deletePurchasedForm: (purchaseId: string) => void;
   saveAndValidateForm: (form: Form) => void;
   publishForm: (formId: string, price: number, pricePerResponse: number) => void;
   users: User[];
@@ -174,7 +175,7 @@ const ModificationDecisionModal: React.FC<{
   );
 };
 
-const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings }) => {
+const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, deletePurchasedForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
   const [activeTab, setActiveTab] = useState<'my_creations' | 'purchased_models' | 'purchased_data'>(user.role === 'admin' ? 'my_creations' : 'my_creations');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
@@ -325,15 +326,17 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   };
 
   const handleDeleteFormClick = (form: Form) => {
-    // Si le formulaire est validé, on demande une DOUBLE confirmation
-    if (form.status === 'validated') {
+    // Si le formulaire est validé OU ACHETÉ, on demande une DOUBLE confirmation
+    const isProtected = form.status === 'validated' || form.origin === 'purchased';
+
+    if (isProtected) {
         setConfirmation({
             isOpen: true,
-            title: "Suppression d'un formulaire validé",
+            title: form.origin === 'purchased' ? "Suppression d'un formulaire acheté" : "Suppression d'un formulaire validé",
             message: (
                 <div className="space-y-2">
-                    <p>Attention : Ce formulaire est validé. Le supprimer entraînera la <strong>perte définitive</strong> de toutes les réponses associées.</p>
-                    <p className="text-sm text-red-600 font-semibold">Les paiements liés à la validation ne seront pas remboursés.</p>
+                    <p>Attention : Ce formulaire est {form.origin === 'purchased' ? 'acheté' : 'validé'}. Le supprimer entraînera la <strong>perte définitive</strong> de toutes les réponses associées.</p>
+                    <p className="text-sm text-red-600 font-semibold">Cette action est irréversible et les coins dépensés ne seront pas remboursés.</p>
                 </div>
             ),
             confirmText: "Continuer...",
@@ -343,7 +346,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                 setConfirmation({
                     isOpen: true,
                     title: "CONFIRMATION DÉFINITIVE",
-                    message: "Êtes-vous ABSOLUMENT sûr ? Cette action est irréversible et toutes les données seront perdues.",
+                    message: "Êtes-vous ABSOLUMENT sûr ? Tapez 'OUI' dans votre tête et cliquez sur le bouton rouge.",
                     confirmText: "OUI, TOUT SUPPRIMER",
                     variant: 'danger',
                     onConfirm: () => {
@@ -356,7 +359,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
             onClose: () => setConfirmation(null)
         });
     } else {
-        // Suppression simple pour les brouillons
+        // Suppression simple pour les brouillons (ou statuts inconnus)
         setConfirmation({
             isOpen: true,
             title: "Confirmer la suppression",
@@ -371,6 +374,36 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
             cancelText: 'Annuler'
         });
     }
+  };
+
+  const handleDeletePurchaseClick = (purchase: PurchasedForm, formTitle: string) => {
+      setConfirmation({
+            isOpen: true,
+            title: "Suppression de l'achat",
+            message: (
+                <div className="space-y-2">
+                    <p>Vous êtes sur le point de supprimer l'accès au formulaire <strong>"{formTitle}"</strong> et à ses données.</p>
+                    <p className="text-sm text-red-600 font-semibold">Cette action est irréversible. Vous perdrez l'accès aux réponses achetées.</p>
+                </div>
+            ),
+            confirmText: "Continuer...",
+            variant: 'danger',
+            onConfirm: () => {
+                setConfirmation({
+                    isOpen: true,
+                    title: "CONFIRMATION DÉFINITIVE",
+                    message: "Êtes-vous sûr ? L'achat sera perdu définitivement.",
+                    confirmText: "OUI, SUPPRIMER L'ACHAT",
+                    variant: 'danger',
+                    onConfirm: () => {
+                        deletePurchasedForm(purchase.id);
+                        setConfirmation(null);
+                    },
+                    onClose: () => setConfirmation(null)
+                });
+            },
+            onClose: () => setConfirmation(null)
+        });
   };
 
   const isFieldVisible = (field: FormField, currentData: Record<string, any>): boolean => {
@@ -620,7 +653,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
         case 'draft': return { text: 'Brouillon', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' };
         case 'validated': return { text: 'Validé', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' };
         case 'awaiting_modification_decision': return { text: 'En attente de décision', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
-        default: return { text: 'Inconnu', className: 'bg-slate-100 text-slate-800' };
+        default: return { text: 'Statut Inconnu', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' };
     }
   };
 
@@ -968,12 +1001,52 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                             </div>
                                         )}
                                         {form.status === 'validated' && form.isPublic && (
-                                            <Button onClick={() => handleViewResponses(form)} className="w-full" disabled={responseCount === 0}>Voir les réponses</Button>
+                                            <div className="w-full flex items-center space-x-2">
+                                                <Button onClick={() => handleViewResponses(form)} className="flex-grow" disabled={responseCount === 0}>Voir les réponses</Button>
+                                                <Button 
+                                                    onClick={() => handleDeleteFormClick(form)} 
+                                                    variant="danger"
+                                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                                    title="Supprimer le formulaire"
+                                                    disabled={isSuspended}
+                                                >
+                                                    <TrashIcon className="w-5 h-5" />
+                                                </Button>
+                                            </div>
                                         )}
                                         {form.status === 'awaiting_modification_decision' && (
-                                            <Button onClick={() => setFormToAction(form)} className="w-full" disabled={isSuspended}>
-                                                Reprendre la modification
-                                            </Button>
+                                            <div className="w-full flex items-center space-x-2">
+                                                <Button onClick={() => setFormToAction(form)} className="flex-grow" disabled={isSuspended}>
+                                                    Reprendre la modification
+                                                </Button>
+                                                <Button 
+                                                    onClick={() => handleDeleteFormClick(form)} 
+                                                    variant="danger"
+                                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                                    title="Supprimer le formulaire"
+                                                    disabled={isSuspended}
+                                                >
+                                                    <TrashIcon className="w-5 h-5" />
+                                                </Button>
+                                            </div>
+                                        )}
+                                        {/* HANDLE INVALID/UNKNOWN STATUS (Fallback) */}
+                                        {!['draft', 'validated', 'awaiting_modification_decision'].includes(form.status) && (
+                                             <div className="w-full flex items-center justify-between">
+                                                <span className="text-sm text-red-500 italic flex items-center">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                                    Statut invalide
+                                                </span>
+                                                <Button 
+                                                    onClick={() => handleDeleteFormClick(form)} 
+                                                    variant="danger"
+                                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                                    title="Supprimer le formulaire corrompu"
+                                                    disabled={isSuspended}
+                                                >
+                                                    <TrashIcon className="w-5 h-5" />
+                                                </Button>
+                                            </div>
                                         )}
                                     </>
                                 )}
@@ -1043,10 +1116,19 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                     </button>
                                 </div>
                             </div>
-                            <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700">
-                                <Button onClick={() => handleStartFilling(form)} className="w-full" disabled={isSuspended}>
+                            <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700 flex space-x-2">
+                                <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
                                      <PlusIcon className="w-4 h-4 mr-2 inline-block" />
                                     Ajouter une réponse
+                                </Button>
+                                <Button 
+                                    onClick={() => handleDeletePurchaseClick(purchase, form.title)} 
+                                    variant="danger"
+                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                    title="Supprimer l'achat"
+                                    disabled={isSuspended}
+                                >
+                                    <TrashIcon className="w-5 h-5" />
                                 </Button>
                             </div>
                         </Card>

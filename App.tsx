@@ -938,7 +938,7 @@ const App: React.FC = () => {
           setIsSidebarOpen={setIsSidebarOpen}
        />
        
-       <div className="flex-1 flex flex-col overflow-hidden transition-all duration-300">
+       <div className="flex-1 flex flex-col overflow-hidden transition-all duration-300 lg:ml-80">
           <Header 
             user={currentUser} 
             onLogout={handleLogout} 

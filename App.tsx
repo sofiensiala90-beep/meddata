@@ -52,6 +52,9 @@ const App: React.FC = () => {
   const listenersRef = useRef<(() => void)[]>([]);
   // Ref for purchased response listeners to avoid duplication
   const purchasedListenersRef = useRef<(() => void)[]>([]);
+  // Ref for owned forms response listeners
+  const ownedListenersRef = useRef<(() => void)[]>([]);
+  const prevMyFormIdsRef = useRef<string[]>([]);
   
   const updateLocalUserState = (userId: string, updates: Partial<User>) => {
     setCurrentUser(prev => (prev?.id === userId ? { ...prev, ...updates } : prev));
@@ -60,6 +63,18 @@ const App: React.FC = () => {
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
+  };
+
+  // Helper to merge responses from all sources and update state
+  const mergeAndSetResponses = () => {
+      const combined = [
+          ...studentResponsesRef.current.my,
+          ...studentResponsesRef.current.owned,
+          ...studentResponsesRef.current.purchased
+      ];
+      // Remove duplicates by ID
+      const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+      setResponses(unique);
   };
   
   // Load System Settings
@@ -85,8 +100,13 @@ const App: React.FC = () => {
         // Cleanup purchased listeners
         purchasedListenersRef.current.forEach(unsubscribe => unsubscribe());
         purchasedListenersRef.current = [];
+
+        // Cleanup owned listeners
+        ownedListenersRef.current.forEach(unsubscribe => unsubscribe());
+        ownedListenersRef.current = [];
         
         studentResponsesRef.current = { my: [], owned: [], purchased: [] }; // Reset local cache
+        prevMyFormIdsRef.current = [];
 
         if (user) {
             try {
@@ -177,27 +197,15 @@ const App: React.FC = () => {
                             listenersRef.current.push(unsubscribe);
                         });
 
-                        // 3. Forms (Merged: Public + Owned) AND Responses Logic
+                        // 3. Forms (Merged: Public + Owned)
                         let publicForms: Form[] = [];
                         let myForms: Form[] = [];
-
-                        // Helper to merge responses from all sources
-                        const mergeResponses = () => {
-                            const combined = [
-                                ...studentResponsesRef.current.my,
-                                ...studentResponsesRef.current.owned,
-                                ...studentResponsesRef.current.purchased
-                            ];
-                            // Remove duplicates by ID
-                            const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
-                            setResponses(unique);
-                        };
 
                         // 3a. Fetch responses I submitted
                         const myResponsesUnsub = db.collection('responses').where('userId', '==', user.uid).onSnapshot(snapshot => {
                             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FormResponse[];
                             studentResponsesRef.current.my = data;
-                            mergeResponses();
+                            mergeAndSetResponses();
                         }, error => console.error("Error fetching my responses:", error));
                         listenersRef.current.push(myResponsesUnsub);
 
@@ -270,6 +278,7 @@ const App: React.FC = () => {
         authUnsubscribe();
         listenersRef.current.forEach(unsubscribe => unsubscribe());
         purchasedListenersRef.current.forEach(unsubscribe => unsubscribe());
+        ownedListenersRef.current.forEach(unsubscribe => unsubscribe());
     };
   }, []);
 
@@ -301,21 +310,63 @@ const App: React.FC = () => {
                         ...newResponses
                     ];
                     
-                    // Trigger UI update
-                    const combined = [
-                        ...studentResponsesRef.current.my,
-                        ...studentResponsesRef.current.owned,
-                        ...studentResponsesRef.current.purchased
-                    ];
-                    const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
-                    setResponses(unique);
+                    mergeAndSetResponses();
 
                 }, error => console.error("Error fetching purchased responses:", error));
             
             purchasedListenersRef.current.push(unsubscribe);
         }
+    } else {
+        mergeAndSetResponses();
     }
   }, [purchasedForms, currentUser]);
+
+  // --- Dynamic Loading of OWNED Responses (Submitted by others) ---
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'student') return;
+
+    const myForms = forms.filter(f => f.userId === currentUser.id);
+    const myFormIds = myForms.map(f => f.id).sort();
+    const prevIds = prevMyFormIdsRef.current.sort();
+
+    // Only update listeners if form IDs changed (new form added/deleted)
+    // We compare arrays
+    const isSame = myFormIds.length === prevIds.length && myFormIds.every((value, index) => value === prevIds[index]);
+
+    if (isSame) return;
+
+    prevMyFormIdsRef.current = myFormIds;
+
+    // Cleanup old owned listeners
+    ownedListenersRef.current.forEach(unsubscribe => unsubscribe());
+    ownedListenersRef.current = [];
+    studentResponsesRef.current.owned = [];
+
+    if (myFormIds.length > 0) {
+        const chunkSize = 10;
+        for (let i = 0; i < myFormIds.length; i += chunkSize) {
+            const chunk = myFormIds.slice(i, i + chunkSize);
+            
+            const unsubscribe = db.collection('responses')
+                .where('formId', 'in', chunk)
+                .onSnapshot(snapshot => {
+                    const newResponses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FormResponse[];
+                    
+                    studentResponsesRef.current.owned = [
+                        ...studentResponsesRef.current.owned.filter(r => !chunk.includes(r.formId)), 
+                        ...newResponses
+                    ];
+                    
+                    mergeAndSetResponses();
+                }, error => console.error("Error fetching owned responses:", error));
+                
+            ownedListenersRef.current.push(unsubscribe);
+        }
+    } else {
+        mergeAndSetResponses();
+    }
+
+  }, [forms, currentUser]);
 
   // --- ADMIN: Migration / Backfill Response Counts ---
   useEffect(() => {

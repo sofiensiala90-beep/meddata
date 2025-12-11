@@ -9,11 +9,12 @@ import CoinIcon from '../components/icons/CoinIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ArrowUpIcon from '../components/icons/ArrowUpIcon';
 import ArrowDownIcon from '../components/icons/ArrowDownIcon';
+import EyeIcon from '../components/icons/EyeIcon';
 
 interface FormsProps {
   user: User;
-  forms: Form[]; // User's own forms
-  allForms: Form[]; // All forms in the app, needed for purchases
+  forms: Form[]; // User's own forms (created + purchased copies)
+  allForms: Form[]; // All forms in the app, needed for purchases lookups
   responses: FormResponse[];
   purchasedForms: PurchasedForm[];
   addFormResponse: (formId: string, data: Record<string, any>) => void;
@@ -175,7 +176,7 @@ const ModificationDecisionModal: React.FC<{
 
 const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
-  const [activeTab, setActiveTab] = useState<'my_creations' | 'data_purchases'>(user.role === 'admin' ? 'my_creations' : 'my_creations');
+  const [activeTab, setActiveTab] = useState<'my_creations' | 'purchased_models' | 'purchased_data'>(user.role === 'admin' ? 'my_creations' : 'my_creations');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
   const [selectedResponse, setSelectedResponse] = useState<FormResponse | null>(null);
   const [selectedPurchase, setSelectedPurchase] = useState<PurchasedForm | null>(null);
@@ -192,11 +193,12 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   // Reordering State
   const [isReordering, setIsReordering] = useState(false);
 
-
   const isSuspended = user.role === 'student' && user.status.startsWith('suspended');
   
-  const myCreationsAndCopies = useMemo(() => forms.filter(f => f.userId === user.id), [forms, user.id]);
-  const myDataPurchases = useMemo(() => purchasedForms.filter(p => p.withResponses), [purchasedForms]);
+  // 3 Distinct Data Sources
+  const myCreatedForms = useMemo(() => forms.filter(f => f.userId === user.id && f.origin !== 'purchased'), [forms, user.id]);
+  const myPurchasedModels = useMemo(() => forms.filter(f => f.userId === user.id && f.origin === 'purchased'), [forms, user.id]);
+  const myPurchasedData = useMemo(() => purchasedForms.filter(p => p.withResponses), [purchasedForms]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -236,26 +238,30 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     setFilters(prev => ({ ...prev, [name]: value }));
   };
 
-  const filteredForms = useMemo(() => {
-    if (user.role !== 'admin') {
-      return myCreationsAndCopies; // Already sorted by orderIndex in App.tsx
-    }
-    return forms.filter(form => {
-      const studentMatch = filters.studentId ? form.userId === filters.studentId : true;
-      const term = filters.searchTerm.toLowerCase().trim();
-      const searchTermMatch = term ?
-        form.title.toLowerCase().includes(term) ||
-        form.description.toLowerCase().includes(term) ||
-        form.schema.some(q => q.label.toLowerCase().includes(term))
-        : true;
-      const publicationStatusMatch =
-        filters.publicationStatus === 'all' ? true
-        : filters.publicationStatus === 'public' ? form.isPublic
-        : !form.isPublic;
+  // Determine which list to display based on active tab
+  const formsToDisplay = useMemo(() => {
+    if (user.role === 'admin') {
+      return forms.filter(form => {
+        const studentMatch = filters.studentId ? form.userId === filters.studentId : true;
+        const term = filters.searchTerm.toLowerCase().trim();
+        const searchTermMatch = term ?
+          form.title.toLowerCase().includes(term) ||
+          form.description.toLowerCase().includes(term) ||
+          form.schema.some(q => q.label.toLowerCase().includes(term))
+          : true;
+        const publicationStatusMatch =
+          filters.publicationStatus === 'all' ? true
+          : filters.publicationStatus === 'public' ? form.isPublic
+          : !form.isPublic;
 
-      return studentMatch && searchTermMatch && publicationStatusMatch;
-    });
-  }, [forms, filters, user.role, myCreationsAndCopies]);
+        return studentMatch && searchTermMatch && publicationStatusMatch;
+      });
+    }
+    
+    if (activeTab === 'my_creations') return myCreatedForms;
+    if (activeTab === 'purchased_models') return myPurchasedModels;
+    return []; // For purchased_data, we render differently
+  }, [forms, filters, user.role, activeTab, myCreatedForms, myPurchasedModels]);
 
   const handleStartFilling = (form: Form) => {
     setSelectedForm(form);
@@ -467,10 +473,10 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
 
   const handleMoveForm = async (index: number, direction: 'prev' | 'next') => {
     if (direction === 'prev' && index === 0) return;
-    if (direction === 'next' && index === filteredForms.length - 1) return;
+    if (direction === 'next' && index === formsToDisplay.length - 1) return;
 
-    const formA = filteredForms[index];
-    const formB = filteredForms[index + (direction === 'next' ? 1 : -1)];
+    const formA = formsToDisplay[index];
+    const formB = formsToDisplay[index + (direction === 'next' ? 1 : -1)];
 
     // Si orderIndex n'existe pas, on utilise l'index actuel comme fallback
     // Cela permet de démarrer le tri même sur des données anciennes
@@ -604,7 +610,10 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     }
   };
 
-  const getResponseCountForForm = (form: Form) => form.responseCount || 0;
+  const getResponseCountForForm = (form: Form) => {
+    const realCount = responses.filter(r => r.formId === form.id).length;
+    return Math.max(realCount, form.responseCount || 0);
+  };
   
   const getStatusBadge = (status: Form['status']) => {
     switch (status) {
@@ -769,12 +778,12 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
           <div>
             <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{user.role === 'admin' ? 'Tous les formulaires' : 'Gestion des Formulaires'}</h2>
             {user.role === 'student' && (
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Gérez vos formulaires créés, les copies de formulaires achetés, et les ensembles de données que vous avez acquis.</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Gérez vos formulaires créés, vos modèles achetés, et vos données acquises.</p>
             )}
           </div>
           {user.role === 'student' && activeTab === 'my_creations' && (
             <div className="flex space-x-2 w-full sm:w-auto">
-              {filteredForms.length > 1 && (
+              {formsToDisplay.length > 1 && (
                 <Button 
                   onClick={() => setIsReordering(!isReordering)} 
                   variant={isReordering ? "primary" : "secondary"}
@@ -796,10 +805,11 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
         </div>
 
         {user.role === 'student' && (
-            <div className="border-b border-slate-200 dark:border-slate-700">
-                <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                    <button onClick={() => { setActiveTab('my_creations'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_creations' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Créations & Copies</button>
-                    <button onClick={() => { setActiveTab('data_purchases'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'data_purchases' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Achats de Données</button>
+            <div className="border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
+                <nav className="-mb-px flex space-x-6 min-w-max" aria-label="Tabs">
+                    <button onClick={() => { setActiveTab('my_creations'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_creations' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Créations</button>
+                    <button onClick={() => { setActiveTab('purchased_models'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'purchased_models' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Modèles Vierges</button>
+                    <button onClick={() => { setActiveTab('purchased_data'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'purchased_data' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Bases de Données</button>
                 </nav>
             </div>
         )}
@@ -815,7 +825,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
             </div>
         )}
         
-        {activeTab === 'my_creations' && (
+        {/* TAB 1: MY CREATIONS & TAB 2: PURCHASED MODELS (Common logic, filtered lists) */}
+        {(activeTab === 'my_creations' || activeTab === 'purchased_models' || user.role === 'admin') && (
             <>
                 {user.role === 'admin' && (
                 <Card title="Filtres">
@@ -834,9 +845,9 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                 </Card>
                 )}
 
-                {filteredForms.length > 0 ? (
+                {formsToDisplay.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {filteredForms.map((form, index) => {
+                    {formsToDisplay.map((form, index) => {
                     const creator = users.find(u => u.id === form.userId);
                     const responseCount = getResponseCountForForm(form);
                     const matchingQuestions = form.schema.filter(q => filters.searchTerm.trim() && q.label.toLowerCase().includes(filters.searchTerm.trim().toLowerCase())).map(q => q.label);
@@ -854,7 +865,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                             <div className="flex flex-col items-end space-y-2 flex-shrink-0 ml-4">
                                 <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusInfo.className}`}>{statusInfo.text}</span>
                                 {form.isPublic && <span className="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Publié</span>}
-                                {form.origin === 'purchased' && <span className="mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">Copie Achetée</span>}
+                                {form.origin === 'purchased' && <span className="mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">Modèle Acheté</span>}
                             </div>
                             </div>
 
@@ -881,7 +892,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                     <span className="font-mono font-bold text-slate-400 text-lg w-8 text-center">#{index + 1}</span>
                                     <Button 
                                         onClick={() => handleMoveForm(index, 'next')} 
-                                        disabled={index === filteredForms.length - 1}
+                                        disabled={index === formsToDisplay.length - 1}
                                         variant="secondary"
                                         className="!px-3 sm:!px-4 flex items-center gap-2"
                                         title="Avancer (Déplacer vers la position suivante)"
@@ -909,10 +920,21 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                             </div>
                                         )}
                                         {form.status === 'validated' && !form.isPublic && (
-                                            <div className="w-full flex items-center space-x-3">
+                                            <div className="w-full flex items-center space-x-2">
                                                 <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
                                                     <PlusIcon className="w-4 h-4 mr-2 inline-block" />
-                                                    Ajouter une réponse
+                                                    <span className="hidden sm:inline">Ajouter une réponse</span>
+                                                    <span className="sm:hidden">Ajouter</span>
+                                                </Button>
+                                                
+                                                <Button
+                                                    onClick={() => handleViewResponses(form)}
+                                                    variant="secondary"
+                                                    className="!px-3 !py-2 text-sm bg-white hover:bg-slate-50 dark:bg-transparent dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600"
+                                                    title={`Voir les ${responseCount} réponses`}
+                                                    disabled={responseCount === 0}
+                                                >
+                                                    <EyeIcon className="w-5 h-5 text-slate-600 dark:text-slate-300" />
                                                 </Button>
                                                 
                                                 {/* Bouton de suppression rouge */}
@@ -975,15 +997,29 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                     })}
                 </div>
                 ) : (
-                <Card><div className="text-center py-12"><h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun formulaire trouvé</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{user.role === 'admin' ? 'Aucun formulaire ne correspond à vos critères de recherche.' : 'Cliquez sur "+ Créer un formulaire" pour commencer.'}</p>{user.role !== 'admin' && (<div className="mt-6"><Button onClick={handleStartCreating} disabled={isSuspended}>Commencer mon premier formulaire</Button></div>)}</div></Card>
+                <Card>
+                    <div className="text-center py-12">
+                        <h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun formulaire trouvé</h3>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                            {user.role === 'admin' 
+                                ? 'Aucun formulaire ne correspond à vos critères de recherche.' 
+                                : activeTab === 'my_creations' 
+                                    ? 'Vous n\'avez pas encore créé de formulaire.' 
+                                    : 'Vous n\'avez pas acheté de modèle de formulaire.'}
+                        </p>
+                        {user.role !== 'admin' && activeTab === 'my_creations' && (<div className="mt-6"><Button onClick={handleStartCreating} disabled={isSuspended}>Commencer mon premier formulaire</Button></div>)}
+                        {activeTab === 'purchased_models' && (<div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Explorer la Bibliothèque</Button></div>)}
+                    </div>
+                </Card>
                 )}
             </>
         )}
 
-        {activeTab === 'data_purchases' && (
-            myDataPurchases.length > 0 ? (
+        {/* TAB 3: PURCHASED DATA (Specific logic for purchases with data) */}
+        {activeTab === 'purchased_data' && (
+            myPurchasedData.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {myDataPurchases.map(purchase => {
+                {myPurchasedData.map(purchase => {
                     const form = allForms.find(f => f.id === purchase.formId);
                     if (!form) return null;
                     const creator = users.find(u => u.id === form.userId);

@@ -294,7 +294,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
     const statisticalSummary = generateStatisticalSummary(forms, responses);
     
     let baseInstruction = `
-      Tu es MedataAI, un expert de classe mondiale en biostatistiques médicales, épidémiologie et méthodologie de recherche clinique.
+      Tu es DASS (Data Analysis Statistical System), un expert de classe mondiale en biostatistiques médicales et épidémiologie, développé par JS GATE.
       Ton rôle est d'assister des étudiants en médecine dans l'analyse de leurs thèses.
 
       DONNÉES FOURNIES :
@@ -444,7 +444,7 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
 
   try {
     const systemInstruction = `
-      Tu es l'assistant virtuel intelligent de la plateforme MedataAI.
+      Tu es DASS, l'assistant virtuel intelligent de la plateforme de JS GATE.
       Ton rôle est d'aider les étudiants en médecine et les administrateurs à utiliser la plateforme.
 
       INFORMATIONS TARIFAIRES ACTUELLES (EN COINS) :

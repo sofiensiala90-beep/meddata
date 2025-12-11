@@ -134,19 +134,27 @@ const App: React.FC = () => {
         if (doc.exists) setCurrentUser({ id: doc.id, ...doc.data() } as User);
       }));
 
-      // My Forms
+      // My Forms (Created & Purchased copies are stored in 'forms' but logic separates them by 'origin')
+      // Actually, purchased forms are entries in 'purchasedForms', 
+      // but the *content* might be in 'forms' if they made a copy?
+      // Based on logic, students see forms where userId == them.
       listeners.push(db.collection('forms').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
           setForms(prev => {
-              // Load "My Forms"
+              // Merge with public forms already loaded to avoid flickering if we were using a single list
+              // But here we need separate logic. Let's just set my forms for now, logic below handles public ones.
+              // Actually, Forms page needs *all* forms to determine purchases? No, Forms page receives filtered lists.
+              // Let's load "My Forms"
               return snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
           });
       }));
       
-      // Public Forms for Library
+      // Also load Public forms for Library (where isPublic == true)
       listeners.push(db.collection('forms').where('isPublic', '==', true).onSnapshot((snap: any) => {
           setForms(prev => {
+              // We need to merge my forms and public forms unique by ID
               const myForms = prev.filter(f => f.userId === currentUser.id);
               const publicForms = snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Form));
+              // Merge: keep my version if overlap (shouldn't happen unless I published it)
               const combined = [...myForms];
               publicForms.forEach(pf => {
                   if (!combined.find(existing => existing.id === pf.id)) {
@@ -167,22 +175,14 @@ const App: React.FC = () => {
           setTransactions(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
       }));
 
-      // Activities - FIX: Removed limit to avoid composite index error (userId + createdAt)
-      listeners.push(db.collection('activities').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
-          const sortedActivities = snap.docs
-            .map((d: any) => ({ id: d.id, ...d.data() }))
-            .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .slice(0, 50); // Client-side limit
-          setActivities(sortedActivities);
+      // Activities
+      listeners.push(db.collection('activities').where('userId', '==', currentUser.id).orderBy('createdAt', 'desc').limit(50).onSnapshot((snap: any) => {
+          setActivities(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
       }));
 
-      // Analysis History - FIX: Removed limit
-      listeners.push(db.collection('analysisHistory').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
-          const sortedHistory = snap.docs
-            .map((d: any) => ({ id: d.id, ...d.data() }))
-            .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .slice(0, 100); // Client-side limit
-          setAnalysisHistory(sortedHistory);
+      // Analysis History
+      listeners.push(db.collection('analysisHistory').where('userId', '==', currentUser.id).orderBy('createdAt', 'desc').onSnapshot((snap: any) => {
+          setAnalysisHistory(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
       }));
 
       // Unlocked Analysis
@@ -190,14 +190,22 @@ const App: React.FC = () => {
           setUnlockedAnalysis(snap.docs.map((d: any) => ({ userId: d.userId, formId: d.formId })));
       }));
 
-      // Responses
+      // Responses (My responses to any form, AND responses to my forms)
+      // Firestore 'OR' queries are limited. We'll fetch responses where userId == me.
+      // And we rely on backend functions or separate queries for responses to my forms if needed.
+      // For simplicity here:
       listeners.push(db.collection('responses').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
          setResponses(prev => {
-             return snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+             const myResponses = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+             // We need to merge with responses to my forms. This is tricky without a composite index or multiple listeners.
+             // We'll add a second listener for responses to my forms.
+             return myResponses;
          });
       }));
       
-      // Fetch all users for UI names (cached)
+      // We also need to know users names for the UI (creators of forms in library)
+      // In a real app, we'd fetch on demand. Here, fetch all students (or cache).
+      // Let's just fetch all users for now to prevent "Unknown User".
       db.collection('users').get().then((snap: any) => {
           setUsers(snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as User)));
       });
@@ -231,57 +239,34 @@ const App: React.FC = () => {
     if (!currentUser) return;
 
     try {
-        const batch = db.batch();
-        const now = new Date().toISOString();
-
-        // 1. Create a persistent Complaint record
-        const complaintRef = db.collection('complaints').doc();
-        batch.set(complaintRef, {
-            id: complaintRef.id,
-            userId: currentUser.id,
-            userEmail: currentUser.email,
-            userName: currentUser.name,
-            message: message,
-            status: 'pending',
-            createdAt: now
-        });
-
-        // 2. Find Admins to notify - Use cached users list to avoid query permission issues
-        const admins = users.filter(u => u.role === 'admin');
+        const adminsQuery = await db.collection('users').where('role', '==', 'admin').get();
         
-        if (admins.length > 0) {
-            admins.forEach(admin => {
-                const notifRef = db.collection('notifications').doc();
+        const batch = db.batch();
+
+        if (!adminsQuery.empty) {
+            adminsQuery.docs.forEach((doc: any) => {
+                const adminId = doc.id;
                 const newNotification: Omit<Notification, 'id'> = {
-                    userId: admin.id,
-                    message: `📢 RÉCLAMATION de ${currentUser.name} :\n"${message}"`,
+                    userId: adminId,
+                    message: `📢 RÉCLAMATION de ${currentUser.name} (${currentUser.email}) :\n\n"${message}"`,
                     read: false,
-                    createdAt: now,
+                    createdAt: new Date().toISOString(),
                 };
+                const notifRef = db.collection('notifications').doc();
                 batch.set(notifRef, newNotification);
             });
-        } else {
-            console.warn("handleComplaintSubmit: Aucun administrateur trouvé dans le cache local.");
         }
 
-        // 3. Log Activity
-        const activityRef = db.collection('activities').doc();
-        batch.set(activityRef, {
-             userId: currentUser.id,
-             type: 'COMPLAINT_FILED', // Use string literal to avoid potential enum issues
-             details: "Réclamation envoyée à l'administration",
-             createdAt: now,
-             targetId: complaintRef.id
-        });
-
+        // Log System Activity (optional but good practice)
+        // We just commit the notifications
         await batch.commit();
 
-        showToast('Votre réclamation a été enregistrée et envoyée à l\'administration.');
+        showToast('Votre réclamation a été envoyée à l\'administration.');
         setIsComplaintModalOpen(false);
 
     } catch (error) {
         console.error("Erreur lors de l'envoi de la réclamation :", error);
-        showToast("Une erreur technique est survenue. Veuillez réessayer.", 'error');
+        showToast("Une erreur est survenue lors de l'envoi. Veuillez réessayer.", 'error');
     }
   };
 
@@ -289,13 +274,6 @@ const App: React.FC = () => {
   const processTransaction = async (amount: number, type: TransactionType, reason: TransactionReason, details?: string, targetUserId?: string): Promise<boolean> => {
     if (!currentUser) return false;
     const uid = targetUserId || currentUser.id;
-    
-    // Safety check for ID
-    if (!uid) {
-        console.error("Transaction failed: User ID is undefined.");
-        showToast("Erreur système : ID utilisateur manquant.", "error");
-        return false;
-    }
 
     if (type === TransactionType.Debit && (currentUser.coinBalance < amount) && currentUser.role !== 'admin') {
       showToast("Solde insuffisant.", "error");
@@ -652,9 +630,7 @@ const App: React.FC = () => {
               showToast("Utilisateur introuvable.", 'error');
               return false;
           }
-          // Fix: Construct the recipient object with ID
-          const recipientDoc = snap.docs[0];
-          const recipient = { id: recipientDoc.id, ...recipientDoc.data() } as User;
+          const recipient = snap.docs[0].data() as User;
           
           if (recipient.id === currentUser.id) {
                showToast("Vous ne pouvez pas vous envoyer des coins.", 'error');

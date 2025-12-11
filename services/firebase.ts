@@ -111,3 +111,6 @@ export const db = app ? app.firestore() : {
     }),
     runTransaction: () => Promise.reject(new Error("Firebase non configuré"))
 } as any;
+
+// Export firebase namespace for FieldValue
+export { firebase };

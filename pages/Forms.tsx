@@ -808,8 +808,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
             <div className="border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
                 <nav className="-mb-px flex space-x-6 min-w-max" aria-label="Tabs">
                     <button onClick={() => { setActiveTab('my_creations'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'my_creations' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Mes Créations</button>
-                    <button onClick={() => { setActiveTab('purchased_models'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'purchased_models' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Modèles Vierges</button>
-                    <button onClick={() => { setActiveTab('purchased_data'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'purchased_data' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Bases de Données</button>
+                    <button onClick={() => { setActiveTab('purchased_models'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'purchased_models' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Modèles Achetés (Vierges)</button>
+                    <button onClick={() => { setActiveTab('purchased_data'); setIsReordering(false); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'purchased_data' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'}`}>Formulaires avec Réponses</button>
                 </nav>
             </div>
         )}
@@ -1005,7 +1005,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                 ? 'Aucun formulaire ne correspond à vos critères de recherche.' 
                                 : activeTab === 'my_creations' 
                                     ? 'Vous n\'avez pas encore créé de formulaire.' 
-                                    : 'Vous n\'avez pas acheté de modèle de formulaire.'}
+                                    : 'Vous n\'avez pas acheté de formulaire vierge.'}
                         </p>
                         {user.role !== 'admin' && activeTab === 'my_creations' && (<div className="mt-6"><Button onClick={handleStartCreating} disabled={isSuspended}>Commencer mon premier formulaire</Button></div>)}
                         {activeTab === 'purchased_models' && (<div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Explorer la Bibliothèque</Button></div>)}
@@ -1054,7 +1054,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                 })}
                 </div>
             ) : (
-                <Card><div className="text-center py-12"><h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun achat de données</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Vous n'avez encore acheté aucun formulaire avec ses réponses. Explorez la bibliothèque !</p><div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Aller à la Bibliothèque</Button></div></div></Card>
+                <Card><div className="text-center py-12"><h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun formulaire avec réponses</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Vous n'avez encore acheté aucun formulaire avec ses réponses. Explorez la bibliothèque !</p><div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Aller à la Bibliothèque</Button></div></div></Card>
             )
         )}
 

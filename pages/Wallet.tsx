@@ -4,6 +4,7 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import CoinIcon from '../components/icons/CoinIcon';
 import ConfirmationModal, { ConfirmationModalProps } from '../components/ConfirmationModal';
+import { db } from '../services/firebase';
 
 
 interface WalletProps {
@@ -54,23 +55,49 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
   const [error, setError] = useState('');
   const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
   const [recipientName, setRecipientName] = useState<string | null>(null);
+  const [isCheckingUser, setIsCheckingUser] = useState(false);
 
   useEffect(() => {
     if (recipientEmail.trim() === '') {
         setRecipientName(null);
+        setIsCheckingUser(false);
         return;
     }
     
-    // Use a small delay to avoid checking on every keystroke
-    const handler = setTimeout(() => {
-        const recipient = users.find(u => u.email.toLowerCase() === recipientEmail.toLowerCase().trim() && u.role === 'student');
+    setIsCheckingUser(true);
+    
+    // Use a delay to avoid checking on every keystroke and to allow DB query time
+    const handler = setTimeout(async () => {
+        const emailToFind = recipientEmail.toLowerCase().trim();
+        
+        // 1. Try finding in local list first (Fastest - works for Admins who have all users loaded)
+        let recipient = users.find(u => u.email.toLowerCase() === emailToFind);
 
-        if (recipient && recipient.id !== user.id) {
+        // 2. If not found locally, Query Firestore (Necessary for Students who don't have the full user list)
+        if (!recipient) {
+            try {
+                const snapshot = await db.collection('users')
+                    .where('email', '==', emailToFind)
+                    .limit(1)
+                    .get();
+                
+                if (!snapshot.empty) {
+                    recipient = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as User;
+                }
+            } catch (err) {
+                console.error("Error searching for user in wallet:", err);
+            }
+        }
+
+        // 3. Verify eligibility (Must be a student and not self)
+        if (recipient && recipient.role === 'student' && recipient.id !== user.id) {
             setRecipientName(recipient.name);
+            setError(''); // Clear previous errors if found
         } else {
             setRecipientName(null);
         }
-    }, 300);
+        setIsCheckingUser(false);
+    }, 600);
 
     return () => {
         clearTimeout(handler);
@@ -91,11 +118,14 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
       return;
     }
     
-    // Find recipient for confirmation message
-    const recipient = users.find(u => u.email.toLowerCase() === recipientEmail.toLowerCase().trim() && u.role === 'student');
-    if (!recipient) {
-      // The backend will check this again, but it's good UX to check here.
-      setError("Aucun étudiant trouvé avec cette adresse e-mail.");
+    if (isCheckingUser) {
+        setError("Veuillez patienter, recherche du destinataire...");
+        return;
+    }
+    
+    // Use the state populated by the effect
+    if (!recipientName) {
+      setError("Aucun étudiant trouvé avec cette adresse e-mail (ou c'est vous-même/un admin).");
       return;
     }
 
@@ -105,15 +135,16 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
       title: "Confirmer le transfert",
       message: (
         <p>
-          Êtes-vous sûr de vouloir transférer <strong className="font-bold">{transferAmount} coins</strong> à <strong className="font-bold">{recipient.name}</strong> ({recipient.email}) ?
+          Êtes-vous sûr de vouloir transférer <strong className="font-bold">{transferAmount} coins</strong> à <strong className="font-bold">{recipientName}</strong> ({recipientEmail}) ?
         </p>
       ),
       onConfirm: async () => {
-        // The core logic is now in App.tsx
+        // The core logic is in App.tsx
         const success = await onCoinTransfer(recipientEmail.trim(), transferAmount);
         if (success) {
           setRecipientEmail('');
           setAmount('');
+          setRecipientName(null);
         }
         setConfirmation(null);
       },
@@ -161,7 +192,10 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
                   placeholder="exemple@email.com"
                   className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                 />
-                {recipientName && (
+                {isCheckingUser && (
+                    <div className="mt-2 text-sm text-slate-500 italic">Recherche du destinataire...</div>
+                )}
+                {!isCheckingUser && recipientName && (
                   <div className="mt-2 text-sm text-green-700 dark:text-green-300 p-2 bg-green-50 dark:bg-green-900/20 rounded-md border border-green-200 dark:border-green-700">
                     Destinataire trouvé : <span className="font-semibold">{recipientName}</span>
                   </div>
@@ -189,7 +223,7 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
               <div className="text-right">
-                <Button onClick={handleTransfer}>
+                <Button onClick={handleTransfer} disabled={isCheckingUser || (!!recipientEmail && !recipientName && !isCheckingUser)}>
                   Transférer
                 </Button>
               </div>

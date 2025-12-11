@@ -1,5 +1,5 @@
 {
-  "name": "Medata en marche V20",
-  "description": "Une plateforme intelligente pour les étudiants en médecine afin de créer, gérer et analyser des formulaires d'étude médicale avec un assistant IA intégré et un système de monnaie virtuelle.",
+  "name": "DASS 2 - Data Analysis Statistical System",
+  "description": "Une plateforme intelligente par JS GATE pour les étudiants en médecine afin de créer, gérer et analyser des formulaires d'étude médicale avec un assistant IA intégré.",
   "requestFramePermissions": []
 }

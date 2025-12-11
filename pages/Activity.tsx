@@ -96,7 +96,11 @@ const ActivityPage: React.FC<ActivityProps> = ({ activities, users }) => {
         });
     }, [activities, filters]);
 
-    const getUserName = (userId: string) => users.find(u => u.id === userId)?.name || 'Système/Admin';
+    const getUserName = (userId: string) => {
+        const u = users.find(u => u.id === userId);
+        if (u?.role === 'admin') return 'DASS';
+        return u?.name || 'Système/Admin';
+    };
 
     const inputClasses = "block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500";
 

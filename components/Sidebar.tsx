@@ -71,6 +71,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
   ];
 
   const navItems = user.role === 'admin' ? adminNavItems : studentNavItems;
+  const currentYear = new Date().getFullYear();
 
   return (
     <>
@@ -83,7 +84,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
       )}
       
       <aside className={`fixed inset-y-0 left-0 z-50 flex flex-col w-72 h-[96vh] m-2 lg:m-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-2xl rounded-3xl transform transition-transform duration-300 ease-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-[120%]'} lg:translate-x-0`}>
-        <div className="flex items-center justify-center h-24 border-b border-slate-100 dark:border-slate-700/50">
+        <div className="flex items-center justify-center h-24 border-b border-slate-100 dark:border-slate-700/50 shrink-0">
           <LogoIcon className="h-16 w-auto drop-shadow-md" />
         </div>
         
@@ -114,10 +115,28 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
           )}
         </div>
         
-        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-b-3xl">
-            <div className="flex items-center gap-3 px-2">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Système opérationnel</p>
+        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-b-3xl shrink-0">
+            <div className="flex flex-col gap-2 px-2 text-center">
+                <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">System Ready</p>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400 bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded">v2.1</span>
+                </div>
+                
+                <div className="border-t border-slate-200 dark:border-slate-700/50 my-2"></div>
+                
+                <div className="flex flex-col items-center justify-center space-y-0.5">
+                    <span className="text-lg font-bold tracking-tight text-slate-700 dark:text-white">DASS</span>
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">Data Analysis Statistical System</span>
+                    <span className="text-[10px] uppercase tracking-widest text-primary-600 dark:text-primary-400 font-bold mt-1">from JS GATE</span>
+                </div>
+                
+                <div className="text-[10px] text-slate-400 dark:text-slate-600 mt-2">
+                    © {currentYear} JS GATE Corp.<br/>
+                    Tous droits réservés.
+                </div>
             </div>
         </div>
       </aside>

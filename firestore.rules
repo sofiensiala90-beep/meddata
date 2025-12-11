@@ -9,7 +9,10 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Check existence first to prevent errors during signup/initialization
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
     function isOwner(userId) {
@@ -19,16 +22,20 @@ service cloud.firestore {
     // --- COLLECTION RULES ---
 
     // USERS
-    // Read: Allowed for all authenticated users (needed to see "Created by [Name]" in library)
-    // Update: Allowed for self (deduct coins) or Admin
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
-      allow update: if isOwner(userId) || isAdmin();
+      
+      // Rule 1: Admin or Owner can update anything
+      allow update: if isAdmin() || isOwner(userId);
+      
+      // Rule 2: P2P Transfer - Any signed-in user can update ONLY 'coinBalance' of another user
+      // This is required for Student A to send coins to Student B
+      allow update: if isSignedIn() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coinBalance']);
     }
 
     // FORMS
-    // Read: Public forms OR Owner OR Admin
     match /forms/{formId} {
       allow read: if resource.data.isPublic == true || isOwner(resource.data.userId) || isAdmin();
       allow create: if isSignedIn();
@@ -36,8 +43,6 @@ service cloud.firestore {
     }
 
     // RESPONSES
-    // Read: Allowed for all authenticated users. 
-    // This fixes the "0 responses" issue and allows the Preview feature in the Library.
     match /responses/{responseId} {
       allow read: if isSignedIn(); 
       allow create: if isSignedIn();
@@ -45,14 +50,12 @@ service cloud.firestore {
     }
 
     // TRANSACTIONS
-    // Create: Allowed for any logged-in user (needed for purchasing/validating)
     match /transactions/{transactionId} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
       allow create: if isSignedIn();
     }
 
     // PURCHASED FORMS
-    // Create: Allowed for any logged-in user (needed when buying a form)
     match /purchasedForms/{purchaseId} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
       allow create: if isSignedIn();
@@ -61,14 +64,20 @@ service cloud.firestore {
     // NOTIFICATIONS
     match /notifications/{notificationId} {
       allow read: if isOwner(resource.data.userId);
-      allow create: if isSignedIn(); // Allow app to send notifications (e.g. from admin)
-      allow update: if isOwner(resource.data.userId); // Mark as read
+      allow create: if isSignedIn(); // Allow creating notifications for others (e.g. Admin -> Student, or Student -> Admin)
+      allow update: if isOwner(resource.data.userId); // Allow marking as read
     }
 
     // ACTIVITY LOGS
     match /activities/{activityId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
+    }
+    
+    // COMPLAINTS (New) - Added specifically to fix the permission error
+    match /complaints/{complaintId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isAdmin();
     }
     
     // AI ANALYSIS HISTORY

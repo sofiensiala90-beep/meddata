@@ -24,7 +24,7 @@ interface Message {
 const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate, systemSettings }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { id: 1, text: `Bonjour ${user.name} ! Je suis MedataAI. Comment puis-je vous aider aujourd'hui ?`, sender: 'ai' }
+    { id: 1, text: `Bonjour ${user.name} ! Je suis DASS (from JS GATE). Comment puis-je vous aider aujourd'hui ?`, sender: 'ai' }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -191,7 +191,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ user, onNavigate, systemSettings }) =
       {isOpen && (
         <div ref={chatbotRef} className="fixed bottom-24 right-6 w-[calc(100vw-3rem)] sm:w-full max-w-sm h-[70vh] sm:h-[60vh] bg-white dark:bg-slate-800 rounded-xl shadow-2xl flex flex-col z-40">
           <header className="bg-primary-600 text-white p-4 rounded-t-xl flex justify-between items-center">
-            <h3 className="font-bold text-lg">MedataAI Assistant</h3>
+            <h3 className="font-bold text-lg">Assistant DASS</h3>
           </header>
 
           <main className="flex-1 p-4 overflow-y-auto bg-slate-50 dark:bg-slate-900">

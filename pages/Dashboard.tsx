@@ -41,7 +41,9 @@ const QuickAccessButton: React.FC<{title: string; description: string; onClick: 
 const RecentActivityList: React.FC<{ activities: Activity[]; users?: User[] }> = ({ activities, users }) => {
     const getUserName = (userId: string) => {
         if (!users) return 'Utilisateur';
-        return users.find(u => u.id === userId)?.name || 'Utilisateur inconnu';
+        const u = users.find(u => u.id === userId);
+        if (u?.role === 'admin') return 'DASS';
+        return u?.name || 'Utilisateur inconnu';
     };
 
     if (!activities || activities.length === 0) {

@@ -1,6 +1,8 @@
-# MedataAI
+# DASS (Data Analysis Statistical System)
 
-MedataAI is an intelligent platform designed for medical students to create, manage, and analyze medical study forms. It features an integrated AI assistant powered by the Gemini API and a virtual currency system for platform actions.
+**Property of JS GATE**
+
+DASS is an intelligent platform designed for medical students to create, manage, and analyze medical study forms. It features an integrated AI assistant powered by the Gemini API and a virtual currency system for platform actions.
 
 This project is set up as a "no-build" React application, meaning you can run it directly in a browser without needing complex build tools like Webpack or Vite.
 
@@ -70,4 +72,4 @@ As you mentioned, Vercel is a great option for deploying this static application
 4.  **Crucially**, go to your project's settings in Vercel, navigate to the "Environment Variables" section, and add a new variable:
     - **Name:** `API_KEY`
     - **Value:** Paste your Google Gemini API key here.
-5.  Deploy the project. Your MedataAI application will now be live with full AI functionality.
+5.  Deploy the project. Your DASS application will now be live with full AI functionality.

@@ -357,10 +357,20 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md mx-auto">
-        <div className="flex justify-center mb-6">
-          <LogoIcon className="h-24 w-auto" />
+      <div className="w-full max-w-md mx-auto text-center mb-8">
+        <div className="flex flex-col items-center justify-center">
+          <LogoIcon className="h-28 w-auto drop-shadow-xl" />
+          <h1 className="mt-6 text-5xl sm:text-6xl font-black text-slate-900 dark:text-white tracking-tighter">DASS</h1>
+          <p className="text-base font-medium text-slate-500 dark:text-slate-400 tracking-wide mt-2">Data Analysis Statistical System</p>
+          <div className="flex items-center gap-2 mt-4">
+             <span className="h-px w-8 bg-primary-300 dark:bg-primary-700"></span>
+             <p className="text-xs text-primary-600 dark:text-primary-400 font-bold tracking-widest uppercase">from JS GATE</p>
+             <span className="h-px w-8 bg-primary-300 dark:bg-primary-700"></span>
+          </div>
         </div>
+      </div>
+      
+      <div className="w-full max-w-md mx-auto relative z-10">
         {view === 'login' && renderLogin()}
         {view === 'signup' && renderSignup()}
         {view === 'reset_password' && renderResetPassword()}

@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { User, Transaction, TransactionType, TransactionReason } from '../types';
 import Card from '../components/Card';
@@ -96,7 +97,11 @@ const Finance: React.FC<FinanceProps> = ({ transactions, users }) => {
     setUserSearch('');
   };
 
-  const getUserName = (userId: string) => users.find(u => u.id === userId)?.name || 'Utilisateur inconnu';
+  const getUserName = (userId: string) => {
+      const u = users.find(u => u.id === userId);
+      if (u?.role === 'admin') return 'DASS';
+      return u?.name || 'Utilisateur inconnu';
+  };
 
   const totalDebit = transactions.filter(tx => tx.type === TransactionType.Debit).reduce((sum, tx) => sum + tx.amount, 0);
   const totalCredit = transactions.filter(tx => tx.type === TransactionType.Credit).reduce((sum, tx) => sum + tx.amount, 0);

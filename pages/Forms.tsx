@@ -9,7 +9,6 @@ import CoinIcon from '../components/icons/CoinIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ArrowUpIcon from '../components/icons/ArrowUpIcon';
 import ArrowDownIcon from '../components/icons/ArrowDownIcon';
-import EyeIcon from '../components/icons/EyeIcon';
 
 interface FormsProps {
   user: User;
@@ -25,6 +24,7 @@ interface FormsProps {
   deletePurchasedForm: (purchaseId: string) => void;
   saveAndValidateForm: (form: Form) => void;
   publishForm: (formId: string, price: number, pricePerResponse: number) => void;
+  unpublishForm: (formId: string) => void;
   users: User[];
   onNavigate: (page: string, context?: any) => void;
   handleRequestFormModification: (form: Form, reason: string) => void;
@@ -137,6 +137,7 @@ const ModificationRequestModal: React.FC<{
   );
 };
 
+// Deprecated for user flow but kept for type safety if needed elsewhere
 const ModificationDecisionModal: React.FC<{
   form: Form;
   responseCount: number;
@@ -175,7 +176,7 @@ const ModificationDecisionModal: React.FC<{
   );
 };
 
-const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, deletePurchasedForm, saveAndValidateForm, publishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings }) => {
+const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchasedForms, addFormResponse, deleteFormResponse, createForm, updateForm, deleteForm, deletePurchasedForm, saveAndValidateForm, publishForm, unpublishForm, users, onNavigate, handleRequestFormModification, onModificationDecision, systemSettings }) => {
   const [view, setView] = useState<'list' | 'filling' | 'building' | 'viewing_responses_list' | 'viewing_single_response'>('list');
   const [activeTab, setActiveTab] = useState<'my_creations' | 'purchased_models' | 'purchased_data'>(user.role === 'admin' ? 'my_creations' : 'my_creations');
   const [selectedForm, setSelectedForm] = useState<Form | null>(null);
@@ -187,6 +188,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   const [selectedFormIds, setSelectedFormIds] = useState<string[]>([]);
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [formToPublish, setFormToPublish] = useState<Form | null>(null);
+  const [formToUnpublish, setFormToUnpublish] = useState<Form | null>(null);
   const [formToAction, setFormToAction] = useState<Form | null>(null);
   const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
   const actionMenuRef = useRef<Record<string, HTMLDivElement | null>>({});
@@ -897,7 +899,15 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                             </div>
                             <div className="flex flex-col items-end space-y-2 flex-shrink-0 ml-4">
                                 <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusInfo.className}`}>{statusInfo.text}</span>
-                                {form.isPublic && <span className="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Publié</span>}
+                                {form.isPublic && (
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); setFormToUnpublish(form); }}
+                                        className="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors cursor-pointer border border-transparent hover:border-blue-300 dark:hover:border-blue-700"
+                                        title="Cliquez pour annuler la publication"
+                                    >
+                                        Publié
+                                    </button>
+                                )}
                                 {form.origin === 'purchased' && <span className="mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">Modèle Acheté</span>}
                             </div>
                             </div>
@@ -960,16 +970,6 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                                     <span className="sm:hidden">Ajouter</span>
                                                 </Button>
                                                 
-                                                <Button
-                                                    onClick={() => handleViewResponses(form)}
-                                                    variant="secondary"
-                                                    className="!px-3 !py-2 text-sm bg-white hover:bg-slate-50 dark:bg-transparent dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600"
-                                                    title={`Voir les ${responseCount} réponses`}
-                                                    disabled={responseCount === 0}
-                                                >
-                                                    <EyeIcon className="w-5 h-5 text-slate-600 dark:text-slate-300" />
-                                                </Button>
-                                                
                                                 {/* Bouton de suppression rouge */}
                                                 <Button 
                                                     onClick={() => handleDeleteFormClick(form)} 
@@ -1016,9 +1016,13 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                         )}
                                         {form.status === 'awaiting_modification_decision' && (
                                             <div className="w-full flex items-center space-x-2">
-                                                <Button onClick={() => setFormToAction(form)} className="flex-grow" disabled={isSuspended}>
-                                                    Reprendre la modification
-                                                </Button>
+                                                <div className="flex-grow flex items-center justify-center px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md text-blue-700 dark:text-blue-300 text-sm font-medium">
+                                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-700 dark:text-blue-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                    </svg>
+                                                    En attente de validation admin
+                                                </div>
                                                 <Button 
                                                     onClick={() => handleDeleteFormClick(form)} 
                                                     variant="danger"
@@ -1142,6 +1146,27 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
 
       </div>
       {confirmation && <ConfirmationModal {...confirmation} />}
+      {formToUnpublish && (
+        <ConfirmationModal
+            isOpen={true}
+            onClose={() => setFormToUnpublish(null)}
+            onConfirm={() => {
+                unpublishForm(formToUnpublish.id);
+                setFormToUnpublish(null);
+            }}
+            title="Annuler la publication"
+            message={
+                <div>
+                    <p>Voulez-vous retirer le formulaire <strong>"{formToUnpublish.title}"</strong> de la bibliothèque publique ?</p>
+                    <p className="text-sm text-slate-500 mt-2">
+                        Note : Les utilisateurs ayant déjà acheté ce formulaire conserveront leur copie et leurs données.
+                    </p>
+                </div>
+            }
+            confirmText="Retirer de la bibliothèque"
+            variant="danger"
+        />
+      )}
       {isPublishModalOpen && formToPublish && <PublishModal form={formToPublish} onClose={() => setIsPublishModalOpen(false)} onConfirm={handleConfirmPublish} settings={systemSettings} />}
       {formToAction?.status === 'validated' && <ModificationRequestModal form={formToAction} onClose={() => setFormToAction(null)} onSubmit={handleRequestFormModification} />}
       {formToAction?.status === 'awaiting_modification_decision' && <ModificationDecisionModal form={formToAction} responseCount={getResponseCountForForm(formToAction)} onClose={() => setFormToAction(null)} onDecision={onModificationDecision} />}

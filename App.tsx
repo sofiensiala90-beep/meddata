@@ -471,6 +471,25 @@ const App: React.FC = () => {
       }
   };
   
+  const handleUnpublishForm = async (formId: string) => {
+      try {
+          await db.collection('forms').doc(formId).update({
+              isPublic: false
+          });
+          await db.collection('activities').add({
+              userId: currentUser!.id,
+              type: 'FORM_UPDATED', // Fallback type as UNPUBLISHED is not defined in enum
+              details: `Formulaire retiré de la bibliothèque`,
+              createdAt: new Date().toISOString(),
+              targetId: formId
+          });
+          showToast('Formulaire retiré de la bibliothèque.');
+      } catch (error) {
+          console.error(error);
+          showToast('Erreur lors de l\'annulation de la publication.', 'error');
+      }
+  };
+  
   const handleUnvalidateForm = async (formId: string) => {
       try {
           await db.collection('forms').doc(formId).update({
@@ -1020,6 +1039,7 @@ const App: React.FC = () => {
                     deletePurchasedForm={handleDeletePurchasedForm}
                     saveAndValidateForm={handleSaveAndValidateForm}
                     publishForm={handlePublishForm}
+                    unpublishForm={handleUnpublishForm}
                     users={users}
                     onNavigate={handleNavigate}
                     handleRequestFormModification={handleRequestFormModification}

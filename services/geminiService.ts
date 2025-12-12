@@ -32,7 +32,7 @@ const analysisResponseSchema: Schema = {
     },
     charts: {
       type: Type.ARRAY,
-      description: "Liste des graphiques pertinents à générer (1 à 3 graphiques maximum).",
+      description: "Liste des graphiques pertinents à générer. Il n'y a pas de limite stricte : générez autant de graphiques que nécessaire pour illustrer les résultats clés.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -332,8 +332,8 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
       - Sois un partenaire de recherche actif.
       
       RÈGLES DE SORTIE - GRAPHIQUES ('charts') :
-      - Tu peux générer **PLUSIEURS graphiques** si cela aide à la compréhension (maximum 3).
-      - Par exemple : un graphique pour la démographie, un autre pour les symptômes principaux.
+      - Tu peux générer **PLUSIEURS graphiques** si cela aide à la compréhension. N'hésite pas à en créer 2, 3 ou plus si pertinent.
+      - Par exemple : un graphique pour la démographie, un autre pour les symptômes principaux, un autre pour les résultats croisés.
       - Remplis le tableau 'charts' avec les données pour Chart.js.
       - Si aucune comparaison n'est pertinente, laisse le tableau vide.
     `;

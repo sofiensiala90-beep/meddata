@@ -119,8 +119,6 @@ const App: React.FC = () => {
       // --- ADMIN FETCHING ---
       listeners.push(db.collection('users').onSnapshot((snap: any) => setUsers(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })))));
       listeners.push(db.collection('forms').onSnapshot((snap: any) => setForms(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })))));
-      // Note: Responses might be too heavy to fetch all at once in a real app, 
-      // but for this dashboard scope, we assume it fits.
       listeners.push(db.collection('responses').onSnapshot((snap: any) => setResponses(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })))));
       listeners.push(db.collection('transactions').onSnapshot((snap: any) => setTransactions(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })))));
       listeners.push(db.collection('activities').orderBy('createdAt', 'desc').limit(200).onSnapshot((snap: any) => setActivities(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })))));
@@ -168,7 +166,7 @@ const App: React.FC = () => {
           setTransactions(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
       }));
 
-      // Activities - FIX: Removed limit to avoid composite index error (userId + createdAt)
+      // Activities
       listeners.push(db.collection('activities').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
           const sortedActivities = snap.docs
             .map((d: any) => ({ id: d.id, ...d.data() }))
@@ -177,7 +175,7 @@ const App: React.FC = () => {
           setActivities(sortedActivities);
       }));
 
-      // Analysis History - FIX: Removed limit
+      // Analysis History
       listeners.push(db.collection('analysisHistory').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
           const sortedHistory = snap.docs
             .map((d: any) => ({ id: d.id, ...d.data() }))
@@ -188,7 +186,9 @@ const App: React.FC = () => {
 
       // Unlocked Analysis
       listeners.push(db.collection('unlockedAnalysis').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
-          setUnlockedAnalysis(snap.docs.map((d: any) => ({ userId: d.userId, formId: d.formId })));
+          // CORRECTION : Utilisation de .data() pour récupérer l'objet JSON complet
+          const unlocked = snap.docs.map((d: any) => d.data());
+          setUnlockedAnalysis(unlocked);
       }));
 
       // Responses
@@ -259,7 +259,6 @@ const App: React.FC = () => {
         const batch = db.batch();
         const now = new Date().toISOString();
 
-        // 1. Create a persistent Complaint record
         const complaintRef = db.collection('complaints').doc();
         batch.set(complaintRef, {
             id: complaintRef.id,
@@ -271,7 +270,6 @@ const App: React.FC = () => {
             createdAt: now
         });
 
-        // 2. Find Admins to notify - Use cached users list to avoid query permission issues
         const admins = users.filter(u => u.role === 'admin');
         
         if (admins.length > 0) {
@@ -285,15 +283,12 @@ const App: React.FC = () => {
                 };
                 batch.set(notifRef, newNotification);
             });
-        } else {
-            console.warn("handleComplaintSubmit: Aucun administrateur trouvé dans le cache local.");
         }
 
-        // 3. Log Activity
         const activityRef = db.collection('activities').doc();
         batch.set(activityRef, {
              userId: currentUser.id,
-             type: 'COMPLAINT_FILED', // Use string literal to avoid potential enum issues
+             type: 'COMPLAINT_FILED',
              details: "Réclamation envoyée à l'administration",
              createdAt: now,
              targetId: complaintRef.id
@@ -315,7 +310,6 @@ const App: React.FC = () => {
     if (!currentUser) return false;
     const uid = targetUserId || currentUser.id;
     
-    // Safety check for ID
     if (!uid) {
         console.error("Transaction failed: User ID is undefined.");
         showToast("Erreur système : ID utilisateur manquant.", "error");
@@ -358,8 +352,8 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Form Operations ---
-
+  // ... (Other handlers like handleCreateForm, handleAddResponse, etc. kept as is - omitted for brevity if unchanged, but included here for full file)
+  
   const handleCreateForm = async (form: Form) => {
     try {
       await db.collection('forms').doc(form.id).set(form);
@@ -455,7 +449,7 @@ const App: React.FC = () => {
               isPublic: true,
               price,
               pricePerResponse,
-              status: 'validated' // Ensure it stays validated
+              status: 'validated'
           });
           await db.collection('activities').add({
             userId: currentUser!.id,
@@ -478,7 +472,7 @@ const App: React.FC = () => {
           });
           await db.collection('activities').add({
               userId: currentUser!.id,
-              type: 'FORM_UPDATED', // Fallback type as UNPUBLISHED is not defined in enum
+              type: 'FORM_UPDATED',
               details: `Formulaire retiré de la bibliothèque`,
               createdAt: new Date().toISOString(),
               targetId: formId
@@ -510,12 +504,7 @@ const App: React.FC = () => {
   };
 
   const handleRequestFormModification = async (form: Form, reason: string) => {
-      // For simplicity, directly allowing modification logic or notifying admin
-      // Here we just simulate an admin request process by setting status
       try {
-          // In a real app, this might go to an admin queue.
-          // Here, we set a special status or just revert to draft if logic permits
-          // Let's assume we send a notification to admin and set status to 'awaiting_modification_decision'
           const admins = users.filter(u => u.role === 'admin');
           const batch = db.batch();
           
@@ -548,7 +537,6 @@ const App: React.FC = () => {
 
   const handleModificationDecision = async (formId: string, keepResponses: boolean) => {
       if (!keepResponses) {
-          // Delete responses logic
           const batch = db.batch();
           const resps = await db.collection('responses').where('formId', '==', formId).get();
           resps.forEach((doc: any) => batch.delete(doc.ref));
@@ -561,8 +549,6 @@ const App: React.FC = () => {
       });
       showToast(`Modification approuvée. Formulaire en brouillon. ${!keepResponses ? 'Réponses supprimées.' : 'Réponses conservées.'}`);
   };
-
-  // --- Response Operations ---
 
   const handleAddResponse = async (formId: string, data: Record<string, any>) => {
       const form = forms.find(f => f.id === formId);
@@ -583,15 +569,10 @@ const App: React.FC = () => {
               createdAt: new Date().toISOString()
           });
 
-           // Update form response count (Atomic increment if possible, or simple update)
-           // Firestore doesn't support easy count on document without cloud functions usually,
-           // but we can update a field 'responseCount' on the form for UI speed.
            await db.collection('forms').doc(formId).update({
                responseCount: firebase.firestore.FieldValue.increment(1)
            });
 
-           // Handle commissions if it's a purchased form/response
-           // (Logic simplified: if form creator is different, pay them commission)
            if (form.userId !== currentUser.id) {
                const commission = Math.round(systemSettings.libraryPrices.defaultPricePerResponse * systemSettings.commissionRates.creatorResponseSale);
                if (commission > 0) {
@@ -632,8 +613,6 @@ const App: React.FC = () => {
       }
   };
 
-  // --- Wallet & Purchase Operations ---
-
   const handlePurchaseForm = async (form: Form, withResponses: boolean): Promise<boolean | void> => {
       if (!currentUser) return false;
       
@@ -650,7 +629,6 @@ const App: React.FC = () => {
           const success = await processTransaction(price, TransactionType.Debit, withResponses ? TransactionReason.ResponseBundlePurchase : TransactionReason.FormPurchase, `Achat "${form.title}"`);
           if (!success) return false;
 
-          // Add to purchased forms
           await db.collection('purchasedForms').add({
               userId: currentUser.id,
               formId: form.id,
@@ -659,12 +637,11 @@ const App: React.FC = () => {
               purchasePrice: price
           });
 
-          // Create a copy for the user (Origin: purchased)
           const newForm: Form = {
               ...form,
-              id: `form-${Date.now()}`, // New ID
+              id: `form-${Date.now()}`,
               userId: currentUser.id,
-              status: 'draft', // Starts as draft for the buyer
+              status: 'draft',
               isPublic: false,
               origin: 'purchased',
               responseCount: 0,
@@ -672,7 +649,6 @@ const App: React.FC = () => {
           };
           await db.collection('forms').doc(newForm.id).set(newForm);
 
-          // Pay Commission to Creator
            const commission = Math.round(form.price * systemSettings.commissionRates.creatorFormSale);
            if (commission > 0) {
                await db.runTransaction(async (t: any) => {
@@ -704,15 +680,12 @@ const App: React.FC = () => {
 
   const handleCoinTransfer = async (recipientEmail: string, amount: number): Promise<boolean> => {
       if (!currentUser) return false;
-      
-      // Find recipient by email
       try {
           const snap = await db.collection('users').where('email', '==', recipientEmail.toLowerCase()).limit(1).get();
           if (snap.empty) {
               showToast("Utilisateur introuvable.", 'error');
               return false;
           }
-          // Fix: Construct the recipient object with ID
           const recipientDoc = snap.docs[0];
           const recipient = { id: recipientDoc.id, ...recipientDoc.data() } as User;
           
@@ -726,9 +699,7 @@ const App: React.FC = () => {
               return false;
           }
 
-          // Execute Transfer
           await db.runTransaction(async (t: any) => {
-              // Deduct
               const senderRef = db.collection('users').doc(currentUser.id);
               t.update(senderRef, { coinBalance: firebase.firestore.FieldValue.increment(-amount) });
               const txDebitRef = db.collection('transactions').doc();
@@ -741,7 +712,6 @@ const App: React.FC = () => {
                   createdAt: new Date().toISOString()
               });
 
-              // Add
               const recipientRef = db.collection('users').doc(recipient.id);
               t.update(recipientRef, { coinBalance: firebase.firestore.FieldValue.increment(amount) });
               const txCreditRef = db.collection('transactions').doc();
@@ -754,7 +724,6 @@ const App: React.FC = () => {
                   createdAt: new Date().toISOString()
               });
 
-              // Notify recipient
               const notifRef = db.collection('notifications').doc();
               t.set(notifRef, {
                   userId: recipient.id,
@@ -773,8 +742,6 @@ const App: React.FC = () => {
           return false;
       }
   };
-
-  // --- Admin Operations ---
 
   const handleUpdateSettings = async (newSettings: SystemSettings) => {
       try {
@@ -862,7 +829,6 @@ const App: React.FC = () => {
                   createdAt: new Date().toISOString()
               });
 
-              // Notification
               const notifRef = db.collection('notifications').doc();
               t.set(notifRef, {
                   userId,
@@ -893,7 +859,6 @@ const App: React.FC = () => {
       }
   };
 
-  // --- Other ---
   const handleUpdateProfile = async (updatedUser: User) => {
       try {
           await db.collection('users').doc(updatedUser.id).update(updatedUser);
@@ -929,7 +894,6 @@ const App: React.FC = () => {
               analysisResult,
               createdAt: new Date().toISOString()
           });
-          // Also log activity
           await db.collection('activities').add({
               userId: currentUser.id,
               type: ActivityType.AI_ANALYSIS_PERFORMED,
@@ -951,20 +915,25 @@ const App: React.FC = () => {
       }
   };
   
+  // FIX: Updated logic to calculate cost based on the number of unlocked forms
   const handleAnalysisTransaction = async (userId: string, reason: TransactionReason, context?: { formIds?: string[] }): Promise<boolean> => {
-      const cost = systemSettings.coinCosts.aiAnalysis;
+      const count = context?.formIds?.length || 0;
+      if (count === 0) return true; // Rien à payer si aucun formulaire à débloquer
+
+      const cost = systemSettings.coinCosts.aiAnalysis * count;
+      
       if (currentUser && currentUser.coinBalance < cost && currentUser.role !== 'admin') {
-          showToast("Solde insuffisant pour l'analyse.", 'error');
+          showToast(`Solde insuffisant pour débloquer ${count} formulaires. Requis : ${cost} coins.`, 'error');
           return false;
       }
 
-      const success = await processTransaction(cost, TransactionType.Debit, reason, "Analyse IA Avancée");
+      const success = await processTransaction(cost, TransactionType.Debit, reason, `Déblocage Analyse IA (${count} formulaires)`);
       if (success) {
           if (context && context.formIds) {
               const batch = db.batch();
               context.formIds.forEach(fid => {
                    const ref = db.collection('unlockedAnalysis').doc();
-                   batch.set(ref, { userId: currentUser!.id, formId: fid });
+                   batch.set(ref, { userId: currentUser!.id, formId: fid, unlockedAt: new Date().toISOString() });
               });
               await batch.commit();
           }
@@ -1028,7 +997,7 @@ const App: React.FC = () => {
                 <Forms 
                     user={currentUser}
                     forms={forms}
-                    allForms={forms} // Actually passed 'forms' contains all loaded forms suitable for context
+                    allForms={forms} 
                     responses={responses}
                     purchasedForms={purchasedForms}
                     addFormResponse={handleAddResponse}
@@ -1094,7 +1063,6 @@ const App: React.FC = () => {
                  />
              )}
              
-             {/* Admin Pages */}
              {currentUser.role === 'admin' && currentPage === 'etudiants' && (
                  <Students 
                     users={users}

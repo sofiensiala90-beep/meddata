@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, forwardRef } from 'react';
 
 interface ChartData {
@@ -16,6 +15,7 @@ interface ChartData {
 interface ChartRendererProps {
   chartData: ChartData;
   customColors?: string[];
+  forcedType?: 'bar' | 'pie' | 'doughnut' | null;
 }
 
 const isValidHex = (color: string | undefined | null): color is string => {
@@ -23,7 +23,7 @@ const isValidHex = (color: string | undefined | null): color is string => {
     return /^#[0-9A-F]{6}$/i.test(color) || /^#[0-9A-F]{3}$/i.test(color);
 };
 
-const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chartData, customColors }, ref) => {
+const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chartData, customColors, forcedType }, ref) => {
   const internalCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = ref || internalCanvasRef;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -46,20 +46,18 @@ const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chart
         
         ctx.scale(dpr, dpr);
         
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, width, height);
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
 
-        const { type, data: { labels, datasets } } = chartData;
+        const { type: originalType, data: { labels, datasets } } = chartData;
         const dataset = datasets[0];
+        
+        // Determine type to draw
+        const chartTypeToDraw = forcedType || originalType;
         
         // Use custom colors if provided, otherwise fallback to AI provided colors, then default
         const defaultColors = ['#60A5FA', '#34D399', '#FBBF24', '#F87171', '#A78BFA', '#FB923C', '#EC4899', '#14B8A6'];
         
-        let palette = defaultColors;
-        if (customColors && customColors.length > 0) {
-            palette = customColors;
-        }
-
         const colors = dataset.data.map((_, index) => {
             // Prioritize custom palette override if provided
             if (customColors && customColors.length > 0) {
@@ -75,7 +73,7 @@ const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chart
 
         const drawBarChart = () => {
             const paddingBottom = 50;
-            const paddingTop = 70;
+            const paddingTop = 50;
             const paddingX = 50;
             
             const chartWidth = width - 2 * paddingX;
@@ -86,18 +84,13 @@ const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chart
             const barWidth = Math.min(50, chartWidth / (dataset.data.length * 2));
             const maxValue = Math.max(...dataset.data, 1);
 
-            ctx.save();
-            ctx.font = 'bold 16px sans-serif';
-            ctx.fillStyle = '#1e293b';
-            ctx.textAlign = 'center';
-            ctx.fillText(dataset.label, width / 2, 30);
-            ctx.restore();
-
+            // Draw Axes
             ctx.beginPath();
             ctx.moveTo(paddingX, paddingTop);
             ctx.lineTo(paddingX, chartHeight + paddingTop);
             ctx.lineTo(chartWidth + paddingX, chartHeight + paddingTop);
             ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 1;
             ctx.stroke();
 
             dataset.data.forEach((value, index) => {
@@ -106,39 +99,38 @@ const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chart
                 const y = chartHeight + paddingTop - barHeight;
 
                 ctx.fillStyle = colors[index];
+                // Simple rounded top corners simulation
                 ctx.fillRect(x, y, barWidth, barHeight);
 
                 ctx.save();
                 ctx.fillStyle = '#475569';
                 ctx.textAlign = 'center';
-                ctx.font = '12px sans-serif';
-                ctx.fillText(labels[index], x + barWidth / 2, chartHeight + paddingTop + 20);
+                ctx.font = '11px sans-serif';
+                // Truncate long labels
+                let label = labels[index] || '';
+                if (label.length > 10) label = label.substring(0, 8) + '..';
+                ctx.fillText(label, x + barWidth / 2, chartHeight + paddingTop + 20);
                 
                 ctx.fillStyle = '#1e293b';
                 ctx.font = 'bold 12px sans-serif';
-                ctx.fillText(String(value), x + barWidth / 2, y - 8);
+                ctx.fillText(String(value), x + barWidth / 2, y - 5);
                 ctx.restore();
             });
         };
 
-        const drawPieChart = () => {
+        const drawPieChart = (isDoughnut: boolean) => {
             const total = dataset.data.reduce((sum, value) => sum + value, 0);
             if (total === 0) return;
             
-            const legendWidth = Math.min(200, width * 0.3); // Reserve space for legend
+            // Layout: Chart on left, Legend on right (if space permits)
+            const isWide = width > 400;
+            const legendWidth = isWide ? 150 : 0;
             const chartAreaWidth = width - legendWidth;
 
             const radius = Math.min(chartAreaWidth, height) * 0.35;
-            const centerX = chartAreaWidth / 2;
+            const centerX = isWide ? chartAreaWidth / 2 : width / 2;
             const centerY = height / 2;
             
-            ctx.save();
-            ctx.font = 'bold 16px sans-serif';
-            ctx.fillStyle = '#1e293b';
-            ctx.textAlign = 'center';
-            ctx.fillText(dataset.label, width / 2, 30);
-            ctx.restore();
-
             let startAngle = -0.5 * Math.PI;
 
             dataset.data.forEach((value, index) => {
@@ -152,47 +144,59 @@ const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chart
                 startAngle += sliceAngle;
             });
 
-            if (type === 'doughnut') {
-                ctx.fillStyle = '#FFFFFF';
+            if (isDoughnut) {
+                ctx.fillStyle = '#FFFFFF'; // Assuming white background, ideally transparent logic
+                ctx.globalCompositeOperation = 'destination-out';
                 ctx.beginPath();
-                ctx.arc(centerX, centerY, radius * 0.5, 0, 2 * Math.PI);
+                ctx.arc(centerX, centerY, radius * 0.55, 0, 2 * Math.PI);
                 ctx.fill();
+                ctx.globalCompositeOperation = 'source-over';
+                
+                // Draw Total in center
+                ctx.fillStyle = '#1e293b';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = 'bold 20px sans-serif';
+                ctx.fillText(String(total), centerX, centerY);
             }
 
-            const legendItemHeight = 25;
-            const legendX = chartAreaWidth + 20;
-            let legendY = (height - (labels.length * legendItemHeight)) / 2;
-            
-            labels.forEach((label, index) => {
-                ctx.fillStyle = colors[index];
-                ctx.fillRect(legendX, legendY, 15, 15);
-                ctx.save();
-                ctx.fillStyle = '#475569';
-                ctx.font = '14px sans-serif';
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
-                const percentage = ((dataset.data[index] / total) * 100).toFixed(1);
-                ctx.fillText(`${label}: ${percentage}%`, legendX + 25, legendY + 8);
-                ctx.restore();
-                legendY += legendItemHeight;
-            });
+            // Draw Legend if wide enough or separate logic
+            if (isWide) {
+                const legendItemHeight = 20;
+                const legendX = chartAreaWidth + 10;
+                let legendY = (height - (labels.length * legendItemHeight)) / 2;
+                
+                labels.forEach((label, index) => {
+                    ctx.fillStyle = colors[index];
+                    ctx.fillRect(legendX, legendY, 12, 12);
+                    ctx.save();
+                    ctx.fillStyle = '#475569';
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    const percentage = ((dataset.data[index] / total) * 100).toFixed(0);
+                    let text = `${label} (${percentage}%)`;
+                    if (text.length > 20) text = text.substring(0, 18) + '..';
+                    ctx.fillText(text, legendX + 20, legendY + 6);
+                    ctx.restore();
+                    legendY += legendItemHeight + 5;
+                });
+            }
         };
         
-        switch (type.toLowerCase()) {
+        switch (chartTypeToDraw.toLowerCase()) {
             case 'bar':
                 drawBarChart();
                 break;
             case 'pie':
+                drawPieChart(false);
+                break;
             case 'doughnut':
-                drawPieChart();
+                drawPieChart(true);
                 break;
             default:
-                 ctx.save();
-                 ctx.fillStyle = '#475569';
-                 ctx.textAlign = 'center';
-                 ctx.font = '16px sans-serif';
-                 ctx.fillText(`Type de graphique non supporté: ${type}`, width / 2, height / 2);
-                 ctx.restore();
+                 // Fallback to bar
+                 drawBarChart();
         }
     };
 
@@ -205,17 +209,17 @@ const ChartRenderer = forwardRef<HTMLCanvasElement, ChartRendererProps>(({ chart
     resizeObserver.observe(container);
 
     return () => resizeObserver.disconnect();
-  }, [chartData, canvasRef, customColors]);
+  }, [chartData, canvasRef, customColors, forcedType]);
 
   if (!chartData || !chartData.data?.datasets?.[0]?.data) {
-    return <p className="text-slate-500 dark:text-slate-400">Données du graphique non valides.</p>;
+    return <p className="text-slate-500 dark:text-slate-400 text-sm p-4">Données du graphique non disponibles.</p>;
   }
 
   return (
-    <div ref={containerRef} className="w-full h-96 min-h-[300px]">
+    <div ref={containerRef} className="w-full h-72 min-h-[250px]">
       <canvas
         ref={canvasRef}
-        className="w-full h-full"
+        className="w-full h-full block"
         aria-label={`Chart for ${chartData.data.datasets[0].label}`}
       />
     </div>

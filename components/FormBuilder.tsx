@@ -178,7 +178,7 @@ const FieldCard: React.FC<FieldCardProps> = ({ field, index, total, updateField,
             {isConditionEditorOpen && (
                 <div className="mt-4 p-3 bg-slate-100 dark:bg-slate-700/50 rounded-lg space-y-2">
                     <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Afficher cette question si :</p>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <select
                             value={field.condition?.sourceFieldId || ''}
                             onChange={(e) => handleConditionChange(e.target.value)}
@@ -187,19 +187,21 @@ const FieldCard: React.FC<FieldCardProps> = ({ field, index, total, updateField,
                             <option value="" disabled>Choisir une question...</option>
                             {possibleSources.map(src => <option key={src.id} value={src.id}>{src.label}</option>)}
                         </select>
-                        {sourceField && <span className="text-sm text-slate-700 dark:text-slate-300">est</span>}
-                        {sourceField && sourceField.options && (
-                            <select
-                                value={field.condition?.sourceFieldValue || ''}
-                                onChange={(e) => updateField(field.id, { condition: { ...field.condition!, sourceFieldValue: e.target.value } })}
-                                className="flex-grow bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded-md shadow sm:text-sm text-slate-900 dark:text-slate-100 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-                            >
-                                {sourceField.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                            </select>
-                        )}
-                        <button onClick={removeCondition} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 p-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {sourceField && <span className="text-sm text-slate-700 dark:text-slate-300">est</span>}
+                            {sourceField && sourceField.options && (
+                                <select
+                                    value={field.condition?.sourceFieldValue || ''}
+                                    onChange={(e) => updateField(field.id, { condition: { ...field.condition!, sourceFieldValue: e.target.value } })}
+                                    className="flex-grow bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded-md shadow sm:text-sm text-slate-900 dark:text-slate-100 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                                >
+                                    {sourceField.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                            )}
+                            <button onClick={removeCondition} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 p-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -647,7 +649,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
 
   return (
     <>
-      <div className="space-y-6 max-w-4xl mx-auto pb-24">
+      <div className="space-y-6 max-w-4xl mx-auto pb-32">
         <div className="pt-3">
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white">
             {initialForm ? 'Modifier le formulaire' : 'Créer un formulaire'}
@@ -734,30 +736,33 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialForm, onSave, onValida
            </div>
         )}
         
-        <div className="fixed bottom-0 left-0 lg:left-64 right-0 z-30 flex flex-col sm:flex-row justify-between items-center gap-4 p-4 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border-t border-slate-200 dark:border-slate-700 shadow-[0_-4px_15px_-5px_rgba(0,0,0,0.1)]">
-            <Button onClick={onCancel} variant="secondary">Annuler</Button>
-            <div className="flex items-center space-x-2 pr-20">
-                <Button
-                    onClick={handleUndo}
-                    disabled={history.length === 0}
-                    variant="secondary"
-                    className="flex items-center"
-                    title="Annuler la dernière action"
-                >
-                    <UndoIcon className="w-5 h-5" />
-                    <span className="hidden sm:inline sm:ml-2">Défaire</span>
-                </Button>
-                <Button onClick={() => onSave(form)} variant="secondary">Enregistrer le brouillon</Button>
-                <Button onClick={handleValidateClick}>
-                    {isFreeValidation ? "Valider (Gratuit)" : `Valider (${validationCost} Coins)`}
-                </Button>
+        <div className="fixed bottom-0 left-0 lg:left-64 right-0 z-30 p-4 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border-t border-slate-200 dark:border-slate-700 shadow-[0_-4px_15px_-5px_rgba(0,0,0,0.1)]">
+            <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 max-w-4xl mx-auto">
+              <Button onClick={onCancel} variant="secondary" className="w-full sm:w-auto">Annuler</Button>
+              <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+                  <Button
+                      onClick={handleUndo}
+                      disabled={history.length === 0}
+                      variant="secondary"
+                      className="flex items-center justify-center w-full sm:w-auto"
+                      title="Annuler la dernière action"
+                  >
+                      <UndoIcon className="w-5 h-5" />
+                      <span className="inline sm:hidden ml-2">Défaire</span>
+                      <span className="hidden sm:inline sm:ml-2">Défaire</span>
+                  </Button>
+                  <Button onClick={() => onSave(form)} variant="secondary" className="w-full sm:w-auto">Brouillon</Button>
+                  <Button onClick={handleValidateClick} className="w-full sm:w-auto">
+                      {isFreeValidation ? "Valider" : `Valider (${validationCost} Coins)`}
+                  </Button>
+              </div>
             </div>
         </div>
       </div>
       
       <button
         onClick={() => setIsPreviewOpen(true)}
-        className="fixed bottom-24 right-6 z-40 bg-primary-600 text-white rounded-full p-4 shadow-lg hover:bg-primary-700 transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+        className="fixed bottom-36 sm:bottom-24 right-6 z-40 bg-primary-600 text-white rounded-full p-4 shadow-lg hover:bg-primary-700 transition-transform transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
         title="Aperçu du formulaire"
       >
         <EyeIcon className="w-8 h-8" />

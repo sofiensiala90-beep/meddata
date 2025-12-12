@@ -83,7 +83,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
         />
       )}
       
-      <aside className={`fixed inset-y-0 left-0 z-50 flex flex-col w-72 h-[96vh] m-2 lg:m-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-2xl rounded-3xl transform transition-transform duration-300 ease-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-[120%]'} lg:translate-x-0`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 flex flex-col w-72 h-full lg:h-[96vh] m-0 lg:m-4 bg-white dark:bg-slate-800 border-r lg:border border-slate-100 dark:border-slate-700 shadow-2xl rounded-none lg:rounded-3xl transform transition-transform duration-300 ease-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
         <div className="flex items-center justify-center h-24 border-b border-slate-100 dark:border-slate-700/50 shrink-0">
           <LogoIcon className="h-16 w-auto drop-shadow-md" />
         </div>
@@ -115,7 +115,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
           )}
         </div>
         
-        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-b-3xl shrink-0">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-b-none lg:rounded-b-3xl shrink-0">
             <div className="flex flex-col gap-2 px-2 text-center">
                 <div className="flex flex-col items-center justify-center space-y-0.5">
                     <span className="text-lg font-bold tracking-tight text-slate-700 dark:text-white">DASS</span>

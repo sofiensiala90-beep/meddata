@@ -197,7 +197,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   const [selectedPurchase, setSelectedPurchase] = useState<PurchasedForm | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
-  const [filters, setFilters] = useState({ studentId: '', searchTerm: '', publicationStatus: 'all' });
+  const [filters, setFilters] = useState({ studentId: '', searchTerm: '', status: 'all' });
   const [selectedFormIds, setSelectedFormIds] = useState<string[]>([]);
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [formToPublish, setFormToPublish] = useState<Form | null>(null);
@@ -265,12 +265,17 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
           form.description.toLowerCase().includes(term) ||
           form.schema.some(q => q.label.toLowerCase().includes(term))
           : true;
-        const publicationStatusMatch =
-          filters.publicationStatus === 'all' ? true
-          : filters.publicationStatus === 'public' ? form.isPublic
-          : !form.isPublic;
+        
+        const statusMatch = (() => {
+            if (filters.status === 'all') return true;
+            if (filters.status === 'draft') return form.status === 'draft';
+            if (filters.status === 'validated') return form.status === 'validated' && !form.isPublic;
+            if (filters.status === 'published') return form.isPublic;
+            if (filters.status === 'pending') return form.status === 'awaiting_modification_decision' || form.status === 'pending_revalidation';
+            return true;
+        })();
 
-        return studentMatch && searchTermMatch && publicationStatusMatch;
+        return studentMatch && searchTermMatch && statusMatch;
       });
     }
     
@@ -885,10 +890,12 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                         <option value="">Tous les étudiants</option>
                         {users.filter(u => u.role === 'student').sort((a,b) => a.name.localeCompare(b.name)).map(student => (<option key={student.id} value={student.id}>{student.name}</option>))}
                     </select>
-                    <select name="publicationStatus" value={filters.publicationStatus} onChange={handleFilterChange} className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500">
+                    <select name="status" value={filters.status} onChange={handleFilterChange} className="block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500">
                         <option value="all">Tous les statuts</option>
-                        <option value="public">Publiés uniquement</option>
-                        <option value="private">Non publiés</option>
+                        <option value="draft">Brouillons</option>
+                        <option value="validated">Validés (Privés)</option>
+                        <option value="published">Publiés (Bibliothèque)</option>
+                        <option value="pending">En attente de validation</option>
                     </select>
                     </div>
                 </Card>

@@ -12,6 +12,7 @@ import Students from './pages/Students';
 import Finance from './pages/Finance';
 import ActivityPage from './pages/Activity';
 import AdminConfiguration from './pages/AdminConfiguration';
+import AdminTrash from './pages/AdminTrash';
 import AuthPage from './pages/AuthPage';
 import Chatbot from './components/Chatbot';
 import Toast from './components/Toast';
@@ -20,7 +21,7 @@ import { auth, db, firebase } from './services/firebase';
 import { 
   User, Form, FormResponse, Notification, Transaction, TransactionType, 
   TransactionReason, Activity, ActivityType, AnalysisHistory, PurchasedForm, 
-  SystemSettings 
+  SystemSettings, DeletedItem
 } from './types';
 import { DEFAULT_SETTINGS } from './constants';
 
@@ -46,9 +47,10 @@ const App: React.FC = () => {
   const [purchasedForms, setPurchasedForms] = useState<PurchasedForm[]>([]);
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistory[]>([]);
   const [unlockedAnalysis, setUnlockedAnalysis] = useState<{userId: string; formId: string}[]>([]);
+  const [deletedItems, setDeletedItems] = useState<DeletedItem[]>([]); // Admin only
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
 
-  // --- Navigation Context ---
+  // --- Navigation Context (e.g., for Analysis) ---
   const [analysisContext, setAnalysisContext] = useState<{ formIds: string[] } | null>(null);
   const [studentContext, setStudentContext] = useState<{ studentId: string; initialTab?: string } | null>(null);
 
@@ -125,10 +127,16 @@ const App: React.FC = () => {
       listeners.push(db.collection('purchasedForms').onSnapshot((snap: any) => setPurchasedForms(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })))));
       listeners.push(db.collection('analysisHistory').orderBy('createdAt', 'desc').limit(100).onSnapshot((snap: any) => setAnalysisHistory(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })))));
       
+      // Admin: Fetch Deleted Items
+      listeners.push(db.collection('deletedItems').onSnapshot(
+        (snap: any) => setDeletedItems(snap.docs.map((d: any) => ({ id: d.id, ...d.data() }))),
+        (error: any) => console.error("Error fetching deletedItems. Check rules.", error)
+      ));
+      
     } else {
       // --- STUDENT FETCHING ---
       
-      // Sync own profile changes (balance, etc.)
+      // Sync own profile changes
       listeners.push(db.collection('users').doc(currentUser.id).onSnapshot((doc: any) => {
         if (doc.exists) setCurrentUser({ id: doc.id, ...doc.data() } as User);
       }));
@@ -136,12 +144,11 @@ const App: React.FC = () => {
       // My Forms
       listeners.push(db.collection('forms').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
           setForms(prev => {
-              // Load "My Forms"
               return snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
           });
       }));
       
-      // Public Forms for Library
+      // Public Forms
       listeners.push(db.collection('forms').where('isPublic', '==', true).onSnapshot((snap: any) => {
           setForms(prev => {
               const myForms = prev.filter(f => f.userId === currentUser.id);
@@ -156,49 +163,39 @@ const App: React.FC = () => {
           });
       }));
 
-      // Purchased Forms
       listeners.push(db.collection('purchasedForms').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
           setPurchasedForms(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
       }));
 
-      // Transactions
       listeners.push(db.collection('transactions').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
           setTransactions(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
       }));
 
       // Activities
-      listeners.push(db.collection('activities').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
-          const sortedActivities = snap.docs
-            .map((d: any) => ({ id: d.id, ...d.data() }))
-            .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .slice(0, 50); // Client-side limit
-          setActivities(sortedActivities);
+      listeners.push(db.collection('activities').where('userId', '==', currentUser.id).limit(100).onSnapshot((snap: any) => {
+          const items = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+          items.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setActivities(items);
       }));
 
       // Analysis History
       listeners.push(db.collection('analysisHistory').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
-          const sortedHistory = snap.docs
-            .map((d: any) => ({ id: d.id, ...d.data() }))
-            .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .slice(0, 100); // Client-side limit
-          setAnalysisHistory(sortedHistory);
+          const items = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+          items.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setAnalysisHistory(items);
       }));
 
-      // Unlocked Analysis
       listeners.push(db.collection('unlockedAnalysis').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
-          // CORRECTION : Utilisation de .data() pour récupérer l'objet JSON complet
-          const unlocked = snap.docs.map((d: any) => d.data());
-          setUnlockedAnalysis(unlocked);
+          setUnlockedAnalysis(snap.docs.map((d: any) => ({ userId: d.userId, formId: d.formId })));
       }));
 
-      // Responses
       listeners.push(db.collection('responses').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
          setResponses(prev => {
-             return snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+             const myResponses = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+             return myResponses;
          });
       }));
       
-      // Fetch all users for UI names (cached)
       db.collection('users').get().then((snap: any) => {
           setUsers(snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as User)));
       });
@@ -216,33 +213,27 @@ const App: React.FC = () => {
   const handleNavigate = (page: string, context?: any) => {
     setCurrentPage(page);
     setIsSidebarOpen(false);
-    // Reset specific contexts when navigating away
     setAnalysisContext(null);
     setStudentContext(null);
 
     if (page === 'analyse' && context) {
       setAnalysisContext(context);
     } 
-    // Handle redirection to student management from notification
     if (page === 'etudiants' && context) {
         setStudentContext(context);
     }
   };
 
   const handleNotificationClick = (notification: Notification) => {
-      // 1. Mark as read
       if (!notification.read) {
           db.collection('notifications').doc(notification.id).update({ read: true });
       }
-
-      // 2. Handle Action based on metadata
-      if (currentUser?.role === 'admin' && notification.metadata?.type === 'modification_request') {
+      if (currentUser?.role === 'admin' && (notification.metadata?.type === 'modification_request' || notification.metadata?.type === 'revalidation_request')) {
           const { studentId } = notification.metadata;
           if (studentId) {
               handleNavigate('etudiants', { studentId, initialTab: 'forms' });
           }
       } else {
-          // Default: Go to notifications page
           handleNavigate('notifications');
       }
   };
@@ -254,11 +245,11 @@ const App: React.FC = () => {
 
   const handleComplaintSubmit = async (message: string) => {
     if (!currentUser) return;
-
     try {
+        const adminsQuery = await db.collection('users').where('role', '==', 'admin').get();
         const batch = db.batch();
-        const now = new Date().toISOString();
-
+        
+        // Log complaint
         const complaintRef = db.collection('complaints').doc();
         batch.set(complaintRef, {
             id: complaintRef.id,
@@ -267,54 +258,43 @@ const App: React.FC = () => {
             userName: currentUser.name,
             message: message,
             status: 'pending',
-            createdAt: now
+            createdAt: new Date().toISOString()
         });
 
-        const admins = users.filter(u => u.role === 'admin');
-        
-        if (admins.length > 0) {
-            admins.forEach(admin => {
-                const notifRef = db.collection('notifications').doc();
+        if (!adminsQuery.empty) {
+            adminsQuery.docs.forEach((doc: any) => {
+                const adminId = doc.id;
                 const newNotification: Omit<Notification, 'id'> = {
-                    userId: admin.id,
+                    userId: adminId,
                     message: `📢 RÉCLAMATION de ${currentUser.name} :\n"${message}"`,
                     read: false,
-                    createdAt: now,
+                    createdAt: new Date().toISOString(),
                 };
+                const notifRef = db.collection('notifications').doc();
                 batch.set(notifRef, newNotification);
             });
         }
-
-        const activityRef = db.collection('activities').doc();
-        batch.set(activityRef, {
+        
+        await db.collection('activities').add({
              userId: currentUser.id,
-             type: 'COMPLAINT_FILED',
+             type: ActivityType.COMPLAINT_FILED,
              details: "Réclamation envoyée à l'administration",
-             createdAt: now,
+             createdAt: new Date().toISOString(),
              targetId: complaintRef.id
         });
 
         await batch.commit();
-
-        showToast('Votre réclamation a été enregistrée et envoyée à l\'administration.');
+        showToast('Votre réclamation a été envoyée à l\'administration.');
         setIsComplaintModalOpen(false);
-
     } catch (error) {
-        console.error("Erreur lors de l'envoi de la réclamation :", error);
-        showToast("Une erreur technique est survenue. Veuillez réessayer.", 'error');
+        console.error("Erreur réclamation:", error);
+        showToast("Erreur technique lors de l'envoi.", 'error');
     }
   };
 
-  // --- Transaction Helper ---
   const processTransaction = async (amount: number, type: TransactionType, reason: TransactionReason, details?: string, targetUserId?: string): Promise<boolean> => {
     if (!currentUser) return false;
     const uid = targetUserId || currentUser.id;
-    
-    if (!uid) {
-        console.error("Transaction failed: User ID is undefined.");
-        showToast("Erreur système : ID utilisateur manquant.", "error");
-        return false;
-    }
 
     if (type === TransactionType.Debit && (currentUser.coinBalance < amount) && currentUser.role !== 'admin') {
       showToast("Solde insuffisant.", "error");
@@ -352,8 +332,6 @@ const App: React.FC = () => {
     }
   };
 
-  // ... (Other handlers like handleCreateForm, handleAddResponse, etc. kept as is - omitted for brevity if unchanged, but included here for full file)
-  
   const handleCreateForm = async (form: Form) => {
     try {
       await db.collection('forms').doc(form.id).set(form);
@@ -381,17 +359,45 @@ const App: React.FC = () => {
     }
   };
 
+  // --- Soft Delete Logic for Forms ---
   const handleDeleteForm = async (formId: string) => {
+    const formToDelete = forms.find(f => f.id === formId);
+    if (!formToDelete) return;
+
     try {
-      await db.collection('forms').doc(formId).delete();
-      await db.collection('activities').add({
-        userId: currentUser!.id,
-        type: ActivityType.FORM_DELETED,
-        details: `Suppression d'un formulaire`,
-        createdAt: new Date().toISOString(),
-        targetId: formId
-      });
-      showToast('Formulaire supprimé.');
+        const batch = db.batch();
+        const shouldSoftDelete = formToDelete.status === 'validated' || formToDelete.origin === 'purchased';
+
+        if (shouldSoftDelete) {
+            // Soft delete: Move to deletedItems
+            const trashRef = db.collection('deletedItems').doc();
+            const deletedItem: Omit<DeletedItem, 'id'> = {
+                originalId: formToDelete.id,
+                type: 'form',
+                data: formToDelete,
+                deletedAt: new Date().toISOString(),
+                deletedBy: currentUser!.id,
+                ownerId: formToDelete.userId,
+                ownerName: users.find(u => u.id === formToDelete.userId)?.name || 'Inconnu',
+                title: formToDelete.title
+            };
+            batch.set(trashRef, deletedItem);
+        }
+
+        // Delete from main forms collection (always)
+        const formRef = db.collection('forms').doc(formId);
+        batch.delete(formRef);
+
+        await db.collection('activities').add({
+            userId: currentUser!.id,
+            type: ActivityType.FORM_DELETED,
+            details: `Suppression formulaire "${formToDelete.title}"${shouldSoftDelete ? ' (Mis à la corbeille)' : ''}`,
+            createdAt: new Date().toISOString(),
+            targetId: formId
+        });
+
+        await batch.commit();
+        showToast(shouldSoftDelete ? 'Formulaire déplacé dans la corbeille admin.' : 'Formulaire supprimé définitivement.');
     } catch (error) {
        console.error(error);
       showToast('Erreur lors de la suppression.', 'error');
@@ -412,6 +418,9 @@ const App: React.FC = () => {
     if (!currentUser) return;
     const cost = form.revalidationFree ? 0 : (form.origin === 'purchased' ? systemSettings.coinCosts.validatePurchasedForm : systemSettings.coinCosts.validateForm);
     
+    // Check if modifying a previously validated form (Re-validation flow)
+    const isRevalidation = form.revalidationFree === true;
+
     if (currentUser.role === 'student' && cost > 0) {
         if (currentUser.coinBalance < cost) {
             showToast(`Solde insuffisant. Il vous faut ${cost} coins.`, 'error');
@@ -425,18 +434,53 @@ const App: React.FC = () => {
             if (!success) return;
         }
 
-        const updatedForm = { ...form, status: 'validated' as const };
-        await db.collection('forms').doc(form.id).set(updatedForm); // Use set to handle both create & update
+        // Logic split: Direct Validation vs Pending Review
+        const newStatus = isRevalidation ? 'pending_revalidation' : 'validated';
         
+        // IMPORTANT: Lors d'une re-validation, on doit s'assurer que les champs 'backupVersion' et 'modificationRequestReason'
+        // (qui ont été définis par l'admin lors du déblocage) sont bien conservés lors de la sauvegarde complète (set).
+        // On récupère la version en base pour fusionner ces champs si le formulaire UI ne les a pas.
+        const existingForm = forms.find(f => f.id === form.id);
+
+        const updatedForm = { 
+            ...form, 
+            status: newStatus,
+            // On préserve backupVersion s'il existe déjà
+            backupVersion: existingForm?.backupVersion || form.backupVersion,
+            // On préserve le motif de la demande
+            modificationRequestReason: existingForm?.modificationRequestReason || form.modificationRequestReason
+        };
+        
+        const batch = db.batch();
+        const formRef = db.collection('forms').doc(form.id);
+        batch.set(formRef, updatedForm);
+
+        if (isRevalidation) {
+            // Notify Admins
+            const admins = users.filter(u => u.role === 'admin');
+            admins.forEach(admin => {
+                const notifRef = db.collection('notifications').doc();
+                batch.set(notifRef, {
+                    userId: admin.id,
+                    message: `📢 MODIFICATION EN ATTENTE : ${currentUser.name} a soumis des modifications pour "${form.title}".`,
+                    read: false,
+                    createdAt: new Date().toISOString(),
+                    metadata: { type: 'revalidation_request', studentId: currentUser.id, formId: form.id }
+                });
+            });
+        }
+
         await db.collection('activities').add({
             userId: currentUser.id,
             type: ActivityType.FORM_VALIDATED,
-            details: `Validation du formulaire "${form.title}"`,
+            details: isRevalidation ? `Soumission modifications pour "${form.title}"` : `Validation du formulaire "${form.title}"`,
             createdAt: new Date().toISOString(),
             targetId: form.id
         });
 
-        showToast('Formulaire validé avec succès !');
+        await batch.commit();
+
+        showToast(isRevalidation ? 'Modifications soumises à l\'admin pour examen.' : 'Formulaire validé avec succès !');
     } catch (error) {
         console.error(error);
         showToast('Erreur lors de la validation.', 'error');
@@ -467,16 +511,7 @@ const App: React.FC = () => {
   
   const handleUnpublishForm = async (formId: string) => {
       try {
-          await db.collection('forms').doc(formId).update({
-              isPublic: false
-          });
-          await db.collection('activities').add({
-              userId: currentUser!.id,
-              type: 'FORM_UPDATED',
-              details: `Formulaire retiré de la bibliothèque`,
-              createdAt: new Date().toISOString(),
-              targetId: formId
-          });
+          await db.collection('forms').doc(formId).update({ isPublic: false });
           showToast('Formulaire retiré de la bibliothèque.');
       } catch (error) {
           console.error(error);
@@ -485,18 +520,41 @@ const App: React.FC = () => {
   };
   
   const handleUnvalidateForm = async (formId: string) => {
+      const form = forms.find(f => f.id === formId);
+      if (!form) return;
+
       try {
-          await db.collection('forms').doc(formId).update({
-              status: 'draft',
-              revalidationFree: true
+          const batch = db.batch();
+          const formRef = db.collection('forms').doc(formId);
+          
+          // Save snapshot BEFORE unvalidating
+          batch.update(formRef, { 
+              status: 'draft', 
+              revalidationFree: true,
+              backupVersion: form, // Store current state as backup
+              // IMPORTANT: Do NOT delete modificationRequestReason here. 
+              // It is needed for the admin to see WHY the student is modifying when it comes back for re-validation.
           });
-          await db.collection('activities').add({
-              userId: currentUser!.id,
-              type: ActivityType.FORM_VALIDATION_CANCELLED,
-              details: `Annulation validation (Form ID: ${formId})`,
+
+          const notifRef = db.collection('notifications').doc();
+          batch.set(notifRef, {
+              userId: form.userId,
+              message: `✅ Votre demande de modification pour "${form.title}" a été acceptée.\n\n⚠️ IMPORTANT : Seules des modifications mineures sont acceptées. Vos changements seront examinés par un administrateur avant d'être appliqués.`,
+              read: false,
               createdAt: new Date().toISOString()
           });
-          showToast('Validation annulée. Le formulaire est maintenant en brouillon.');
+
+          const activityRef = db.collection('activities').doc();
+          batch.set(activityRef, {
+              userId: currentUser!.id,
+              type: ActivityType.FORM_VALIDATION_CANCELLED,
+              details: `Annulation validation pour "${form.title}"`,
+              createdAt: new Date().toISOString(),
+              targetId: formId
+          });
+
+          await batch.commit();
+          showToast('Validation annulée. État original sauvegardé.');
       } catch (error) {
           console.error(error);
           showToast("Erreur lors de l'annulation.", 'error');
@@ -509,51 +567,119 @@ const App: React.FC = () => {
           const batch = db.batch();
           
           await db.collection('forms').doc(form.id).update({
-              status: 'awaiting_modification_decision'
+              status: 'awaiting_modification_decision',
+              modificationRequestReason: reason // Save the reason to the form doc
           });
 
           admins.forEach(admin => {
               const notifRef = db.collection('notifications').doc();
               const notification: Omit<Notification, 'id'> = {
                   userId: admin.id,
-                  message: `DEMANDE DE MODIFICATION\nUtilisateur : ${currentUser?.name}\nFormulaire : "${form.title}"\nRaison : ${reason}`,
+                  message: `DEMANDE MODIFICATION\n"${form.title}"\n${reason}`,
                   read: false,
                   createdAt: new Date().toISOString(),
-                  metadata: {
-                      type: 'modification_request',
-                      studentId: currentUser?.id,
-                      formId: form.id
-                  }
+                  metadata: { type: 'modification_request', studentId: currentUser?.id, formId: form.id }
               };
               batch.set(notifRef, notification);
           });
           await batch.commit();
-          showToast('Demande envoyée aux administrateurs.');
+          showToast('Demande envoyée.');
       } catch (error) {
           console.error(error);
-          showToast("Erreur lors de l'envoi de la demande.", 'error');
+          showToast("Erreur lors de l'envoi.", 'error');
       }
   };
 
   const handleModificationDecision = async (formId: string, keepResponses: boolean) => {
+      // OLD Logic - kept for legacy or hard resets logic if needed
       if (!keepResponses) {
           const batch = db.batch();
           const resps = await db.collection('responses').where('formId', '==', formId).get();
           resps.forEach((doc: any) => batch.delete(doc.ref));
           await batch.commit();
       }
-      
-      await db.collection('forms').doc(formId).update({
-          status: 'draft',
-          revalidationFree: true
+      await db.collection('forms').doc(formId).update({ 
+          status: 'draft', 
+          revalidationFree: true,
+          // NOTE: Reason kept here too just in case
       });
-      showToast(`Modification approuvée. Formulaire en brouillon. ${!keepResponses ? 'Réponses supprimées.' : 'Réponses conservées.'}`);
+      showToast(`Modification approuvée.`);
+  };
+
+  const handleRevalidationDecision = async (form: Form, approved: boolean) => {
+      const batch = db.batch();
+      const formRef = db.collection('forms').doc(form.id);
+
+      if (approved) {
+          // Accept changes: status -> validated, remove backup
+          batch.update(formRef, {
+              status: 'validated',
+              backupVersion: firebase.firestore.FieldValue.delete(),
+              modificationRequestReason: firebase.firestore.FieldValue.delete() // NOW we delete the reason
+          });
+          
+          const notifRef = db.collection('notifications').doc();
+          batch.set(notifRef, {
+              userId: form.userId,
+              message: `✅ Modifications validées pour "${form.title}". Le formulaire est en ligne.`,
+              read: false,
+              createdAt: new Date().toISOString()
+          });
+          
+          showToast("Modifications acceptées.");
+      } else {
+          // Reject changes: Restore backup, status -> validated
+          if (form.backupVersion) {
+              const restoredForm = { ...form.backupVersion };
+              // Ensure we don't save the reason or nested backup or keep request data
+              delete restoredForm.modificationRequestReason;
+              delete restoredForm.backupVersion;
+              restoredForm.status = 'validated';
+              
+              batch.set(formRef, restoredForm);
+          } else {
+              // Fallback
+              batch.update(formRef, { 
+                  status: 'validated',
+                  modificationRequestReason: firebase.firestore.FieldValue.delete()
+              }); 
+          }
+
+          const notifRef = db.collection('notifications').doc();
+          batch.set(notifRef, {
+              userId: form.userId,
+              message: `❌ Modifications refusées pour "${form.title}". Le formulaire a été restauré à sa version précédente.`,
+              read: false,
+              createdAt: new Date().toISOString()
+          });
+          
+          showToast("Modifications refusées. Formulaire restauré.");
+      }
+      await batch.commit();
+  };
+
+  const handleRefuseModificationRequest = async (form: Form, reason: string) => {
+      try {
+          await db.collection('forms').doc(form.id).update({ 
+              status: 'validated',
+              modificationRequestReason: firebase.firestore.FieldValue.delete() // Delete reason as request is closed
+          });
+          await db.collection('notifications').add({
+              userId: form.userId,
+              message: `❌ Modification REFUSÉE pour "${form.title}".\nRaison : ${reason}`,
+              read: false,
+              createdAt: new Date().toISOString()
+          });
+          showToast("Demande refusée.");
+      } catch (error) {
+          console.error(error);
+          showToast("Erreur lors du refus.", 'error');
+      }
   };
 
   const handleAddResponse = async (formId: string, data: Record<string, any>) => {
       const form = forms.find(f => f.id === formId);
       if (!form || !currentUser) return;
-
       const cost = systemSettings.coinCosts.addResponse;
       
       try {
@@ -580,8 +706,7 @@ const App: React.FC = () => {
                         const creatorRef = db.collection('users').doc(form.userId);
                         const creatorDoc = await t.get(creatorRef);
                         if (creatorDoc.exists) {
-                            const newBalance = (creatorDoc.data().coinBalance || 0) + commission;
-                            t.update(creatorRef, { coinBalance: newBalance });
+                            t.update(creatorRef, { coinBalance: (creatorDoc.data().coinBalance || 0) + commission });
                             const txRef = db.collection('transactions').doc();
                             t.set(txRef, {
                                 userId: form.userId,
@@ -595,152 +720,194 @@ const App: React.FC = () => {
                     });
                }
            }
-
           showToast('Réponse ajoutée.');
       } catch (error) {
           console.error(error);
-          showToast('Erreur lors de l\'ajout de la réponse.', 'error');
+          showToast('Erreur lors de l\'ajout.', 'error');
       }
   };
   
+  // --- Soft Delete Logic for Responses ---
   const handleDeleteResponse = async (responseId: string) => {
+      const responseToDelete = responses.find(r => r.id === responseId);
+      if (!responseToDelete) return;
+
       try {
-          await db.collection('responses').doc(responseId).delete();
-          showToast('Réponse supprimée.');
+          const batch = db.batch();
+          
+          // Soft delete: Move to deletedItems
+          const trashRef = db.collection('deletedItems').doc();
+          const form = forms.find(f => f.id === responseToDelete.formId);
+          const deletedItem: Omit<DeletedItem, 'id'> = {
+                originalId: responseToDelete.id,
+                type: 'response',
+                data: responseToDelete,
+                deletedAt: new Date().toISOString(),
+                deletedBy: currentUser!.id,
+                ownerId: responseToDelete.userId,
+                ownerName: users.find(u => u.id === responseToDelete.userId)?.name || 'Inconnu',
+                title: form ? `Réponse à "${form.title}"` : 'Réponse'
+          };
+          batch.set(trashRef, deletedItem);
+
+          // Delete from main responses collection
+          const respRef = db.collection('responses').doc(responseId);
+          batch.delete(respRef);
+
+          await db.collection('activities').add({
+              userId: currentUser!.id,
+              type: ActivityType.FORM_DELETED, 
+              details: `Suppression d'une réponse (Mis à la corbeille)`,
+              createdAt: new Date().toISOString(),
+              targetId: responseId
+          });
+
+          await batch.commit();
+          showToast('Réponse déplacée dans la corbeille admin.');
       } catch (error) {
           console.error(error);
           showToast('Erreur lors de la suppression.', 'error');
       }
   };
 
+  // --- Trash Restore & Purge Logic ---
+  const handleRestoreDeletedItem = async (item: DeletedItem) => {
+      try {
+          const batch = db.batch();
+          const collectionName = item.type === 'form' ? 'forms' : 'responses';
+          
+          // Restore to original collection
+          const originalRef = db.collection(collectionName).doc(item.originalId);
+          batch.set(originalRef, item.data);
+
+          // Delete from trash
+          const trashRef = db.collection('deletedItems').doc(item.id);
+          batch.delete(trashRef);
+
+          // Log activity
+          const activityRef = db.collection('activities').doc();
+          batch.set(activityRef, {
+              userId: currentUser!.id,
+              type: ActivityType.ITEM_RESTORED,
+              details: `Restauration de ${item.type} (ID: ${item.originalId})`,
+              createdAt: new Date().toISOString()
+          });
+
+          await batch.commit();
+          showToast('Élément restauré avec succès.');
+      } catch (error) {
+          console.error(error);
+          showToast('Erreur lors de la restauration.', 'error');
+      }
+  };
+
+  const handlePurgeDeletedItems = async (filters: { startDate: string, endDate: string, type: string, userId: string }) => {
+      try {
+          // Filter items locally first
+          const itemsToPurge = deletedItems.filter(item => {
+              const itemDate = new Date(item.deletedAt);
+              if (filters.startDate) {
+                  const start = new Date(filters.startDate);
+                  start.setHours(0, 0, 0, 0);
+                  if (itemDate < start) return false;
+              }
+              if (filters.endDate) {
+                  const end = new Date(filters.endDate);
+                  end.setHours(23, 59, 59, 999);
+                  if (itemDate > end) return false;
+              }
+              if (filters.type !== 'all' && item.type !== filters.type) return false;
+              if (filters.userId && item.ownerId !== filters.userId) return false;
+              return true;
+          });
+
+          if (itemsToPurge.length === 0) return;
+
+          const batch = db.batch();
+          itemsToPurge.forEach(item => {
+              const ref = db.collection('deletedItems').doc(item.id);
+              batch.delete(ref);
+          });
+
+          await db.collection('activities').add({
+              userId: currentUser!.id,
+              type: ActivityType.TRASH_PURGED,
+              details: `Purge de la corbeille (${itemsToPurge.length} éléments)`,
+              createdAt: new Date().toISOString()
+          });
+
+          await batch.commit();
+          showToast(`${itemsToPurge.length} élément(s) supprimé(s) définitivement.`);
+      } catch (error) {
+          console.error(error);
+          showToast('Erreur lors de la purge.', 'error');
+      }
+  };
+
   const handlePurchaseForm = async (form: Form, withResponses: boolean): Promise<boolean | void> => {
       if (!currentUser) return false;
-      
-      const price = withResponses 
-        ? (form.price + (form.responseCount || 0) * form.pricePerResponse) 
-        : form.price;
-
-      if (currentUser.coinBalance < price) {
-          showToast('Solde insuffisant.', 'error');
-          return false;
-      }
-
+      const price = withResponses ? (form.price + (form.responseCount || 0) * form.pricePerResponse) : form.price;
+      if (currentUser.coinBalance < price) { showToast('Solde insuffisant.', 'error'); return false; }
       try {
           const success = await processTransaction(price, TransactionType.Debit, withResponses ? TransactionReason.ResponseBundlePurchase : TransactionReason.FormPurchase, `Achat "${form.title}"`);
           if (!success) return false;
-
-          await db.collection('purchasedForms').add({
-              userId: currentUser.id,
-              formId: form.id,
-              purchasedAt: new Date().toISOString(),
-              withResponses,
-              purchasePrice: price
-          });
-
-          const newForm: Form = {
-              ...form,
-              id: `form-${Date.now()}`,
-              userId: currentUser.id,
-              status: 'draft',
-              isPublic: false,
-              origin: 'purchased',
-              responseCount: 0,
-              createdAt: new Date().toISOString(),
-          };
+          await db.collection('purchasedForms').add({ userId: currentUser.id, formId: form.id, purchasedAt: new Date().toISOString(), withResponses, purchasePrice: price });
+          const newForm: Form = { ...form, id: `form-${Date.now()}`, userId: currentUser.id, status: 'draft', isPublic: false, origin: 'purchased', responseCount: 0, createdAt: new Date().toISOString() };
           await db.collection('forms').doc(newForm.id).set(newForm);
-
-           const commission = Math.round(form.price * systemSettings.commissionRates.creatorFormSale);
-           if (commission > 0) {
+          const commission = Math.round(form.price * systemSettings.commissionRates.creatorFormSale);
+          if (commission > 0) {
                await db.runTransaction(async (t: any) => {
                     const creatorRef = db.collection('users').doc(form.userId);
                     const creatorDoc = await t.get(creatorRef);
                     if (creatorDoc.exists) {
                         t.update(creatorRef, { coinBalance: firebase.firestore.FieldValue.increment(commission) });
                         const txRef = db.collection('transactions').doc();
-                        t.set(txRef, {
-                            userId: form.userId,
-                            type: TransactionType.Credit,
-                            amount: commission,
-                            reason: TransactionReason.FormSaleCommission,
-                            details: `Vente "${form.title}"`,
-                            createdAt: new Date().toISOString()
-                        });
+                        t.set(txRef, { userId: form.userId, type: TransactionType.Credit, amount: commission, reason: TransactionReason.FormSaleCommission, details: `Vente "${form.title}"`, createdAt: new Date().toISOString() });
                     }
                });
            }
-
-          showToast('Achat effectué avec succès ! Vous pouvez maintenant utiliser ce formulaire.');
+          showToast('Achat effectué !');
           return true;
-      } catch (error) {
-          console.error(error);
-          showToast("Erreur lors de l'achat.", 'error');
-          return false;
-      }
+      } catch (error) { console.error(error); showToast("Erreur achat.", 'error'); return false; }
   };
 
   const handleCoinTransfer = async (recipientEmail: string, amount: number): Promise<boolean> => {
       if (!currentUser) return false;
       try {
           const snap = await db.collection('users').where('email', '==', recipientEmail.toLowerCase()).limit(1).get();
-          if (snap.empty) {
-              showToast("Utilisateur introuvable.", 'error');
-              return false;
-          }
-          const recipientDoc = snap.docs[0];
-          const recipient = { id: recipientDoc.id, ...recipientDoc.data() } as User;
-          
-          if (recipient.id === currentUser.id) {
-               showToast("Vous ne pouvez pas vous envoyer des coins.", 'error');
-               return false;
-          }
-
-          if (currentUser.coinBalance < amount) {
-              showToast("Solde insuffisant.", 'error');
-              return false;
-          }
-
+          if (snap.empty) { showToast("Utilisateur introuvable.", 'error'); return false; }
+          const recipient = snap.docs[0].data() as User;
+          if (recipient.id === currentUser.id) { showToast("Impossible vers soi-même.", 'error'); return false; }
+          if (currentUser.coinBalance < amount) { showToast("Solde insuffisant.", 'error'); return false; }
           await db.runTransaction(async (t: any) => {
               const senderRef = db.collection('users').doc(currentUser.id);
               t.update(senderRef, { coinBalance: firebase.firestore.FieldValue.increment(-amount) });
               const txDebitRef = db.collection('transactions').doc();
-              t.set(txDebitRef, {
-                  userId: currentUser.id,
-                  type: TransactionType.Debit,
-                  amount,
-                  reason: TransactionReason.COIN_TRANSFER_SENT,
-                  details: `Transfert vers ${recipient.name}`,
-                  createdAt: new Date().toISOString()
-              });
-
+              t.set(txDebitRef, { userId: currentUser.id, type: TransactionType.Debit, amount, reason: TransactionReason.COIN_TRANSFER_SENT, details: `Vers ${recipient.name}`, createdAt: new Date().toISOString() });
               const recipientRef = db.collection('users').doc(recipient.id);
               t.update(recipientRef, { coinBalance: firebase.firestore.FieldValue.increment(amount) });
               const txCreditRef = db.collection('transactions').doc();
-              t.set(txCreditRef, {
-                  userId: recipient.id,
-                  type: TransactionType.Credit,
-                  amount,
-                  reason: TransactionReason.COIN_TRANSFER_RECEIVED,
-                  details: `Reçu de ${currentUser.name}`,
-                  createdAt: new Date().toISOString()
-              });
-
+              t.set(txCreditRef, { userId: recipient.id, type: TransactionType.Credit, amount, reason: TransactionReason.COIN_TRANSFER_RECEIVED, details: `De ${currentUser.name}`, createdAt: new Date().toISOString() });
               const notifRef = db.collection('notifications').doc();
-              t.set(notifRef, {
-                  userId: recipient.id,
-                  message: `Vous avez reçu ${amount} coins de ${currentUser.name}.`,
-                  read: false,
-                  createdAt: new Date().toISOString()
-              });
+              t.set(notifRef, { userId: recipient.id, message: `Reçu ${amount} coins de ${currentUser.name}.`, read: false, createdAt: new Date().toISOString() });
           });
-
           showToast("Transfert effectué.");
           return true;
+      } catch (error) { console.error(error); showToast("Erreur transfert.", 'error'); return false; }
+  };
 
-      } catch (error) {
-          console.error(error);
-          showToast("Erreur lors du transfert.", 'error');
-          return false;
+  const handleAnalysisTransaction = async (userId: string, reason: TransactionReason, context?: { formIds?: string[] }): Promise<boolean> => {
+      const count = context?.formIds?.length || 0;
+      if (count === 0) return true;
+      const cost = systemSettings.coinCosts.aiAnalysis * count;
+      if (currentUser && currentUser.coinBalance < cost && currentUser.role !== 'admin') { showToast(`Solde insuffisant (${cost} coins requis).`, 'error'); return false; }
+      const success = await processTransaction(cost, TransactionType.Debit, reason, `Déblocage Analyse IA`);
+      if (success && context && context.formIds) {
+          const batch = db.batch();
+          context.formIds.forEach(fid => { const ref = db.collection('unlockedAnalysis').doc(); batch.set(ref, { userId: currentUser!.id, formId: fid, unlockedAt: new Date().toISOString() }); });
+          await batch.commit();
       }
+      return success;
   };
 
   const handleUpdateSettings = async (newSettings: SystemSettings) => {
@@ -829,6 +996,7 @@ const App: React.FC = () => {
                   createdAt: new Date().toISOString()
               });
 
+              // Notification
               const notifRef = db.collection('notifications').doc();
               t.set(notifRef, {
                   userId,
@@ -894,6 +1062,7 @@ const App: React.FC = () => {
               analysisResult,
               createdAt: new Date().toISOString()
           });
+          // Also log activity
           await db.collection('activities').add({
               userId: currentUser.id,
               type: ActivityType.AI_ANALYSIS_PERFORMED,
@@ -913,32 +1082,6 @@ const App: React.FC = () => {
           console.error(error);
           showToast("Erreur suppression historique.", 'error');
       }
-  };
-  
-  // FIX: Updated logic to calculate cost based on the number of unlocked forms
-  const handleAnalysisTransaction = async (userId: string, reason: TransactionReason, context?: { formIds?: string[] }): Promise<boolean> => {
-      const count = context?.formIds?.length || 0;
-      if (count === 0) return true; // Rien à payer si aucun formulaire à débloquer
-
-      const cost = systemSettings.coinCosts.aiAnalysis * count;
-      
-      if (currentUser && currentUser.coinBalance < cost && currentUser.role !== 'admin') {
-          showToast(`Solde insuffisant pour débloquer ${count} formulaires. Requis : ${cost} coins.`, 'error');
-          return false;
-      }
-
-      const success = await processTransaction(cost, TransactionType.Debit, reason, `Déblocage Analyse IA (${count} formulaires)`);
-      if (success) {
-          if (context && context.formIds) {
-              const batch = db.batch();
-              context.formIds.forEach(fid => {
-                   const ref = db.collection('unlockedAnalysis').doc();
-                   batch.set(ref, { userId: currentUser!.id, formId: fid, unlockedAt: new Date().toISOString() });
-              });
-              await batch.commit();
-          }
-      }
-      return success;
   };
 
 
@@ -1063,6 +1206,7 @@ const App: React.FC = () => {
                  />
              )}
              
+             {/* Admin Pages */}
              {currentUser.role === 'admin' && currentPage === 'etudiants' && (
                  <Students 
                     users={users}
@@ -1072,6 +1216,8 @@ const App: React.FC = () => {
                     onUpdateUserStatus={handleUpdateUserStatus}
                     onAdminCoinAdjustment={handleAdminCoinAdjustment}
                     onUnvalidateForm={handleUnvalidateForm}
+                    onRefuseModification={handleRefuseModificationRequest}
+                    onRevalidationDecision={handleRevalidationDecision}
                     context={studentContext}
                  />
              )}
@@ -1080,6 +1226,14 @@ const App: React.FC = () => {
              )}
              {currentUser.role === 'admin' && currentPage === 'activite' && (
                  <ActivityPage activities={activities} users={users} />
+             )}
+             {currentUser.role === 'admin' && currentPage === 'corbeille' && (
+                 <AdminTrash 
+                    deletedItems={deletedItems} 
+                    users={users}
+                    onRestore={handleRestoreDeletedItem}
+                    onPurge={handlePurgeDeletedItems}
+                 />
              )}
              {currentUser.role === 'admin' && currentPage === 'configuration' && (
                  <AdminConfiguration 

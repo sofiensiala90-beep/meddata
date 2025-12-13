@@ -17,6 +17,8 @@ interface StudentsProps {
   onUpdateUserStatus: (userId: string, status: User['status']) => void;
   onAdminCoinAdjustment: (userId: string, amount: number, type: TransactionType) => void;
   onUnvalidateForm: (formId: string) => void;
+  onRefuseModification: (form: Form, reason: string) => void;
+  onRevalidationDecision?: (form: Form, approved: boolean) => void;
   context?: { studentId: string; initialTab?: string } | null;
 }
 
@@ -43,7 +45,7 @@ const getStatusInfo = (status: User['status']) => {
     }
 };
 
-const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment, onUnvalidateForm, context }) => {
+const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment, onUnvalidateForm, onRefuseModification, onRevalidationDecision, context }) => {
   const [filters, setFilters] = useState({ name: '', university: '', field: '', studyYear: '' });
   const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
   const [isNotifyAllModalOpen, setIsNotifyAllModalOpen] = useState(false);
@@ -198,14 +200,17 @@ const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNoti
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider">Téléphone</th>
                 <SortableHeader label="Solde Coins" sortKey="coinBalance" />
                 <SortableHeader label="Statut" sortKey="status" />
-                <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
               {sortedStudents.map(student => {
                   const statusInfo = getStatusInfo(student.status);
                   return (
-                    <tr key={student.id}>
+                    <tr 
+                      key={student.id} 
+                      onClick={() => setSelectedStudent(student)}
+                      className="hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
+                    >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-slate-900 dark:text-white">{student.name}</div>
                         <div className="text-sm text-slate-500 dark:text-slate-400">{student.email}</div>
@@ -217,9 +222,6 @@ const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNoti
                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusInfo.className}`}>
                           {statusInfo.text}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <Button onClick={() => setSelectedStudent(student)} variant="secondary" className="!py-1 !px-3">Gérer</Button>
                       </td>
                     </tr>
                   )
@@ -244,6 +246,8 @@ const Students: React.FC<StudentsProps> = ({ users, forms, responses, onSendNoti
           onUpdateUserStatus={onUpdateUserStatus}
           onAdminCoinAdjustment={onAdminCoinAdjustment}
           onUnvalidateForm={onUnvalidateForm}
+          onRefuseModification={onRefuseModification}
+          onRevalidationDecision={onRevalidationDecision}
           initialTab={context?.studentId === selectedStudent.id ? context.initialTab : undefined}
         />
       )}

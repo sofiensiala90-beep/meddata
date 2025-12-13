@@ -115,8 +115,21 @@ const ModificationRequestModal: React.FC<{
         </header>
         <main className="p-6">
           <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-            Expliquez à l'administrateur pourquoi vous devez modifier ce formulaire. S'il approuve, la validation sera annulée et le formulaire retournera à l'état de brouillon. La re-validation sera gratuite.
+            Expliquez à l'administrateur pourquoi vous devez modifier ce formulaire.
           </p>
+          
+          <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 text-yellow-800 dark:text-yellow-300 rounded-r-lg text-sm">
+            <p className="font-bold flex items-center mb-1">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                Règles de modification
+            </p>
+            <ul className="list-disc list-inside space-y-1 ml-1">
+                <li>Seules les <strong>modifications mineures</strong> sont acceptées (fautes de frappe, option oubliée).</li>
+                <li>Si vous souhaitez une refonte complète, veuillez créer un nouveau formulaire.</li>
+                <li>La re-validation sera gratuite si la demande est acceptée.</li>
+            </ul>
+          </div>
+
           <textarea
             rows={5}
             value={reason}
@@ -655,6 +668,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
         case 'draft': return { text: 'Brouillon', className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' };
         case 'validated': return { text: 'Validé', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' };
         case 'awaiting_modification_decision': return { text: 'En attente de décision', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' };
+        case 'pending_revalidation': return { text: 'En attente de validation', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' };
         default: return { text: 'Statut Inconnu', className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' };
     }
   };
@@ -981,7 +995,7 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                                     <TrashIcon className="w-5 h-5" />
                                                 </Button>
 
-                                                <div className="relative flex-shrink-0" ref={(el) => (actionMenuRef.current[form.id] = el)}>
+                                                <div className="relative flex-shrink-0" ref={(el) => { actionMenuRef.current[form.id] = el; }}>
                                                     <Button 
                                                         onClick={() => setOpenActionMenu(openActionMenu === form.id ? null : form.id)}
                                                         variant="secondary"
@@ -1034,8 +1048,28 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                                 </Button>
                                             </div>
                                         )}
+                                        {form.status === 'pending_revalidation' && (
+                                            <div className="w-full flex items-center space-x-2">
+                                                <div className="flex-grow flex items-center justify-center px-4 py-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-md text-orange-700 dark:text-orange-300 text-sm font-medium">
+                                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-orange-700 dark:text-orange-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                    </svg>
+                                                    Modification en cours d'examen
+                                                </div>
+                                                <Button 
+                                                    onClick={() => handleDeleteFormClick(form)} 
+                                                    variant="danger"
+                                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
+                                                    title="Supprimer le formulaire"
+                                                    disabled={isSuspended}
+                                                >
+                                                    <TrashIcon className="w-5 h-5" />
+                                                </Button>
+                                            </div>
+                                        )}
                                         {/* HANDLE INVALID/UNKNOWN STATUS (Fallback) */}
-                                        {!['draft', 'validated', 'awaiting_modification_decision'].includes(form.status) && (
+                                        {!['draft', 'validated', 'awaiting_modification_decision', 'pending_revalidation'].includes(form.status) && (
                                              <div className="w-full flex items-center justify-between">
                                                 <span className="text-sm text-red-500 italic flex items-center">
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>

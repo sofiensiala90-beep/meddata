@@ -17,6 +17,7 @@ try {
 // Modèles utilisés
 const ANALYSIS_MODEL = 'gemini-2.5-flash';
 const CHAT_MODEL = 'gemini-2.5-flash';
+const TEXT_MODEL = 'gemini-2.5-flash';
 
 // Schéma JSON strict pour l'analyse (Étape 2)
 const analysisResponseSchema: Schema = {
@@ -269,6 +270,52 @@ export const getAnalysisSuggestions = async (forms: Form[], responses: FormRespo
     console.error("Erreur Gemini Suggestions:", error);
     throw error;
   }
+};
+
+/**
+ * Aide à la rédaction de notifications pour l'admin
+ */
+export const generateNotificationRefinement = async (draftText: string): Promise<string> => {
+    if (!apiKey || apiKey === "MISSING_KEY") {
+        return draftText; // Fallback safe
+    }
+
+    try {
+        const systemInstruction = `
+            Tu es un assistant de communication pour l'administration d'une faculté de médecine ou d'une plateforme de recherche médicale (MedataAI).
+            
+            TA MISSION :
+            Réécrire, corriger et professionnaliser le brouillon de notification fourni par l'administrateur.
+            Le message est destiné à un étudiant en médecine.
+
+            RÈGLES DE RÉDACTION :
+            1. **Ton** : Professionnel, Courtois, Clair, Concis et Ferme (si nécessaire pour des rappels).
+            2. **Langue** : Français impeccable.
+            3. **Objectif** : Transformer des notes brutes en un message prêt à l'envoi.
+            
+            EXEMPLES :
+            - Input : "paye tes dettes sinon ban" -> Output : "Bonjour, nous vous informons que votre solde est négatif. Veuillez régulariser votre situation rapidement pour éviter une suspension temporaire de votre compte. Cordialement, L'équipe MedataAI."
+            - Input : "bravo pour ta thèse" -> Output : "Félicitations pour l'avancement de votre thèse ! Nous sommes ravis de voir vos progrès sur la plateforme."
+            
+            SORTIE :
+            Renvoie UNIQUEMENT le texte du message amélioré, sans guillemets, sans préambule ("Voici le texte...").
+        `;
+
+        const response = await ai.models.generateContent({
+            model: TEXT_MODEL,
+            contents: `Voici le brouillon : "${draftText}"`,
+            config: {
+                systemInstruction: systemInstruction,
+                temperature: 0.7, // Un peu de créativité pour la politesse
+            },
+        });
+
+        return response.text?.trim() || draftText;
+
+    } catch (error) {
+        console.error("Erreur Gemini Notification:", error);
+        return draftText;
+    }
 };
 
 /**

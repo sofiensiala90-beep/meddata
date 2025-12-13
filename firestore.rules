@@ -8,11 +8,17 @@ service cloud.firestore {
       return request.auth != null;
     }
     
+    // Helper to get user data safely
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    
     function isAdmin() {
-      // Check existence first to prevent errors during signup/initialization
+      // Check if signed in, if user doc exists (not null), and if role is admin
+      // This pattern is robust and handles missing user documents gracefully
       return isSignedIn() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+             getUserData() != null && 
+             getUserData().data.role == 'admin';
     }
     
     function isOwner(userId) {
@@ -25,14 +31,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
-      
       // Rule 1: Admin or Owner can update anything
-      allow update: if isAdmin() || isOwner(userId);
-      
-      // Rule 2: P2P Transfer - Any signed-in user can update ONLY 'coinBalance' of another user
-      // This is required for Student A to send coins to Student B
-      allow update: if isSignedIn() && 
-                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coinBalance']);
+      // Rule 2: P2P Transfer - Any signed-in user can update ONLY 'coinBalance' of another user (for transfers)
+      allow update: if isAdmin() || isOwner(userId) || 
+                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coinBalance']));
     }
 
     // FORMS
@@ -64,8 +66,8 @@ service cloud.firestore {
     // NOTIFICATIONS
     match /notifications/{notificationId} {
       allow read: if isOwner(resource.data.userId);
-      allow create: if isSignedIn(); // Allow creating notifications for others (e.g. Admin -> Student, or Student -> Admin)
-      allow update: if isOwner(resource.data.userId); // Allow marking as read
+      allow create: if isSignedIn(); 
+      allow update: if isOwner(resource.data.userId); 
     }
 
     // ACTIVITY LOGS
@@ -74,10 +76,17 @@ service cloud.firestore {
       allow create: if isSignedIn();
     }
     
-    // COMPLAINTS (New) - Added specifically to fix the permission error
+    // COMPLAINTS
     match /complaints/{complaintId} {
       allow create: if isSignedIn();
       allow read, update, delete: if isAdmin();
+    }
+
+    // DELETED ITEMS (Trash)
+    // IMPORTANT: Ensure these rules are deployed to Firebase Console
+    match /deletedItems/{itemId} {
+      allow create: if isSignedIn(); // Allow soft delete
+      allow read, delete: if isAdmin(); // Admin only management
     }
     
     // AI ANALYSIS HISTORY

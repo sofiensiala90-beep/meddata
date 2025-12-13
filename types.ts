@@ -41,8 +41,10 @@ export interface Form {
   title: string;
   description: string;
   schema: FormField[];
-  status: 'draft' | 'validated' | 'awaiting_modification_decision';
+  status: 'draft' | 'validated' | 'awaiting_modification_decision' | 'pending_revalidation';
   revalidationFree?: boolean;
+  modificationRequestReason?: string; // Reason provided by student when requesting modification
+  backupVersion?: Form; // Snapshot of the form before modification
   createdAt: string;
   isPublic: boolean;
   price: number;
@@ -76,7 +78,7 @@ export interface Notification {
   read: boolean;
   createdAt: string;
   metadata?: {
-    type: 'modification_request' | 'info';
+    type: 'modification_request' | 'info' | 'revalidation_request';
     studentId?: string;
     formId?: string;
   };
@@ -139,6 +141,8 @@ export enum ActivityType {
   SYSTEM_SETTINGS_UPDATED = 'SYSTEM_SETTINGS_UPDATED',
   PROMOTIONAL_CAMPAIGN = 'PROMOTIONAL_CAMPAIGN',
   COMPLAINT_FILED = 'COMPLAINT_FILED',
+  ITEM_RESTORED = 'ITEM_RESTORED',
+  TRASH_PURGED = 'TRASH_PURGED',
 }
 
 export interface Activity {
@@ -148,6 +152,18 @@ export interface Activity {
   details: string;
   createdAt: string;
   targetId?: string; // e.g., form ID, recipient user ID
+}
+
+export interface DeletedItem {
+  id: string;
+  originalId: string;
+  type: 'form' | 'response';
+  data: any; // The full object data (Form or FormResponse)
+  deletedAt: string;
+  deletedBy: string;
+  ownerId: string; // The original owner of the item
+  ownerName?: string; // Snapshot of the name at time of deletion
+  title?: string; // For forms: title, For responses: form title context
 }
 
 // For Gemini API chatbot response

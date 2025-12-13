@@ -361,6 +361,9 @@ const App: React.FC = () => {
     if (!currentUser) return;
     const cost = form.revalidationFree ? 0 : (form.origin === 'purchased' ? systemSettings.coinCosts.validatePurchasedForm : systemSettings.coinCosts.validateForm);
     
+    // Check if modifying a previously validated form (Re-validation flow)
+    const isRevalidation = form.revalidationFree === true;
+
     if (currentUser.role === 'student' && cost > 0) {
         if (currentUser.coinBalance < cost) {
             showToast(`Solde insuffisant. Il vous faut ${cost} coins.`, 'error');
@@ -374,18 +377,53 @@ const App: React.FC = () => {
             if (!success) return;
         }
 
-        const updatedForm = { ...form, status: 'validated' as const };
-        await db.collection('forms').doc(form.id).set(updatedForm); // Use set to handle both create & update
+        // Logic split: Direct Validation vs Pending Review
+        const newStatus = isRevalidation ? 'pending_revalidation' : 'validated';
         
+        // IMPORTANT: Lors d'une re-validation, on doit s'assurer que les champs 'backupVersion' et 'modificationRequestReason'
+        // (qui ont été définis par l'admin lors du déblocage) sont bien conservés lors de la sauvegarde complète (set).
+        // On récupère la version en base pour fusionner ces champs si le formulaire UI ne les a pas.
+        const existingForm = forms.find(f => f.id === form.id);
+
+        const updatedForm = { 
+            ...form, 
+            status: newStatus,
+            // On préserve backupVersion s'il existe déjà
+            backupVersion: existingForm?.backupVersion || form.backupVersion,
+            // On préserve le motif de la demande
+            modificationRequestReason: existingForm?.modificationRequestReason || form.modificationRequestReason
+        };
+        
+        const batch = db.batch();
+        const formRef = db.collection('forms').doc(form.id);
+        batch.set(formRef, updatedForm);
+
+        if (isRevalidation) {
+            // Notify Admins
+            const admins = users.filter(u => u.role === 'admin');
+            admins.forEach(admin => {
+                const notifRef = db.collection('notifications').doc();
+                batch.set(notifRef, {
+                    userId: admin.id,
+                    message: `📢 MODIFICATION EN ATTENTE : ${currentUser.name} a soumis des modifications pour "${form.title}".`,
+                    read: false,
+                    createdAt: new Date().toISOString(),
+                    metadata: { type: 'revalidation_request', studentId: currentUser.id, formId: form.id }
+                });
+            });
+        }
+
         await db.collection('activities').add({
             userId: currentUser.id,
             type: ActivityType.FORM_VALIDATED,
-            details: `Validation du formulaire "${form.title}"`,
+            details: isRevalidation ? `Soumission modifications pour "${form.title}"` : `Validation du formulaire "${form.title}"`,
             createdAt: new Date().toISOString(),
             targetId: form.id
         });
 
-        showToast('Formulaire validé avec succès !');
+        await batch.commit();
+
+        showToast(isRevalidation ? 'Modifications soumises à l\'admin pour examen.' : 'Formulaire validé avec succès !');
     } catch (error) {
         console.error(error);
         showToast('Erreur lors de la validation.', 'error');
@@ -415,18 +453,40 @@ const App: React.FC = () => {
   };
   
   const handleUnvalidateForm = async (formId: string) => {
+      const form = forms.find(f => f.id === formId);
+      if (!form) return;
+
       try {
-          await db.collection('forms').doc(formId).update({
+          const batch = db.batch();
+
+          // 1. Mise à jour du formulaire
+          const formRef = db.collection('forms').doc(formId);
+          batch.update(formRef, {
               status: 'draft',
               revalidationFree: true
           });
-          await db.collection('activities').add({
-              userId: currentUser!.id,
-              type: ActivityType.FORM_VALIDATION_CANCELLED,
-              details: `Annulation validation (Form ID: ${formId})`,
+
+          // 2. Notification à l'étudiant avec l'avertissement spécifique
+          const notifRef = db.collection('notifications').doc();
+          batch.set(notifRef, {
+              userId: form.userId,
+              message: `✅ Votre demande de modification pour "${form.title}" a été acceptée.\n\n⚠️ IMPORTANT : Seules des modifications mineures sont acceptées (ajout ou suppression d'une question ou d'un choix de réponse, faute de frappe). Si l'administration juge que votre modification est trop importante (changement structurel majeur), vous risquez la suppression définitive de votre formulaire.`,
+              read: false,
               createdAt: new Date().toISOString()
           });
-          showToast('Validation annulée. Le formulaire est maintenant en brouillon.');
+
+          // 3. Log d'activité
+          const activityRef = db.collection('activities').doc();
+          batch.set(activityRef, {
+              userId: currentUser!.id,
+              type: ActivityType.FORM_VALIDATION_CANCELLED,
+              details: `Annulation validation pour "${form.title}"`,
+              createdAt: new Date().toISOString(),
+              targetId: formId
+          });
+
+          await batch.commit();
+          showToast('Validation annulée. L\'étudiant a été notifié des conditions.');
       } catch (error) {
           console.error(error);
           showToast("Erreur lors de l'annulation.", 'error');

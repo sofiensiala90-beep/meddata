@@ -13,6 +13,7 @@ import { User } from '../types';
 import BellIcon from './icons/BellIcon';
 import LibraryIcon from './icons/LibraryIcon';
 import SettingsIcon from './icons/SettingsIcon';
+import TrashIcon from './icons/TrashIcon';
 
 interface SidebarProps {
   user: User;
@@ -65,6 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
     { id: 'formulaires', label: 'Formulaires', icon: <FormsIcon className="w-5 h-5" />, disabled: false },
     { id: 'finances', label: 'Finances', icon: <FinanceIcon className="w-5 h-5" />, disabled: false },
     { id: 'activite', label: 'Activité', icon: <ActivityIcon className="w-5 h-5" />, disabled: false },
+    { id: 'corbeille', label: 'Corbeille', icon: <TrashIcon className="w-5 h-5" />, disabled: false },
     { id: 'configuration', label: 'Configuration', icon: <SettingsIcon className="w-5 h-5" />, disabled: false },
     { id: 'profil', label: 'Profil', icon: <ProfileIcon className="w-5 h-5" />, disabled: false },
     { id: 'notifications', label: 'Notifications', icon: <BellIcon className="w-5 h-5" />, disabled: false },

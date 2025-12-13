@@ -11,7 +11,7 @@ interface WalletProps {
   user: User;
   transactions: Transaction[];
   users: User[];
-  // FIX: Updated prop type to handle async function returning a Promise.
+  // Updated prop type to handle async function returning a Promise.
   onCoinTransfer: (recipientEmail: string, amount: number) => Promise<boolean>;
 }
 
@@ -41,10 +41,9 @@ const translateTransactionReason = (reason: TransactionReason): string => {
         return "Transfert de coins (envoyé)";
     case TransactionReason.COIN_TRANSFER_RECEIVED:
         return "Transfert de coins (reçu)";
+    case TransactionReason.PROMOTIONAL_GIFT:
+        return "Cadeau Promotionnel";
     default:
-      // FIX: Cast 'reason' to string to fix 'never' type error.
-      // The switch is exhaustive, so TypeScript infers 'reason' as 'never' in the default case.
-      // This ensures future enum values are handled.
       return (reason as string).replace(/_/g, ' ');
   }
 };
@@ -70,6 +69,12 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
     const handler = setTimeout(async () => {
         const emailToFind = recipientEmail.toLowerCase().trim();
         
+        if (emailToFind === user.email.toLowerCase()) {
+             setRecipientName(null);
+             setIsCheckingUser(false);
+             return; 
+        }
+
         // 1. Try finding in local list first (Fastest - works for Admins who have all users loaded)
         let recipient = users.find(u => u.email.toLowerCase() === emailToFind);
 
@@ -90,7 +95,7 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
         }
 
         // 3. Verify eligibility (Must be a student and not self)
-        if (recipient && recipient.role === 'student' && recipient.id !== user.id) {
+        if (recipient && recipient.id !== user.id) {
             setRecipientName(recipient.name);
             setError(''); // Clear previous errors if found
         } else {
@@ -102,7 +107,7 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
     return () => {
         clearTimeout(handler);
     };
-  }, [recipientEmail, users, user.id]);
+  }, [recipientEmail, users, user.id, user.email]);
 
   const handleTransfer = () => {
     setError('');
@@ -117,6 +122,10 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
       setError("Veuillez entrer un montant valide.");
       return;
     }
+    if (transferAmount > user.coinBalance) {
+        setError("Solde insuffisant.");
+        return;
+    }
     
     if (isCheckingUser) {
         setError("Veuillez patienter, recherche du destinataire...");
@@ -125,7 +134,7 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
     
     // Use the state populated by the effect
     if (!recipientName) {
-      setError("Aucun étudiant trouvé avec cette adresse e-mail (ou c'est vous-même/un admin).");
+      setError("Aucun étudiant trouvé avec cette adresse e-mail (ou c'est vous-même).");
       return;
     }
 
@@ -214,11 +223,11 @@ const Wallet: React.FC<WalletProps> = ({ user, transactions, users, onCoinTransf
                     if (error) setError('');
                   }}
                   placeholder="100"
-                  min="100"
+                  min="10"
                   className="mt-1 block w-full shadow sm:text-sm border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-md focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                 />
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Le montant minimum pour un transfert est de 100 coins.
+                  Le montant minimum pour un transfert est de 10 coins.
                 </p>
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}

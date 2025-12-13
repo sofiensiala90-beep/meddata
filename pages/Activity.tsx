@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import Card from '../components/Card';
 import { Activity, ActivityType, User } from '../types';
@@ -24,6 +23,9 @@ const translateActivityType = (type: ActivityType): string => {
         [ActivityType.RESPONSE_ADDED]: 'Ajout de réponse',
         [ActivityType.SYSTEM_SETTINGS_UPDATED]: 'Configuration système',
         [ActivityType.PROMOTIONAL_CAMPAIGN]: 'Campagne promotionnelle',
+        [ActivityType.COMPLAINT_FILED]: 'Réclamation',
+        [ActivityType.ITEM_RESTORED]: 'Restauration élément',
+        [ActivityType.TRASH_PURGED]: 'Corbeille vidée',
     };
     return translations[type] || (type as string);
 };
@@ -44,6 +46,9 @@ export const ActivityIcon: React.FC<{ type: ActivityType }> = ({ type }) => {
         [ActivityType.RESPONSE_ADDED]: '📥',
         [ActivityType.SYSTEM_SETTINGS_UPDATED]: '🔧',
         [ActivityType.PROMOTIONAL_CAMPAIGN]: '🎁',
+        [ActivityType.COMPLAINT_FILED]: '📢',
+        [ActivityType.ITEM_RESTORED]: '♻️',
+        [ActivityType.TRASH_PURGED]: '🔥',
     };
     return <span className="text-xl" title={translateActivityType(type)}>{iconMap[type] || '🔔'}</span>;
 };

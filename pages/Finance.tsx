@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { User, Transaction, TransactionType, TransactionReason } from '../types';
 import Card from '../components/Card';
@@ -24,6 +23,7 @@ const translateTransactionReason = (reason: TransactionReason): string => {
     [TransactionReason.PlatformCommission]: 'Revenu de commission',
     [TransactionReason.COIN_TRANSFER_SENT]: 'Transfert (envoyé)',
     [TransactionReason.COIN_TRANSFER_RECEIVED]: 'Transfert (reçu)',
+    [TransactionReason.PROMOTIONAL_GIFT]: 'Cadeau Promotionnel',
   };
   return translations[reason] || (reason as string);
 };

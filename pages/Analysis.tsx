@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Form, FormResponse, TransactionReason, AnalysisHistory, SystemSettings } from '../types';
+import { User, Form, FormResponse, TransactionReason, AnalysisHistory, SystemSettings, UnlockedAnalysis } from '../types';
 import Button from '../components/Button';
 import Spinner from '../components/Spinner';
 import ChartRenderer from '../components/ChartRenderer';
@@ -25,17 +25,61 @@ interface AnalysisProps {
   analysisHistory: AnalysisHistory[];
   saveAnalysisToHistory: (formIds: string[], formTitles: string[], userPrompt: string, analysisResult: any) => void;
   deleteAnalysisHistory: (historyId: string) => void;
-  unlockedAnalysis: {userId: string; formId: string}[];
+  unlockedAnalysis: UnlockedAnalysis[];
   systemSettings: SystemSettings;
 }
 
-// Palettes de couleurs pour les graphiques
+// Palettes de couleurs contrastées (Catégorielles) pour distinguer les segments
 const COLOR_PALETTES = {
-    default: ['#60A5FA', '#34D399', '#FBBF24', '#F87171', '#A78BFA', '#FB923C', '#EC4899', '#14B8A6'],
-    teal: ['#0f766e', '#14b8a6', '#2dd4bf', '#5eead4', '#99f6e4', '#ccfbf1'],
-    ocean: ['#1e3a8a', '#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd'],
-    warm: ['#7c2d12', '#c2410c', '#ea580c', '#f97316', '#fb923c', '#fdba74'],
-    violet: ['#4c1d95', '#6d28d9', '#7c3aed', '#8b5cf6', '#a78bfa', '#c4b5fd'],
+    default: ['#60A5FA', '#F87171', '#34D399', '#FBBF24', '#A78BFA', '#FB923C', '#EC4899', '#14B8A6'], // Mélange équilibré
+    classic: ['#1d4ed8', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#be123c'], // Couleurs primaires/fortes
+    vivid:   ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE', '#E74C3C'], // Vif et moderne
+    pastel:  ['#93c5fd', '#fca5a5', '#86efac', '#fde047', '#c4b5fd', '#fdba74', '#67e8f9', '#f9a8d4'], // Doux mais distinct
+    dark:    ['#1e293b', '#b91c1c', '#0f766e', '#b45309', '#7e22ce', '#be185d', '#1d4ed8', '#047857'], // Sombre et sérieux
+};
+
+// --- Composant ChartItem (Gestion individuelle) ---
+const ChartItem: React.FC<{ chart: any; index: number }> = ({ chart, index }) => {
+    const [chartType, setChartType] = useState<'bar' | 'pie' | 'doughnut'>(chart.type || 'bar');
+    const [paletteKey, setPaletteKey] = useState<keyof typeof COLOR_PALETTES>('default');
+
+    const cyclePalette = () => {
+        const keys = Object.keys(COLOR_PALETTES) as (keyof typeof COLOR_PALETTES)[];
+        const currentIdx = keys.indexOf(paletteKey);
+        const nextIdx = (currentIdx + 1) % keys.length;
+        setPaletteKey(keys[nextIdx]);
+    };
+
+    return (
+        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 page-break-inside-avoid shadow-sm hover:shadow-md transition-shadow relative group">
+            <div className="flex justify-between items-start mb-4">
+                <h4 className="font-semibold text-slate-700 dark:text-slate-300 text-sm pr-20">{chart.title}</h4>
+                
+                {/* Barre d'outils individuelle (Toujours visible ou au survol selon préférence, ici toujours visible pour mobile) */}
+                <div className="flex items-center bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 p-1 shadow-sm absolute top-3 right-3 z-10">
+                    <button onClick={() => setChartType('bar')} className={`p-1.5 rounded transition-colors ${chartType === 'bar' ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-600' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`} title="Barres">
+                        <BarChartIcon className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setChartType('pie')} className={`p-1.5 rounded transition-colors ${chartType === 'pie' ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-600' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`} title="Camembert">
+                        <PieChartIcon className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setChartType('doughnut')} className={`p-1.5 rounded transition-colors ${chartType === 'doughnut' ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-600' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`} title="Donut">
+                        <DoughnutChartIcon className="w-4 h-4" />
+                    </button>
+                    <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-1"></div>
+                    <button onClick={cyclePalette} className="p-1.5 rounded text-slate-400 hover:text-primary-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" title="Changer les couleurs">
+                        <PaletteIcon className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+            
+            <ChartRenderer 
+                chartData={chart} 
+                forcedType={chartType}
+                customColors={COLOR_PALETTES[paletteKey]}
+            />
+        </div>
+    );
 };
 
 // --- Composant Historique (Modal) ---
@@ -105,8 +149,6 @@ const Analysis: React.FC<AnalysisProps> = ({
   
   // UI State
   const [mobileTab, setMobileTab] = useState<'chat' | 'report'>('chat');
-  const [forcedChartType, setForcedChartType] = useState<'bar' | 'pie' | 'doughnut' | null>(null);
-  const [activePalette, setActivePalette] = useState<keyof typeof COLOR_PALETTES>('default');
   const [isSourceSelectorOpen, setIsSourceSelectorOpen] = useState(false);
 
   // Refs for scrolling and UI interactions
@@ -196,7 +238,13 @@ const Analysis: React.FC<AnalysisProps> = ({
           title: "Déverrouiller l'analyse",
           message: (
               <div>
-                  <p>Vous devez déverrouiller l'accès à l'IA pour {lockedForms.length} formulaire(s).</p>
+                  <p>Vous avez sélectionné {selectedFormIds.length} formulaire(s).</p>
+                  {selectedFormIds.length > lockedForms.length && (
+                      <p className="text-sm text-green-600 mt-1 mb-2 font-medium">
+                          ✓ {selectedFormIds.length - lockedForms.length} formulaire(s) déjà débloqué(s) (gratuit).
+                      </p>
+                  )}
+                  <p>Vous devez déverrouiller l'accès pour <strong>{lockedForms.length} nouveau(x) formulaire(s)</strong>.</p>
                   <p className="text-sm text-slate-500 mt-2">Une fois débloqué, vous pourrez effectuer autant d'analyses que vous voulez sur ces données.</p>
                   <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded border border-yellow-200 dark:border-yellow-700 flex justify-between items-center font-bold text-slate-800 dark:text-slate-200">
                       <span>Coût unique :</span>
@@ -207,7 +255,7 @@ const Analysis: React.FC<AnalysisProps> = ({
           confirmText: "Payer et Débloquer",
           variant: "primary",
           onConfirm: async () => {
-              // Pass only the locked forms to trigger transaction for them
+              // Pass ONLY the locked forms to prevent accidental logic on backend, although backend is now robust too
               const success = await onTransaction(user.id, TransactionReason.AiRequest, { formIds: lockedForms });
               if (success) {
                   setConfirmation(null);
@@ -293,13 +341,6 @@ const Analysis: React.FC<AnalysisProps> = ({
           { role: 'ai', text: item.analysisResult.chatResponse }
       ]);
       setMobileTab('report'); // Switch to view
-  };
-
-  const cyclePalette = () => {
-      const keys = Object.keys(COLOR_PALETTES) as (keyof typeof COLOR_PALETTES)[];
-      const currentIndex = keys.indexOf(activePalette);
-      const nextIndex = (currentIndex + 1) % keys.length;
-      setActivePalette(keys[nextIndex]);
   };
 
   const selectedFormTitles = forms.filter(f => selectedFormIds.includes(f.id)).map(f => f.title);
@@ -424,7 +465,11 @@ const Analysis: React.FC<AnalysisProps> = ({
                                         ? 'bg-primary-600 text-white rounded-br-none' 
                                         : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-bl-none'
                                     }`}>
-                                        {msg.text}
+                                        {msg.role === 'ai' ? (
+                                            <span dangerouslySetInnerHTML={{ __html: msg.text }} />
+                                        ) : (
+                                            msg.text
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -492,29 +537,10 @@ const Analysis: React.FC<AnalysisProps> = ({
                         </Button>
 
                         {currentAnalysisResult && (
-                            <>
-                                {/* Toolbar Graphique */}
-                                <div className="flex items-center bg-slate-200 dark:bg-slate-700 rounded-lg p-1 mr-2">
-                                    <button onClick={() => setForcedChartType('bar')} className={`p-1.5 rounded ${forcedChartType === 'bar' ? 'bg-white dark:bg-slate-600 shadow text-primary-600' : 'text-slate-500 hover:text-slate-700'}`} title="Barres">
-                                        <BarChartIcon className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => setForcedChartType('pie')} className={`p-1.5 rounded ${forcedChartType === 'pie' ? 'bg-white dark:bg-slate-600 shadow text-primary-600' : 'text-slate-500 hover:text-slate-700'}`} title="Camembert">
-                                        <PieChartIcon className="w-4 h-4" />
-                                    </button>
-                                    <button onClick={() => setForcedChartType('doughnut')} className={`p-1.5 rounded ${forcedChartType === 'doughnut' ? 'bg-white dark:bg-slate-600 shadow text-primary-600' : 'text-slate-500 hover:text-slate-700'}`} title="Donut">
-                                        <DoughnutChartIcon className="w-4 h-4" />
-                                    </button>
-                                    <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1"></div>
-                                    <button onClick={cyclePalette} className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-600 text-slate-500 hover:text-primary-600 transition-colors" title="Changer les couleurs">
-                                        <PaletteIcon className="w-4 h-4" />
-                                    </button>
-                                </div>
-
-                                <Button onClick={handleExportWord} variant="secondary" className="!py-1.5 !px-3 !text-xs flex items-center hover:text-blue-600 dark:hover:text-blue-400">
-                                    <WordIcon className="w-4 h-4 mr-2" />
-                                    <span className="hidden sm:inline">Export Word</span>
-                                </Button>
-                            </>
+                            <Button onClick={handleExportWord} variant="secondary" className="!py-1.5 !px-3 !text-xs flex items-center hover:text-blue-600 dark:hover:text-blue-400">
+                                <WordIcon className="w-4 h-4 mr-2" />
+                                <span className="hidden sm:inline">Export Word</span>
+                            </Button>
                         )}
                     </div>
                 </div>
@@ -534,14 +560,7 @@ const Analysis: React.FC<AnalysisProps> = ({
                             {currentAnalysisResult.charts && currentAnalysisResult.charts.length > 0 && (
                                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-8 border-b border-dashed border-slate-200 dark:border-slate-700">
                                     {currentAnalysisResult.charts.map((chart: any, idx: number) => (
-                                        <div key={idx} className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 page-break-inside-avoid shadow-sm hover:shadow-md transition-shadow">
-                                            <h4 className="text-center font-semibold text-slate-700 dark:text-slate-300 mb-4 text-sm">{chart.title}</h4>
-                                            <ChartRenderer 
-                                                chartData={chart} 
-                                                forcedType={forcedChartType}
-                                                customColors={COLOR_PALETTES[activePalette]}
-                                            />
-                                        </div>
+                                        <ChartItem key={idx} chart={chart} index={idx} />
                                     ))}
                                 </div>
                             )}

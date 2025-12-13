@@ -125,6 +125,12 @@ export interface AnalysisHistory {
   createdAt: string;
 }
 
+export interface UnlockedAnalysis {
+  userId: string;
+  formId: string;
+  unlockedAt: string;
+}
+
 export enum ActivityType {
   ACCOUNT_CREATED = 'ACCOUNT_CREATED',
   FORM_CREATED = 'FORM_CREATED',

@@ -14,10 +14,9 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      // Check if signed in, if user doc exists (not null), and if role is admin
-      // This pattern is robust and handles missing user documents gracefully
+      // Robust check: signed in AND doc exists AND role is admin
       return isSignedIn() && 
-             getUserData() != null && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              getUserData().data.role == 'admin';
     }
     
@@ -29,19 +28,25 @@ service cloud.firestore {
 
     // USERS
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn(); // Needed for searching users by email
       allow create: if isSignedIn();
-      // Rule 1: Admin or Owner can update anything
-      // Rule 2: P2P Transfer - Any signed-in user can update ONLY 'coinBalance' of another user (for transfers)
-      allow update: if isAdmin() || isOwner(userId) || 
-                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coinBalance']));
+      
+      // UPDATE RULES:
+      // 1. P2P/Commission: Allow updating ONLY 'coinBalance' by any signed-in user.
+      //    (This covers transfers and paying commissions to creators).
+      // 2. Self: Owner can update their own profile.
+      // 3. Admin: Can update everything.
+      allow update: if (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coinBalance'])) ||
+                    isOwner(userId) || 
+                    isAdmin();
     }
 
     // FORMS
     match /forms/{formId} {
       allow read: if resource.data.isPublic == true || isOwner(resource.data.userId) || isAdmin();
       allow create: if isSignedIn();
-      allow update, delete: if isOwner(resource.data.userId) || isAdmin();
+      // Ensure resource exists before checking data to avoid null pointer errors during delete
+      allow update, delete: if (resource != null && isOwner(resource.data.userId)) || isAdmin();
     }
 
     // RESPONSES
@@ -53,7 +58,9 @@ service cloud.firestore {
 
     // TRANSACTIONS
     match /transactions/{transactionId} {
+      // Owner can see their own txs, Admin sees all
       allow read: if isOwner(resource.data.userId) || isAdmin();
+      // Anyone can create a transaction record (e.g. sending money to someone else creates a record for them)
       allow create: if isSignedIn();
     }
 
@@ -61,11 +68,13 @@ service cloud.firestore {
     match /purchasedForms/{purchaseId} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
       allow create: if isSignedIn();
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
     }
 
     // NOTIFICATIONS
     match /notifications/{notificationId} {
       allow read: if isOwner(resource.data.userId);
+      // Allow creating notifications for others (e.g. transfer receipt, admin alerts)
       allow create: if isSignedIn(); 
       allow update: if isOwner(resource.data.userId); 
     }
@@ -83,10 +92,12 @@ service cloud.firestore {
     }
 
     // DELETED ITEMS (Trash)
-    // IMPORTANT: Ensure these rules are deployed to Firebase Console
     match /deletedItems/{itemId} {
-      allow create: if isSignedIn(); // Allow soft delete
-      allow read, delete: if isAdmin(); // Admin only management
+      // Allow write (create/update/delete) for any signed-in user to ensure soft-delete works.
+      // Since IDs are random, users can't easily overwrite others' trash items.
+      allow write: if isSignedIn();
+      // Only Admin can list/read trash items
+      allow read: if isAdmin();
     }
     
     // AI ANALYSIS HISTORY

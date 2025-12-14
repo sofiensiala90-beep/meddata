@@ -51,6 +51,7 @@ export interface Form {
   pricePerResponse: number;
   responseCount?: number;
   origin?: 'created' | 'purchased';
+  sourceFormId?: string; // ID of the original form if purchased/cloned
   orderIndex?: number;
 }
 

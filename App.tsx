@@ -141,20 +141,26 @@ export const App: React.FC = () => {
         if (doc.exists) setCurrentUser({ id: doc.id, ...doc.data() } as User);
       }));
 
-      // My Forms
+      // My Forms (Private & Purchased)
       listeners.push(db.collection('forms').where('userId', '==', currentUser.id).onSnapshot((snap: any) => {
           setForms(prev => {
-              return snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+              const myForms = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+              // Important: Keep forms that are NOT mine (i.e., public forms loaded by the other listener)
+              const othersForms = prev.filter(f => f.userId !== currentUser.id);
+              return [...othersForms, ...myForms];
           });
       }));
       
-      // Public Forms
+      // Public Forms (Library)
       listeners.push(db.collection('forms').where('isPublic', '==', true).onSnapshot((snap: any) => {
           setForms(prev => {
-              const myForms = prev.filter(f => f.userId === currentUser.id);
               const publicForms = snap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Form));
+              // Important: Keep forms that ARE mine (loaded by the other listener)
+              const myForms = prev.filter(f => f.userId === currentUser.id);
+              
               const combined = [...myForms];
               publicForms.forEach(pf => {
+                  // Add public form only if it's not already in the list (e.g. if I am the creator, it's already in myForms)
                   if (!combined.find(existing => existing.id === pf.id)) {
                       combined.push(pf);
                   }
@@ -455,7 +461,7 @@ export const App: React.FC = () => {
         // On récupère la version en base pour fusionner ces champs si le formulaire UI ne les a pas.
         const existingForm = forms.find(f => f.id === form.id);
 
-        const updatedForm = { 
+        const rawUpdatedForm = { 
             ...form, 
             status: newStatus,
             // On préserve backupVersion s'il existe déjà
@@ -463,6 +469,9 @@ export const App: React.FC = () => {
             // On préserve le motif de la demande
             modificationRequestReason: existingForm?.modificationRequestReason || form.modificationRequestReason
         };
+
+        // Nettoyage des valeurs undefined pour Firestore
+        const updatedForm = JSON.parse(JSON.stringify(rawUpdatedForm));
         
         const batch = db.batch();
         const formRef = db.collection('forms').doc(form.id);
@@ -570,10 +579,14 @@ export const App: React.FC = () => {
           const batch = db.batch();
           
           const formRef = db.collection('forms').doc(form.id);
+          
+          // Sanitize form before storing as backup
+          const sanitizedBackup = JSON.parse(JSON.stringify(form));
+
           batch.update(formRef, {
               status: 'awaiting_modification_decision',
               modificationRequestReason: reason,
-              backupVersion: form // Save current state
+              backupVersion: sanitizedBackup // Save current state
           });
 
           admins.forEach(admin => {
@@ -834,8 +847,11 @@ export const App: React.FC = () => {
           const success = await processTransaction(price, TransactionType.Debit, withResponses ? TransactionReason.ResponseBundlePurchase : TransactionReason.FormPurchase, `Achat "${form.title}"`);
           if (!success) return false;
 
-          // Add to purchased forms
-          await db.collection('purchasedForms').add({
+          const batch = db.batch();
+
+          // 1. Add to purchased forms receipt
+          const purchaseRef = db.collection('purchasedForms').doc();
+          batch.set(purchaseRef, {
               userId: currentUser.id,
               formId: form.id,
               purchasedAt: new Date().toISOString(),
@@ -843,20 +859,45 @@ export const App: React.FC = () => {
               purchasePrice: price
           });
 
-          // Create a copy for the user (Origin: purchased)
+          // 2. Create a copy for the user (Origin: purchased)
+          // IF withResponses = true -> Status: Validated
+          // IF withResponses = false -> Status: Draft (User needs to add responses)
+          const newFormId = `form-${Date.now()}`;
           const newForm: Form = {
               ...form,
-              id: `form-${Date.now()}`, // New ID
+              id: newFormId,
               userId: currentUser.id,
-              status: 'draft', // Starts as draft for the buyer
+              status: withResponses ? 'validated' : 'draft', // Key change here
               isPublic: false,
               origin: 'purchased',
-              responseCount: 0,
+              responseCount: withResponses ? (form.responseCount || 0) : 0,
               createdAt: new Date().toISOString(),
+              sourceFormId: form.id, // Link to original form
           };
-          await db.collection('forms').doc(newForm.id).set(newForm);
+          
+          const newFormRef = db.collection('forms').doc(newFormId);
+          batch.set(newFormRef, newForm);
 
-          // Pay Commission to Creator
+          // 3. If withResponses, copy the responses too
+          if (withResponses) {
+              const originalResponsesSnap = await db.collection('responses').where('formId', '==', form.id).get();
+              originalResponsesSnap.docs.forEach((doc: any) => {
+                  const originalData = doc.data();
+                  const newRespRef = db.collection('responses').doc();
+                  batch.set(newRespRef, {
+                      ...originalData,
+                      userId: currentUser.id, // Buyer owns the copy
+                      formId: newFormId, // Link to the new copied form
+                      createdAt: new Date().toISOString() // Or keep original date? Resetting implies acquisition time.
+                  });
+              });
+          }
+
+          // 4. Pay Commission to Creator (Handled separately via transaction to ensure balance update is atomic)
+          // We commit the batch first (Form + Responses creation)
+          await batch.commit();
+
+          // 5. Commission Transaction (Separate from batch due to race conditions on balance)
            const commission = Math.round(form.price * systemSettings.commissionRates.creatorFormSale);
            if (commission > 0) {
                await db.runTransaction(async (t: any) => {
@@ -1339,6 +1380,7 @@ export const App: React.FC = () => {
                     users={users}
                     onPurchase={handlePurchaseForm}
                     systemSettings={systemSettings}
+                    userForms={forms.filter(f => f.userId === currentUser.id)} // NEW: Pass user forms
                  />
              )}
              {currentPage === 'analyse' && (

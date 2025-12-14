@@ -9,6 +9,7 @@ import CoinIcon from '../components/icons/CoinIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ArrowUpIcon from '../components/icons/ArrowUpIcon';
 import ArrowDownIcon from '../components/icons/ArrowDownIcon';
+import { db } from '../services/firebase'; // Added db import for batch operations
 
 interface FormsProps {
   user: User;
@@ -213,8 +214,9 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
   
   // 3 Distinct Data Sources
   const myCreatedForms = useMemo(() => forms.filter(f => f.userId === user.id && f.origin !== 'purchased'), [forms, user.id]);
-  const myPurchasedModels = useMemo(() => forms.filter(f => f.userId === user.id && f.origin === 'purchased'), [forms, user.id]);
-  const myPurchasedData = useMemo(() => purchasedForms.filter(p => p.withResponses), [purchasedForms]);
+  const myPurchasedModels = useMemo(() => forms.filter(f => f.userId === user.id && f.origin === 'purchased' && f.status === 'draft'), [forms, user.id]);
+  // Updated filtering: include statuses other than 'draft' (validated, pending, awaiting modif)
+  const myPurchasedData = useMemo(() => forms.filter(f => f.userId === user.id && f.origin === 'purchased' && f.status !== 'draft'), [forms, user.id]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -256,8 +258,9 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
 
   // Determine which list to display based on active tab
   const formsToDisplay = useMemo(() => {
+    let result: Form[] = [];
     if (user.role === 'admin') {
-      return forms.filter(form => {
+      result = forms.filter(form => {
         const studentMatch = filters.studentId ? form.userId === filters.studentId : true;
         const term = filters.searchTerm.toLowerCase().trim();
         const searchTermMatch = term ?
@@ -277,12 +280,26 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
 
         return studentMatch && searchTermMatch && statusMatch;
       });
+    } else {
+        if (activeTab === 'my_creations') result = myCreatedForms;
+        else if (activeTab === 'purchased_models') result = myPurchasedModels;
+        else if (activeTab === 'purchased_data') result = myPurchasedData;
     }
     
-    if (activeTab === 'my_creations') return myCreatedForms;
-    if (activeTab === 'purchased_models') return myPurchasedModels;
-    return []; // For purchased_data, we render differently
-  }, [forms, filters, user.role, activeTab, myCreatedForms, myPurchasedModels]);
+    // Sort logic: OrderIndex (asc) first, then CreatedAt (desc) for new items
+    return [...result].sort((a, b) => {
+        // Treat undefined orderIndex as -1 (top of list / new)
+        const indexA = a.orderIndex !== undefined ? a.orderIndex : -1;
+        const indexB = b.orderIndex !== undefined ? b.orderIndex : -1;
+        
+        if (indexA !== indexB) {
+            return indexA - indexB;
+        }
+        
+        // If order indices are same (e.g. both -1), sort by date descending
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [forms, filters, user.role, activeTab, myCreatedForms, myPurchasedModels, myPurchasedData]);
 
   const handleStartFilling = (form: Form) => {
     setSelectedForm(form);
@@ -528,30 +545,45 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     if (direction === 'prev' && index === 0) return;
     if (direction === 'next' && index === formsToDisplay.length - 1) return;
 
-    const formA = formsToDisplay[index];
-    const formB = formsToDisplay[index + (direction === 'next' ? 1 : -1)];
+    // Check if we need a full re-index (normalization)
+    // If any item in the current view has undefined orderIndex, we should normalize everything first
+    // to lock in the current visual order as the baseline.
+    const needsNormalization = formsToDisplay.some(f => f.orderIndex === undefined || f.orderIndex === null);
 
-    // Si orderIndex n'existe pas, on utilise l'index actuel comme fallback
-    // Cela permet de démarrer le tri même sur des données anciennes
-    let indexA = formA.orderIndex;
-    let indexB = formB.orderIndex;
+    const batch = db.batch();
 
-    if (indexA === undefined || indexA === null) indexA = index;
-    if (indexB === undefined || indexB === null) indexB = index + (direction === 'next' ? 1 : -1);
-
-    // Si collision (mêmes index), on force un décalage
-    if (indexA === indexB) {
-        if (direction === 'next') {
-            indexB = indexA + 1;
-        } else {
-            indexB = indexA - 1;
-        }
+    if (needsNormalization) {
+        // Assign current visual index to EVERYONE
+        // Then apply the swap logic on top
+        formsToDisplay.forEach((f, idx) => {
+            const ref = db.collection('forms').doc(f.id);
+            let newOrder = idx;
+            // The item being moved is at `index`
+            // The target position is `index + delta`
+            if (idx === index) {
+                newOrder = index + (direction === 'next' ? 1 : -1);
+            } else if (idx === index + (direction === 'next' ? 1 : -1)) {
+                newOrder = index;
+            }
+            
+            batch.update(ref, { orderIndex: newOrder });
+        });
+        
+    } else {
+        // Standard swap if already fully indexed
+        const formA = formsToDisplay[index];
+        const targetIndex = index + (direction === 'next' ? 1 : -1);
+        const formB = formsToDisplay[targetIndex];
+        
+        // Simple Swap
+        const refA = db.collection('forms').doc(formA.id);
+        const refB = db.collection('forms').doc(formB.id);
+        
+        batch.update(refA, { orderIndex: formB.orderIndex });
+        batch.update(refB, { orderIndex: formA.orderIndex });
     }
 
-    // Échange des positions : On assigne à A la position cible (B) et à B la position actuelle de A.
-    // Cela permet un échange "sur place" sans envoyer au début ou à la fin.
-    await updateForm({ ...formA, orderIndex: indexB });
-    await updateForm({ ...formB, orderIndex: indexA });
+    await batch.commit();
   };
 
   const renderFormField = (field: FormField, data: Record<string, any>, isReadOnly = false) => {
@@ -879,8 +911,8 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
             </div>
         )}
         
-        {/* TAB 1: MY CREATIONS & TAB 2: PURCHASED MODELS (Common logic, filtered lists) */}
-        {(activeTab === 'my_creations' || activeTab === 'purchased_models' || user.role === 'admin') && (
+        {/* Render filtered lists based on active tab */}
+        {(activeTab === 'my_creations' || activeTab === 'purchased_models' || activeTab === 'purchased_data' || user.role === 'admin') && (
             <>
                 {user.role === 'admin' && (
                 <Card title="Filtres">
@@ -1123,66 +1155,16 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
                                 ? 'Aucun formulaire ne correspond à vos critères de recherche.' 
                                 : activeTab === 'my_creations' 
                                     ? 'Vous n\'avez pas encore créé de formulaire.' 
-                                    : 'Vous n\'avez pas acheté de formulaire vierge.'}
+                                    : activeTab === 'purchased_models' 
+                                        ? 'Vous n\'avez pas acheté de formulaire vierge.'
+                                        : 'Vous n\'avez pas acheté de formulaire avec réponses.'}
                         </p>
                         {user.role !== 'admin' && activeTab === 'my_creations' && (<div className="mt-6"><Button onClick={handleStartCreating} disabled={isSuspended}>Commencer mon premier formulaire</Button></div>)}
-                        {activeTab === 'purchased_models' && (<div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Explorer la Bibliothèque</Button></div>)}
+                        {(activeTab === 'purchased_models' || activeTab === 'purchased_data') && (<div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Explorer la Bibliothèque</Button></div>)}
                     </div>
                 </Card>
                 )}
             </>
-        )}
-
-        {/* TAB 3: PURCHASED DATA (Specific logic for purchases with data) */}
-        {activeTab === 'purchased_data' && (
-            myPurchasedData.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {myPurchasedData.map(purchase => {
-                    const form = allForms.find(f => f.id === purchase.formId);
-                    if (!form) return null;
-                    const creator = users.find(u => u.id === form.userId);
-                    const allFormResponses = responses.filter(r => r.formId === form.id);
-                    const responsesUserCanSee = allFormResponses.filter(r => purchase.withResponses || r.userId === user.id);
-                    
-                    return (
-                        <Card key={purchase.id} className="flex flex-col !p-0">
-                            <div className="flex-grow p-4 sm:p-6">
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{form.title}</h3>
-                                <p className="text-slate-600 dark:text-slate-400 mt-1">{form.description}</p>
-                                {creator && (<p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Par : <span className="font-medium">{creator.name}</span></p>)}
-                                <div className="mt-4 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
-                                    <span>Acheté le : {new Date(purchase.purchasedAt).toLocaleDateString()}</span>
-                                    <button 
-                                        onClick={() => responsesUserCanSee.length > 0 && handleViewPurchasedFormResponses(purchase)} 
-                                        disabled={responsesUserCanSee.length === 0} 
-                                        className="font-medium text-primary-600 hover:underline dark:text-primary-400 disabled:text-slate-400 disabled:no-underline disabled:cursor-default"
-                                    >
-                                        {responsesUserCanSee.length} {responsesUserCanSee.length !== 1 ? 'réponses' : 'réponse'}
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="p-4 sm:p-6 mt-auto border-t border-slate-200 dark:border-slate-700 flex space-x-2">
-                                <Button onClick={() => handleStartFilling(form)} className="flex-grow" disabled={isSuspended}>
-                                     <PlusIcon className="w-4 h-4 mr-2 inline-block" />
-                                    Ajouter une réponse
-                                </Button>
-                                <Button 
-                                    onClick={() => handleDeletePurchaseClick(purchase, form.title)} 
-                                    variant="danger"
-                                    className="!px-3 !py-2 text-sm !bg-transparent hover:!bg-red-100 dark:hover:!bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50 hover:border-red-300 dark:hover:border-red-700"
-                                    title="Supprimer l'achat"
-                                    disabled={isSuspended}
-                                >
-                                    <TrashIcon className="w-5 h-5" />
-                                </Button>
-                            </div>
-                        </Card>
-                    )
-                })}
-                </div>
-            ) : (
-                <Card><div className="text-center py-12"><h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun formulaire avec réponses</h3><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Vous n'avez encore acheté aucun formulaire avec ses réponses. Explorez la bibliothèque !</p><div className="mt-6"><Button onClick={() => onNavigate('bibliotheque')}>Aller à la Bibliothèque</Button></div></div></Card>
-            )
         )}
 
       </div>

@@ -433,9 +433,10 @@ interface LibraryProps {
     users: User[];
     onPurchase: (form: Form, withResponses: boolean) => Promise<boolean | void>;
     systemSettings: SystemSettings;
+    userForms: Form[];
 }
 
-const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedForms, responses, users, onPurchase, systemSettings }) => {
+const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedForms, responses, users, onPurchase, systemSettings, userForms }) => {
     const [filters, setFilters] = useState({ searchTerm: '' });
     const [formToBuy, setFormToBuy] = useState<Form | null>(null);
     const [buyCount, setBuyCount] = useState<number>(0);
@@ -443,8 +444,6 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
     // Split preview state for better control
     const [formToPreview, setFormToPreview] = useState<Form | null>(null);
     const [previewTab, setPreviewTab] = useState<'structure' | 'responses'>('structure');
-
-    const purchasedFormIds = useMemo(() => new Set(purchasedForms.map(p => p.formId)), [purchasedForms]);
 
     const formsForDisplay = useMemo(() => {
         return publicForms
@@ -480,12 +479,16 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {formsForDisplay.map(form => {
                         const creator = users.find(u => u.id === form.userId);
+                        
+                        // New Logic: Check if user currently holds a copy of this form
+                        const isPurchased = userForms.some(myF => myF.sourceFormId === form.id);
+
                         return (
                             <LibraryFormCard 
                                 key={form.id}
                                 form={form}
                                 creator={creator}
-                                isPurchased={purchasedFormIds.has(form.id)}
+                                isPurchased={isPurchased}
                                 onPreview={(f, tab) => { setFormToPreview(f); setPreviewTab(tab); }}
                                 onBuy={(f, count) => { setFormToBuy(f); setBuyCount(count); }}
                             />

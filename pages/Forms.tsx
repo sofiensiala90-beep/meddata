@@ -9,7 +9,7 @@ import CoinIcon from '../components/icons/CoinIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ArrowUpIcon from '../components/icons/ArrowUpIcon';
 import ArrowDownIcon from '../components/icons/ArrowDownIcon';
-import { db } from '../services/firebase'; // Added db import for batch operations
+import { db, firebase } from '../services/firebase'; // Added firebase import for FieldValue
 
 interface FormsProps {
   user: User;
@@ -545,43 +545,23 @@ const Forms: React.FC<FormsProps> = ({ user, forms, allForms, responses, purchas
     if (direction === 'prev' && index === 0) return;
     if (direction === 'next' && index === formsToDisplay.length - 1) return;
 
-    // Check if we need a full re-index (normalization)
-    // If any item in the current view has undefined orderIndex, we should normalize everything first
-    // to lock in the current visual order as the baseline.
-    const needsNormalization = formsToDisplay.some(f => f.orderIndex === undefined || f.orderIndex === null);
-
     const batch = db.batch();
-
-    if (needsNormalization) {
-        // Assign current visual index to EVERYONE
-        // Then apply the swap logic on top
-        formsToDisplay.forEach((f, idx) => {
-            const ref = db.collection('forms').doc(f.id);
-            let newOrder = idx;
-            // The item being moved is at `index`
-            // The target position is `index + delta`
-            if (idx === index) {
-                newOrder = index + (direction === 'next' ? 1 : -1);
-            } else if (idx === index + (direction === 'next' ? 1 : -1)) {
-                newOrder = index;
-            }
-            
-            batch.update(ref, { orderIndex: newOrder });
-        });
-        
-    } else {
-        // Standard swap if already fully indexed
-        const formA = formsToDisplay[index];
-        const targetIndex = index + (direction === 'next' ? 1 : -1);
-        const formB = formsToDisplay[targetIndex];
-        
-        // Simple Swap
-        const refA = db.collection('forms').doc(formA.id);
-        const refB = db.collection('forms').doc(formB.id);
-        
-        batch.update(refA, { orderIndex: formB.orderIndex });
-        batch.update(refB, { orderIndex: formA.orderIndex });
-    }
+    
+    // Create a shallow copy of the currently displayed forms to manipulate order
+    const reorderedForms = [...formsToDisplay];
+    
+    // Calculate target index
+    const targetIndex = index + (direction === 'next' ? 1 : -1);
+    
+    // Perform the swap in the array
+    [reorderedForms[index], reorderedForms[targetIndex]] = [reorderedForms[targetIndex], reorderedForms[index]];
+    
+    // Update ALL forms with their new array index to ensure consistency (0, 1, 2, 3...)
+    // This fixes issues with duplicate indices, gaps, or undefined values.
+    reorderedForms.forEach((form, newIndex) => {
+        const ref = db.collection('forms').doc(form.id);
+        batch.update(ref, { orderIndex: newIndex });
+    });
 
     await batch.commit();
   };

@@ -937,77 +937,113 @@ export const App: React.FC = () => {
 
   const handleCoinTransfer = async (recipientEmail: string, amount: number): Promise<boolean> => {
       if (!currentUser) return false;
-      
-      // Find recipient by email
+      const cleanEmail = recipientEmail.toLowerCase().trim();
+      const transferAmount = Number(amount); // Ensure number
+
+      if (transferAmount <= 0) {
+          showToast("Montant invalide.", 'error');
+          return false;
+      }
+
       try {
-          const snap = await db.collection('users').where('email', '==', recipientEmail.toLowerCase()).limit(1).get();
+          // 1. Find recipient (Outside Transaction)
+          const snap = await db.collection('users').where('email', '==', cleanEmail).limit(1).get();
           if (snap.empty) {
               showToast("Utilisateur introuvable.", 'error');
               return false;
           }
-          const recipient = snap.docs[0].data() as User;
+          const recipientDoc = snap.docs[0];
+          const recipientId = recipientDoc.id;
           
-          if (recipient.id === currentUser.id) {
+          if (recipientId === currentUser.id) {
                showToast("Vous ne pouvez pas vous envoyer des coins.", 'error');
                return false;
           }
 
-          if (currentUser.coinBalance < amount) {
-              showToast("Solde insuffisant.", 'error');
-              return false;
-          }
-
-          // Execute Transfer
+          // 2. Run Transaction
           await db.runTransaction(async (t: any) => {
-              // Deduct
               const senderRef = db.collection('users').doc(currentUser.id);
-              t.update(senderRef, { coinBalance: firebase.firestore.FieldValue.increment(-amount) });
+              const recipientRef = db.collection('users').doc(recipientId);
+
+              // READ SENDER (Crucial for atomic balance check)
+              const senderSnapshot = await t.get(senderRef);
+              if (!senderSnapshot.exists) throw "Sender does not exist";
+              
+              const senderData = senderSnapshot.data();
+              const currentBalance = senderData.coinBalance || 0;
+
+              if (currentBalance < transferAmount) {
+                  throw "Solde insuffisant"; // Throws to catch block
+              }
+
+              // READ RECIPIENT (To ensure they still exist)
+              const recipientSnapshot = await t.get(recipientRef);
+              if (!recipientSnapshot.exists) throw "Recipient does not exist";
+
+              // WRITE - DEDUCT
+              t.update(senderRef, { 
+                  coinBalance: firebase.firestore.FieldValue.increment(-transferAmount) 
+              });
+
+              // WRITE - ADD
+              t.update(recipientRef, { 
+                  coinBalance: firebase.firestore.FieldValue.increment(transferAmount) 
+              });
+
+              // LOGS (Sender)
               const txDebitRef = db.collection('transactions').doc();
               t.set(txDebitRef, {
+                  id: txDebitRef.id,
                   userId: currentUser.id,
                   type: TransactionType.Debit,
-                  amount,
+                  amount: transferAmount,
                   reason: TransactionReason.COIN_TRANSFER_SENT,
-                  details: `Transfert vers ${recipient.name}`,
+                  details: `Transfert vers ${recipientDoc.data().name}`,
                   createdAt: new Date().toISOString()
               });
 
-              // Add
-              const recipientRef = db.collection('users').doc(recipient.id);
-              t.update(recipientRef, { coinBalance: firebase.firestore.FieldValue.increment(amount) });
+              // LOGS (Recipient)
               const txCreditRef = db.collection('transactions').doc();
               t.set(txCreditRef, {
-                  userId: recipient.id,
+                  id: txCreditRef.id,
+                  userId: recipientId,
                   type: TransactionType.Credit,
-                  amount,
+                  amount: transferAmount,
                   reason: TransactionReason.COIN_TRANSFER_RECEIVED,
                   details: `Reçu de ${currentUser.name}`,
                   createdAt: new Date().toISOString()
               });
 
-              // Notify recipient
+              // NOTIFICATION
               const notifRef = db.collection('notifications').doc();
               t.set(notifRef, {
-                  userId: recipient.id,
-                  message: `Vous avez reçu ${amount} coins de ${currentUser.name}.`,
+                  id: notifRef.id,
+                  userId: recipientId,
+                  message: `Vous avez reçu ${transferAmount} coins de ${currentUser.name}.`,
                   read: false,
                   createdAt: new Date().toISOString()
               });
           });
           
+          // Activity Log (Outside transaction is fine, or inside if we want atomicity)
+          // Keeping outside to reduce transaction size/contention risks on rules
           await db.collection('activities').add({
               userId: currentUser.id,
               type: ActivityType.COIN_TRANSFER,
-              details: `Transfert de ${amount} coins à ${recipient.name}`,
+              details: `Transfert de ${transferAmount} coins à ${recipientDoc.data().name}`,
               createdAt: new Date().toISOString()
           });
 
-          showToast("Transfert effectué.");
+          showToast("Transfert effectué avec succès.");
           return true;
 
-      } catch (error) {
-          console.error(error);
-          showToast("Erreur lors du transfert.", 'error');
+      } catch (error: any) {
+          console.error("Erreur transfert:", error);
+          if (error === "Solde insuffisant") {
+              showToast("Solde insuffisant (vérifié).", 'error');
+          } else {
+              showToast("Erreur lors du transfert. Veuillez réessayer.", 'error');
+          }
           return false;
       }
   };

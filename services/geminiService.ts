@@ -5,19 +5,14 @@ import { ChatMessage, Form, FormResponse, User, SystemSettings } from '../types'
 // La clé API sera injectée par Vite via la constante globale __APP_API_KEY__
 const apiKey = process.env.API_KEY || "";
 
-let ai: GoogleGenAI;
-try {
-    ai = new GoogleGenAI({ apiKey: apiKey });
-} catch (error) {
-    console.error("Erreur d'initialisation Gemini:", error);
-    // Fallback pour éviter le crash immédiat si la clé manque
-    ai = new GoogleGenAI({ apiKey: "MISSING_KEY" });
-}
+// FIX: Always use new GoogleGenAI({apiKey: process.env.API_KEY}); as per initialization guidelines.
+const ai = new GoogleGenAI({ apiKey: apiKey });
 
 // Modèles utilisés
-const ANALYSIS_MODEL = 'gemini-2.5-flash';
-const CHAT_MODEL = 'gemini-2.5-flash';
-const TEXT_MODEL = 'gemini-2.5-flash';
+// FIX: Select specific model names based on the task type (Simple text vs Complex reasoning)
+const ANALYSIS_MODEL = 'gemini-3-pro-preview';
+const CHAT_MODEL = 'gemini-3-flash-preview';
+const TEXT_MODEL = 'gemini-3-flash-preview';
 
 // Schéma JSON strict pour l'analyse (Étape 2)
 const analysisResponseSchema: Schema = {
@@ -165,6 +160,8 @@ const prepareDataContext = (forms: Form[], responses: FormResponse[]): { context
 /**
  * Génère un résumé statistique mathématiquement exact pour guider l'IA.
  * Cela empêche les hallucinations sur les comptages simples.
+ * CORRECTIF FEV 2025: Calcul sur les VALEURS VALIDES (n) et non le TOTAL (N).
+ * CORRECTIF PRECISION: Affichage de la fraction (x/n) pour forcer la compréhension du ratio.
  */
 const generateStatisticalSummary = (forms: Form[], responses: FormResponse[]): string => {
   let summary = "";
@@ -172,17 +169,27 @@ const generateStatisticalSummary = (forms: Form[], responses: FormResponse[]): s
   forms.forEach(form => {
     // Filter responses for this specific form
     const formResponses = responses.filter(r => r.formId === form.id);
-    const total = formResponses.length;
-    if (total === 0) return;
+    const totalParticipants = formResponses.length; // N
+    if (totalParticipants === 0) return;
 
-    summary += `RÉSUMÉ STATISTIQUE POUR "${form.title}" (N=${total} participants) :\n`;
+    summary += `RÉSUMÉ STATISTIQUE VÉRIFIÉ POUR "${form.title}" (N=${totalParticipants}) :\n`;
+    summary += `NOTE : Pourcentages calculés sur les réponses exprimées (n) en excluant les valeurs vides.\n`;
 
     form.schema.forEach(field => {
-        if (field.type === 'note' || field.type === 'text' || field.type === 'textarea') return; // Skip non-analyzable simply
+        if (field.type === 'note' || field.type === 'text' || field.type === 'textarea') return; 
 
+        // 1. Isoler les réponses valides (non vides) pour ce champ
         const validValues = formResponses
             .map(r => r.data[field.id])
-            .filter(v => v !== undefined && v !== null && v !== '');
+            .filter(v => v !== undefined && v !== null && v !== '' && (Array.isArray(v) ? v.length > 0 : true));
+        
+        const validCount = validValues.length; // n valide
+        const missingCount = totalParticipants - validCount;
+
+        if (validCount === 0) {
+             summary += `- ${field.label} : Aucune donnée valide (100% de manquants).\n`;
+             return;
+        }
 
         if (['number', 'range'].includes(field.type)) {
             const nums = validValues.map(v => Number(v)).filter(n => !isNaN(n));
@@ -191,23 +198,35 @@ const generateStatisticalSummary = (forms: Form[], responses: FormResponse[]): s
                 const max = Math.max(...nums);
                 const sum = nums.reduce((a, b) => a + b, 0);
                 const avg = (sum / nums.length).toFixed(2);
-                summary += `- ${field.label} : Moyenne=${avg}, Min=${min}, Max=${max}\n`;
+                summary += `- ${field.label} (n=${validCount}) : Moyenne=${avg}, Min=${min}, Max=${max}\n`;
             } else {
-                summary += `- ${field.label} : Aucune donnée numérique valide.\n`;
+                summary += `- ${field.label} : Données numériques invalides.\n`;
             }
         } else if (['choice', 'checkbox'].includes(field.type)) {
             const counts: Record<string, number> = {};
+            
             validValues.forEach(val => {
                 const items = Array.isArray(val) ? val : [val];
                 items.forEach(item => {
                     const strItem = String(item).trim();
-                    counts[strItem] = (counts[strItem] || 0) + 1;
+                    if(strItem) {
+                        counts[strItem] = (counts[strItem] || 0) + 1;
+                    }
                 });
             });
+
+            // Tri décroissant pour lisibilité
             const details = Object.entries(counts)
-                .map(([k, v]) => `${k}=${v} (${((v/total)*100).toFixed(1)}%)`)
+                .sort(([, a], [, b]) => b - a)
+                .map(([k, v]) => {
+                    // Calcul précis à 2 décimales sur le nombre de répondants VALIDES
+                    const percent = ((v / validCount) * 100).toFixed(2);
+                    // Format explicite : "Oui: 5/29 (17.24%)"
+                    return `${k}: ${v}/${validCount} (${percent}%)`;
+                })
                 .join(', ');
-            summary += `- ${field.label} : ${details}\n`;
+            
+            summary += `- ${field.label} (n=${validCount}, Manquants=${missingCount}) : ${details}\n`;
         }
     });
     summary += "\n";
@@ -347,23 +366,17 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
       DONNÉES FOURNIES :
       - Tu as reçu exactement **${totalRows}** entrées (lignes de réponses patients).
       
-      *** DIRECTIVE PRINCIPALE : RIGUEUR SCIENTIFIQUE + CRÉATIVITÉ D'INTERPRÉTATION ***
-      Tu dois diviser ton "cerveau" en deux modes :
-      
-      1. **MODE COMPTABLE (Rigueur Absolue)** :
-         - Pour citer des chiffres (fréquences, moyennes, nombres d'hommes/femmes), **UTILISE EXCLUSIVEMENT le "RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ" fourni ci-dessous**.
-         - Ce résumé est la vérité absolue mathématique. Ne le contredis jamais.
-         - Si tu dois citer un chiffre, copie-le du résumé. Ne recompte pas les lignes brutes.
+      *** RÈGLE SUPRÊME : INTERDICTION DE RECALCULER OU D'ARRONDIR ***
+      1. **COPIER-COLLER STRICT** : Pour tous les chiffres descriptifs (%, moyennes, effectifs), tu DOIS copier strictement les valeurs du bloc "RÉSUMÉ STATISTIQUE VÉRIFIÉ".
+      2. **PRECISION AU CENTIÈME** : Si le résumé indique "17.24%", tu écris "17.24%".
+         - INTERDIT d'écrire "17%" (arrondi).
+         - INTERDIT d'écrire "18%" (arrondi supérieur).
+         - INTERDIT d'écrire "18.00%".
+      3. **RAISONNEMENT** : Le résumé te donne la fraction (ex: "5/29"). Utilise cette fraction pour justifier le pourcentage si nécessaire, mais ne refais pas la division toi-même, tu risques d'halluciner. Fais confiance à la valeur entre parenthèses pré-calculée.
 
-      2. **MODE CHERCHEUR (Créativité & Perspicacité)** :
-         - Pour *interpréter* ces chiffres, expliquer les causes, les conséquences cliniques ou suggérer des pistes de discussion, sois **CRÉATIF, NUANCÉ et PROFOND**.
-         - Ne te contente pas de dire "Il y a 15 hommes". Dis plutôt "On observe une prédominance féminine marquée, ce qui est cohérent avec la littérature sur cette pathologie..."
-         - Fais des liens inattendus mais plausibles médicalement.
-
-      CAPACITÉS D'EXPERT ATTENDUES :
-      1. **Qualification des variables** : Identifie automatiquement si les variables sont qualitatives ou quantitatives.
-      2. **Choix des tests** : Suggère ou simule les tests appropriés (Chi-2, Fisher, Student, ANOVA, Pearson, etc.) en te basant sur les chiffres du résumé.
-      3. **Interprétation clinique** : Explique ce que les chiffres signifient médicalement.
+      CAPACITÉS D'EXPERT :
+      1. **Interprétation** : Explique ce que ces chiffres signifient médicalement. Compare-les aux standards (ex: "Ce taux de prévalence de 17.24% est cohérent avec...").
+      2. **Corrélations** : Si l'utilisateur demande un croisement (ex: Tabac vs Cancer), tu peux utiliser les Données Brutes pour estimer la tendance, mais reste prudent et mentionne que c'est une estimation IA.
       
       IMPORTANT - FORMAT DE SORTIE HTML (champ 'analysisText') :
       - Tu dois générer le contenu de 'analysisText' en **HTML** pur.
@@ -380,18 +393,16 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
       
       RÈGLES DE SORTIE - GRAPHIQUES ('charts') :
       - Tu peux générer **PLUSIEURS graphiques** si cela aide à la compréhension. N'hésite pas à en créer 2, 3 ou plus si pertinent.
-      - Par exemple : un graphique pour la démographie, un autre pour les symptômes principaux, un autre pour les résultats croisés.
-      - Remplis le tableau 'charts' avec les données pour Chart.js.
-      - Si aucune comparaison n'est pertinente, laisse le tableau vide.
+      - Utilise les données exactes du résumé statistique pour remplir les graphiques.
     `;
 
     // Contexte combiné : Stats calculées + Données brutes
     const contextWithStats = `
-    === RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ (SOURCE DE VÉRITÉ ABSOLUE) ===
+    === RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ (SOURCE DE VÉRITÉ ABSOLUE - NE PAS MODIFIER) ===
     ${statisticalSummary}
-    =================================================================
+    ===================================================================================
 
-    === DONNÉES BRUTES (Pour analyses croisées complexes uniquement) ===
+    === DONNÉES BRUTES (Pour analyse de corrélation complexe uniquement) ===
     ${fullContext}
     `;
 
@@ -448,7 +459,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
         systemInstruction: baseInstruction,
         responseMimeType: "application/json",
         responseSchema: analysisResponseSchema,
-        temperature: 0.2,
+        temperature: 0.1, // Température très basse pour réduire les hallucinations
       },
     });
 
@@ -521,6 +532,7 @@ export const getChatbotResponseStream = async (userRole: User['role'], history: 
       3. Ne pas inventer de fonctionnalités qui n'existent pas.
     `;
 
+    // FIX: Using recommended models: gemini-3-flash-preview for chat interactions
     const chat = ai.chats.create({
       model: CHAT_MODEL,
       config: {

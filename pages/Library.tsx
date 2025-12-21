@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Form, FormResponse, PurchasedForm, FormField, SystemSettings } from '../types';
 import Card from '../components/Card';
@@ -7,6 +8,7 @@ import CheckSquareIcon from '../components/icons/CheckSquareIcon';
 import FormsIcon from '../components/icons/FormsIcon';
 import Spinner from '../components/Spinner';
 import { db } from '../services/firebase';
+import ConfirmationModal, { ConfirmationModalProps } from '../components/ConfirmationModal';
 
 // --- COMPONENTS ---
 
@@ -15,15 +17,13 @@ interface PurchaseModalProps {
     realCount: number; 
     currentUser: User;
     onClose: () => void;
-    onPurchase: (form: Form, withResponses: boolean) => Promise<boolean | void>;
+    onIntentToPurchase: (form: Form, withResponses: boolean, totalCost: number) => void;
 }
 
-const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, realCount, currentUser, onClose, onPurchase }) => {
+const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, realCount, currentUser, onClose, onIntentToPurchase }) => {
     const [purchaseOption, setPurchaseOption] = useState<'form_only' | 'form_with_responses' | null>(null);
     
-    // Use the count passed from parent which comes from the live listener
     const countToUse = realCount; 
-    
     const formPrice = form.price || 0;
     const pricePerResponse = form.pricePerResponse || 0;
 
@@ -33,17 +33,9 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, realCount, currentU
     const totalCost = purchaseOption === 'form_with_responses' ? formWithResponsesCost : (purchaseOption === 'form_only' ? formOnlyCost : 0);
     const canAfford = currentUser.coinBalance >= totalCost;
 
-    const handleConfirmPurchase = async () => {
+    const handleProceedToConfirmation = () => {
         if (!purchaseOption) return;
-        
-        // CRITICAL: Create a copy of the form with the CORRECT response count.
-        // This ensures App.tsx calculates the transaction amount correctly based on the real count.
-        const updatedForm = { ...form, responseCount: countToUse };
-        
-        const success = await onPurchase(updatedForm, purchaseOption === 'form_with_responses');
-        if (success) {
-            onClose();
-        }
+        onIntentToPurchase(form, purchaseOption === 'form_with_responses', totalCost);
     }
 
     const OptionCard: React.FC<{
@@ -133,7 +125,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, realCount, currentU
                     </div>
                     <div className="flex space-x-3">
                         <Button onClick={onClose} variant="secondary">Annuler</Button>
-                        <Button onClick={handleConfirmPurchase} disabled={!canAfford || !purchaseOption}>
+                        <Button onClick={handleProceedToConfirmation} disabled={!canAfford || !purchaseOption}>
                             {canAfford ? 'Confirmer' : 'Solde Insuffisant'}
                         </Button>
                     </div>
@@ -181,7 +173,6 @@ const PreviewModal: React.FC<{form: Form; initialTab: 'structure' | 'responses';
             setLoadingPreview(true);
             setPreviewError('');
             try {
-                // Fetch up to 3 responses
                 const snapshot = await db.collection('responses')
                     .where('formId', '==', form.id)
                     .limit(3)
@@ -209,7 +200,6 @@ const PreviewModal: React.FC<{form: Form; initialTab: 'structure' | 'responses';
             <h3 className="text-xl font-bold text-slate-900 dark:text-white">Aperçu : {form.title}</h3>
         </header>
         
-        {/* Navigation Tabs (Only if not viewing a single response detail) */}
         {!selectedResponse && (
             <div className="flex border-b border-slate-200 dark:border-slate-700">
                 <button 
@@ -228,7 +218,6 @@ const PreviewModal: React.FC<{form: Form; initialTab: 'structure' | 'responses';
         )}
 
         <main className="p-6 space-y-6 overflow-y-auto">
-            {/* VIEW: SINGLE RESPONSE DETAIL */}
             {selectedResponse ? (
                 <div>
                     <div className="flex items-center justify-between mb-4">
@@ -252,7 +241,6 @@ const PreviewModal: React.FC<{form: Form; initialTab: 'structure' | 'responses';
                 </div>
             ) : (
                 <>
-                    {/* VIEW: FORM STRUCTURE */}
                     {activeTab === 'structure' && (
                         <>
                             <div>
@@ -270,7 +258,6 @@ const PreviewModal: React.FC<{form: Form; initialTab: 'structure' | 'responses';
                         </>
                     )}
 
-                    {/* VIEW: RESPONSE LIST */}
                     {activeTab === 'responses' && (
                         <div>
                             {loadingPreview ? (
@@ -357,7 +344,6 @@ const LibraryFormCard: React.FC<{
 }> = ({ form, creator, isPurchased, onPreview, onBuy }) => {
     const [responseCount, setResponseCount] = useState<number | null>(null);
 
-    // Use a real-time listener for the count.
     useEffect(() => {
         const unsubscribe = db.collection('responses')
             .where('formId', '==', form.id)
@@ -365,7 +351,7 @@ const LibraryFormCard: React.FC<{
                 setResponseCount(snapshot.size);
             }, (error: any) => {
                 console.error(`Error fetching count for form ${form.id}`, error);
-                setResponseCount(form.responseCount || 0); // Fallback to stale metadata on error
+                setResponseCount(form.responseCount || 0);
             });
 
         return () => unsubscribe();
@@ -440,8 +426,9 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
     const [filters, setFilters] = useState({ searchTerm: '' });
     const [formToBuy, setFormToBuy] = useState<Form | null>(null);
     const [buyCount, setBuyCount] = useState<number>(0);
+    const [isPurchasing, setIsPurchasing] = useState(false);
+    const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
     
-    // Split preview state for better control
     const [formToPreview, setFormToPreview] = useState<Form | null>(null);
     const [previewTab, setPreviewTab] = useState<'structure' | 'responses'>('structure');
 
@@ -459,6 +446,47 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
                 );
             });
     }, [publicForms, filters, currentUser, users]);
+
+    const handleIntentToPurchase = (form: Form, withResponses: boolean, totalCost: number) => {
+        setFormToBuy(null);
+
+        setConfirmation({
+            isOpen: true,
+            title: "Confirmer le paiement",
+            message: (
+                <div className="space-y-4">
+                    <p className="text-slate-600 dark:text-slate-300">
+                        Souhaitez-vous confirmer l'achat de <strong>"{form.title}"</strong> ?
+                    </p>
+                    <div className="p-4 bg-primary-50 dark:bg-primary-900/30 rounded-2xl border border-primary-100 dark:border-primary-800 text-center">
+                        <p className="text-xs text-primary-600 dark:text-primary-400 font-bold uppercase tracking-widest mb-1">Montant à débiter</p>
+                        <p className="text-3xl font-black text-primary-700 dark:text-primary-300 flex items-center justify-center gap-2">
+                            {totalCost} <CoinIcon className="w-8 h-8 text-yellow-500" />
+                        </p>
+                        <p className="text-[10px] text-slate-500 mt-2 italic">
+                            {withResponses ? `Structure + ${buyCount} réponses incluses` : "Structure de formulaire seule"}
+                        </p>
+                    </div>
+                </div>
+            ),
+            confirmText: "Confirmer et Payer",
+            variant: 'primary',
+            onConfirm: async () => {
+                if (isPurchasing) return;
+                setIsPurchasing(true);
+                try {
+                  const updatedForm = { ...form, responseCount: buyCount };
+                  const success = await onPurchase(updatedForm, withResponses);
+                  if (success) {
+                      setConfirmation(null);
+                  }
+                } finally {
+                  setIsPurchasing(false);
+                }
+            },
+            onClose: () => !isPurchasing && setConfirmation(null)
+        });
+    };
 
     return (
         <div className="space-y-6">
@@ -479,8 +507,6 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {formsForDisplay.map(form => {
                         const creator = users.find(u => u.id === form.userId);
-                        
-                        // New Logic: Check if user currently holds a copy of this form
                         const isPurchased = userForms.some(myF => myF.sourceFormId === form.id);
 
                         return (
@@ -500,7 +526,7 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
                     <div className="text-center py-12">
                     <h3 className="text-lg font-medium text-slate-900 dark:text-white">Aucun formulaire public trouvé</h3>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                        Aucun formulaire ne correspond à votre recherche, ou aucun étudiant n'a encore publié de formulaire.
+                        Aucun formulaire ne correspond à votre recherche.
                     </p>
                     </div>
                 </Card>
@@ -525,9 +551,11 @@ const Library: React.FC<LibraryProps> = ({ currentUser, publicForms, purchasedFo
                     realCount={buyCount}
                     currentUser={currentUser} 
                     onClose={() => setFormToBuy(null)} 
-                    onPurchase={onPurchase} 
+                    onIntentToPurchase={handleIntentToPurchase} 
                 />
             )}
+
+            {confirmation && <ConfirmationModal {...confirmation} loading={isPurchasing} />}
         </div>
     );
 };

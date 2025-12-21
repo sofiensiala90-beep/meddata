@@ -1,13 +1,16 @@
+
 import React from 'react';
+import Spinner from './Spinner';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
   variant?: 'primary' | 'secondary' | 'danger';
+  loading?: boolean;
   className?: string;
 }
 
-const Button: React.FC<ButtonProps> = ({ children, variant = 'primary', className = '', ...props }) => {
-  const baseClasses = 'px-6 py-2.5 rounded-full font-semibold text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform active:scale-95';
+const Button: React.FC<ButtonProps> = ({ children, variant = 'primary', loading = false, className = '', ...props }) => {
+  const baseClasses = 'relative px-6 py-2.5 rounded-full font-semibold text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform active:scale-95 flex items-center justify-center';
 
   const variantClasses = {
     primary: 'bg-gradient-to-r from-primary-600 to-primary-500 text-white hover:from-primary-700 hover:to-primary-600 shadow-primary-500/30 hover:shadow-primary-500/50 focus:ring-primary-500',
@@ -16,8 +19,15 @@ const Button: React.FC<ButtonProps> = ({ children, variant = 'primary', classNam
   };
 
   return (
-    <button className={`${baseClasses} ${variantClasses[variant]} ${className}`} {...props}>
-      {children}
+    <button 
+      className={`${baseClasses} ${variantClasses[variant]} ${className}`} 
+      disabled={props.disabled || loading}
+      {...props}
+    >
+      {loading && (
+        <Spinner className="w-4 h-4 mr-2 border-2 border-t-transparent" />
+      )}
+      <span className={loading ? 'opacity-70' : ''}>{children}</span>
     </button>
   );
 };

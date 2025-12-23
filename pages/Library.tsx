@@ -80,7 +80,7 @@ const PurchaseModal: React.FC<PurchaseModalProps> = ({ form, realCount, currentU
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-[100] p-4" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col animate-scale-up" onClick={e => e.stopPropagation()}>
                 <header className="p-4 border-b border-slate-200 dark:border-slate-700">
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Acheter: {form.title}</h3>
                 </header>

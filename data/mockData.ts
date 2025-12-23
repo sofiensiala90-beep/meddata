@@ -1,3 +1,4 @@
+
 import { User, Form, FormResponse, Transaction, Notification, MedicalField, AnalysisHistory, PurchasedForm, Activity } from '../types';
 
 // The admin user is now used only for the initial seeding of the Firestore database if no admin exists.
@@ -7,7 +8,7 @@ export const mockAdminUser: Omit<User, 'id'> = {
     // password: 'Sofien@1990', // This will be used for initial creation only
     role: 'admin',
     coinBalance: Infinity,
-    university: 'Administration MedataAI',
+    university: 'Administration DASS',
     field: MedicalField.Medicine,
     studyYear: 10,
     phoneNumber: '0123456789',

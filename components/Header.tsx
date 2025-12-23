@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Notification } from '../types';
 import BellIcon from './icons/BellIcon';
@@ -77,6 +78,8 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notificati
     'finances': 'Finances',
     'activite': 'Activité',
     'bibliotheque': 'Bibliothèque',
+    'corbeille': 'Corbeille Admin',
+    'configuration': 'Configuration'
   };
 
   const title = pageTitles[currentPage] || currentPage;
@@ -186,15 +189,14 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notificati
                         <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
                     </div>
                     <div className="py-2">
-                         {user.role === 'student' && (
-                          <button
-                              onClick={() => { onNavigate('profil'); setIsProfileMenuOpen(false); }}
-                              className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center"
-                          >
-                              <ProfileIcon className="w-4 h-4 mr-3 text-slate-400" />
-                              Mon Profil
-                          </button>
-                        )}
+                        {/* Désormais accessible pour Admin et Student */}
+                        <button
+                            onClick={() => { onNavigate('profil'); setIsProfileMenuOpen(false); }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center"
+                        >
+                            <ProfileIcon className="w-4 h-4 mr-3 text-slate-400" />
+                            {user.role === 'admin' ? 'Profil Admin' : 'Mon Profil'}
+                        </button>
                         <button
                             onClick={onLogout}
                             className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center"

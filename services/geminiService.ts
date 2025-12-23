@@ -2,67 +2,45 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User, SystemSettings } from '../types';
 
-// La clé API sera injectée par Vite via la constante globale __APP_API_KEY__
-const apiKey = process.env.API_KEY || "";
+// Initialisation conforme aux guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
-// FIX: Always use new GoogleGenAI({apiKey: process.env.API_KEY}); as per initialization guidelines.
-const ai = new GoogleGenAI({ apiKey: apiKey });
-
-// Modèles utilisés
-// FIX: Select specific model names based on the task type (Simple text vs Complex reasoning)
+// Modèles recommandés
 const ANALYSIS_MODEL = 'gemini-3-pro-preview';
 const CHAT_MODEL = 'gemini-3-flash-preview';
-const TEXT_MODEL = 'gemini-3-flash-preview';
 
-// Schéma JSON strict pour l'analyse (Étape 2)
+// Schéma JSON strict pour l'analyse
 const analysisResponseSchema: Schema = {
   type: Type.OBJECT,
   properties: {
     analysisText: {
       type: Type.STRING,
-      description: "Une analyse experte en biostatistiques et épidémiologie, formatée en HTML STRICT (pas de Markdown). Doit inclure : Méthodologie, Résultats Descriptifs, Analyse Inférentielle (si applicable), et Recommandations. Utiliser des balises <h3>, <p>, <ul>, <li>, <strong>.",
+      description: "Rapport d'analyse experte formaté en HTML STRICT (pas de Markdown). Utiliser <h3>, <p>, <ul>, <li>, <strong>.",
     },
     chatResponse: {
       type: Type.STRING,
-      description: "Un message conversationnel court et engageant adressé directement à l'utilisateur pour la fenêtre de discussion. Il doit résumer la découverte principale en une phrase et proposer proactivement 2 ou 3 prochaines étapes, tests statistiques spécifiques ou améliorations à apporter au rapport.",
+      description: "Résumé conversationnel court + 2 ou 3 pistes concrètes d'analyses supplémentaires.",
     },
     charts: {
       type: Type.ARRAY,
-      description: "Liste des graphiques pertinents à générer. Il n'y a pas de limite stricte : générez autant de graphiques que nécessaire pour illustrer les résultats clés.",
+      description: "Objets structurés pour les graphiques.",
       items: {
         type: Type.OBJECT,
         properties: {
-          title: { type: Type.STRING, description: "Titre spécifique du graphique." },
-          type: {
-            type: Type.STRING,
-            enum: ["bar", "pie", "doughnut"],
-            description: "Le type de graphique le plus adapté aux données.",
-          },
+          title: { type: Type.STRING },
+          type: { type: Type.STRING, enum: ["bar", "pie", "doughnut"] },
           data: {
             type: Type.OBJECT,
             properties: {
-              labels: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "Les étiquettes de l'axe X ou de la légende.",
-              },
+              labels: { type: Type.ARRAY, items: { type: Type.STRING } },
               datasets: {
                 type: Type.ARRAY,
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    label: { type: Type.STRING, description: "Titre du jeu de données" },
-                    data: { 
-                      type: Type.ARRAY, 
-                      items: { type: Type.NUMBER },
-                      description: "Les valeurs numériques correspondantes aux étiquettes."
-                    },
-                    backgroundColor: {
-                      type: Type.ARRAY,
-                      items: { type: Type.STRING },
-                      nullable: true,
-                      description: "Tableau de codes couleurs hexadécimaux (optionnel, laisser null pour auto)."
-                    }
+                    label: { type: Type.STRING },
+                    data: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+                    backgroundColor: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true }
                   },
                   required: ["label", "data"],
                 },
@@ -74,383 +52,129 @@ const analysisResponseSchema: Schema = {
         required: ["title", "type", "data"]
       },
       nullable: true
-    },
-    requiresConfirmation: {
-      type: Type.BOOLEAN,
-      description: "Mettre à true uniquement si les données sont trop volumineuses et nécessitent une analyse par lot. Pour l'instant, false.",
-    },
-    relevantFieldIds: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING },
-        description: "Liste des IDs de champs pertinents utilisés pour l'analyse.",
-        nullable: true
     }
   },
   required: ["analysisText", "chatResponse"],
 };
 
-// Schéma pour les suggestions d'expert
-const suggestionsResponseSchema: Schema = {
-  type: Type.ARRAY,
-  items: {
-    type: Type.OBJECT,
-    properties: {
-      title: { type: Type.STRING, description: "Titre court de l'analyse suggérée (ex: Étude des facteurs de risque)." },
-      description: { type: Type.STRING, description: "Explication de pourquoi cette analyse est pertinente pour une thèse." },
-      searchPrompt: { type: Type.STRING, description: "L'instruction technique précise à renvoyer à l'IA pour exécuter cette analyse." }
-    },
-    required: ["title", "description", "searchPrompt"]
-  }
-};
-
 /**
- * Prépare le contexte des données pour l'analyse finale (Optimisé format Texte/CSV).
- * Transforme les données JSON en format tabulaire pipe-separated pour économiser des tokens.
- * Retourne le texte ET le nombre exact de lignes traitées.
+ * Prépare le contexte au format PSV (Pipe-Separated Values)
  */
-const prepareDataContext = (forms: Form[], responses: FormResponse[]): { contextText: string, totalRows: number } => {
+const prepareDataContext = (forms: Form[], responses: FormResponse[]): string => {
   let output = "";
-  let totalRows = 0;
-
   forms.forEach(form => {
-    output += `--- FORMULAIRE: ${form.title} (ID: ${form.id}) ---\n`;
-    output += `DESCRIPTION: ${form.description || 'Aucune'}\n`;
-    output += `FORMAT DONNÉES: Valeurs séparées par des barres verticales '|' (Pipe-separated values). Première ligne = En-têtes.\n\n`;
-    
-    // En-têtes (Questions)
-    // On nettoie les labels pour éviter les pipes qui casseraient le format
+    output += `### FORMULAIRE: ${form.title}\n`;
     const headers = form.schema.map(f => f.label.replace(/\|/g, '/').trim());
     const fieldIds = form.schema.map(f => f.id);
     
     output += headers.join(" | ") + "\n";
-    // Ligne de séparation visuelle (optionnelle mais aide l'IA)
     output += headers.map(() => "---").join("|") + "\n";
 
-    // Données (Réponses)
     const formResponses = responses.filter(r => r.formId === form.id);
-    
-    if (formResponses.length === 0) {
-        output += "(Aucune réponse collectée pour ce formulaire)\n";
-    } else {
-        formResponses.forEach(r => {
-            totalRows++; // Comptage précis
-            const rowValues = fieldIds.map(fid => {
-                const val = r.data[fid];
-                let strVal = "";
-                
-                if (Array.isArray(val)) {
-                    // Pour les choix multiples, on sépare par des points-virgules pour distinguer du séparateur de colonne
-                    strVal = val.join("; "); 
-                } else if (val !== undefined && val !== null) {
-                    strVal = String(val);
-                }
-                
-                // Nettoyage critique : remplacer les pipes et les sauts de ligne pour maintenir la structure CSV
-                return strVal.replace(/\|/g, "/").replace(/[\r\n]+/g, " ").trim();
-            });
-            output += rowValues.join(" | ") + "\n";
-        });
-    }
-    output += "\n\n";
+    formResponses.forEach(r => {
+      const rowValues = fieldIds.map(fid => {
+        const val = r.data[fid];
+        const strVal = Array.isArray(val) ? val.join("; ") : (val != null ? String(val) : "");
+        return strVal.replace(/\|/g, "/").replace(/[\r\n]+/g, " ").trim();
+      });
+      output += rowValues.join(" | ") + "\n";
+    });
+    output += "\n";
   });
-
-  return { contextText: output, totalRows };
+  return output;
 };
 
 /**
- * Génère un résumé statistique mathématiquement exact pour guider l'IA.
- * Cela empêche les hallucinations sur les comptages simples.
- * CORRECTIF FEV 2025: Calcul sur les VALEURS VALIDES (n) et non le TOTAL (N).
- * CORRECTIF PRECISION: Affichage de la fraction (x/n) pour forcer la compréhension du ratio.
+ * Résumé Statistique Pré-calculé (Source de Vérité)
  */
 const generateStatisticalSummary = (forms: Form[], responses: FormResponse[]): string => {
   let summary = "";
-
   forms.forEach(form => {
-    // Filter responses for this specific form
     const formResponses = responses.filter(r => r.formId === form.id);
-    const totalParticipants = formResponses.length; // N
-    if (totalParticipants === 0) return;
+    const n = formResponses.length;
+    if (n === 0) return;
 
-    summary += `RÉSUMÉ STATISTIQUE VÉRIFIÉ POUR "${form.title}" (N=${totalParticipants}) :\n`;
-    summary += `NOTE : Pourcentages calculés sur les réponses exprimées (n) en excluant les valeurs vides.\n`;
-
+    summary += `RÉSUMÉ STATISTIQUE VÉRIFIÉ POUR "${form.title}" (n=${n}) :\n`;
     form.schema.forEach(field => {
-        if (field.type === 'note' || field.type === 'text' || field.type === 'textarea') return; 
+      if (['note', 'text', 'textarea'].includes(field.type)) return;
 
-        // 1. Isoler les réponses valides (non vides) pour ce champ
-        const validValues = formResponses
-            .map(r => r.data[field.id])
-            .filter(v => v !== undefined && v !== null && v !== '' && (Array.isArray(v) ? v.length > 0 : true));
-        
-        const validCount = validValues.length; // n valide
-        const missingCount = totalParticipants - validCount;
+      const values = formResponses
+        .map(r => r.data[field.id])
+        .filter(v => v !== undefined && v !== null && v !== '');
+      
+      const count = values.length;
+      if (count === 0) return;
 
-        if (validCount === 0) {
-             summary += `- ${field.label} : Aucune donnée valide (100% de manquants).\n`;
-             return;
+      if (['number', 'range'].includes(field.type)) {
+        const nums = values.map(v => Number(v)).filter(v => !isNaN(v));
+        if (nums.length > 0) {
+          const avg = (nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2);
+          summary += `- ${field.label} : Moyenne=${avg}, Min=${Math.min(...nums)}, Max=${Math.max(...nums)}\n`;
         }
-
-        if (['number', 'range'].includes(field.type)) {
-            const nums = validValues.map(v => Number(v)).filter(n => !isNaN(n));
-            if (nums.length > 0) {
-                const min = Math.min(...nums);
-                const max = Math.max(...nums);
-                const sum = nums.reduce((a, b) => a + b, 0);
-                const avg = (sum / nums.length).toFixed(2);
-                summary += `- ${field.label} (n=${validCount}) : Moyenne=${avg}, Min=${min}, Max=${max}\n`;
-            } else {
-                summary += `- ${field.label} : Données numériques invalides.\n`;
-            }
-        } else if (['choice', 'checkbox'].includes(field.type)) {
-            const counts: Record<string, number> = {};
-            
-            validValues.forEach(val => {
-                const items = Array.isArray(val) ? val : [val];
-                items.forEach(item => {
-                    const strItem = String(item).trim();
-                    if(strItem) {
-                        counts[strItem] = (counts[strItem] || 0) + 1;
-                    }
-                });
-            });
-
-            // Tri décroissant pour lisibilité
-            const details = Object.entries(counts)
-                .sort(([, a], [, b]) => b - a)
-                .map(([k, v]) => {
-                    // Calcul précis à 2 décimales sur le nombre de répondants VALIDES
-                    const percent = ((v / validCount) * 100).toFixed(2);
-                    // Format explicite : "Oui: 5/29 (17.24%)"
-                    return `${k}: ${v}/${validCount} (${percent}%)`;
-                })
-                .join(', ');
-            
-            summary += `- ${field.label} (n=${validCount}, Manquants=${missingCount}) : ${details}\n`;
-        }
+      } else if (['choice', 'checkbox'].includes(field.type)) {
+        const freq: Record<string, number> = {};
+        values.forEach(v => {
+          const items = Array.isArray(v) ? v : [v];
+          items.forEach(it => { freq[it] = (freq[it] || 0) + 1; });
+        });
+        const details = Object.entries(freq)
+          .sort(([, a], [, b]) => b - a)
+          .map(([k, v]) => `${k}=${v} (${((v / count) * 100).toFixed(2)}%)`)
+          .join(', ');
+        summary += `- ${field.label} : ${details}\n`;
+      }
     });
     summary += "\n";
   });
   return summary;
 };
 
-/**
- * Génère des suggestions d'analyse basées sur la structure du formulaire
- */
-export const getAnalysisSuggestions = async (forms: Form[], responses: FormResponse[]): Promise<Array<{title: string, description: string, searchPrompt: string}>> => {
-  if (!apiKey || apiKey === "MISSING_KEY") {
-      throw new Error("Clé API manquante");
-  }
-
-  try {
-    // Pour les suggestions, on envoie un extrait des réponses (5 premières) pour que l'IA comprenne le contenu sans saturer
-    const sampleResponses = responses.slice(0, 5);
-    const { contextText } = prepareDataContext(forms, sampleResponses);
-    
-    const systemInstruction = `
-      Tu es un Professeur expert en Méthodologie de Recherche et Biostatistiques.
-      Tu assistes un étudiant en médecine qui a collecté des données mais ne sait pas quelles analyses statistiques effectuer pour sa thèse.
-
-      TA MISSION :
-      Analyser la structure du formulaire et l'échantillon de données fourni pour proposer 4 à 6 pistes d'analyses pertinentes.
-
-      CRITÈRES DE SUGGESTION :
-      1. **Pertinence Scientifique** : Propose des analyses qui ont du sens médicalement (ex: Facteurs de risque, Évaluation d'impact, Corrélations cliniques).
-      2. **Faisabilité Statistique** : Vérifie si les variables (qualitatives/quantitatives) permettent ces tests (Chi-2, Student, ANOVA, etc.).
-      3. **Diversité** : Propose un mélange d'analyses descriptives (profil épidémiologique) et analytiques (recherche de liens).
-
-      FORMAT DE SORTIE (JSON) :
-      Une liste d'objets contenant :
-      - title : Un titre accrocheur pour l'analyse.
-      - description : Une phrase expliquant l'intérêt de cette analyse pour la thèse.
-      - searchPrompt : Une instruction très précise que l'étudiant pourra renvoyer à l'IA pour réaliser cette analyse (ex: "Réalise un test de Chi-2 pour croiser la variable X et la variable Y...").
-
-      CONTEXTE DES DONNÉES (Échantillon format Tableau Texte) :
-      ${contextText}
-    `;
-
-    const response = await ai.models.generateContent({
-      model: ANALYSIS_MODEL,
-      contents: "Quelles sont les meilleures analyses statistiques à faire sur ces données pour une thèse de médecine ?",
-      config: {
-        systemInstruction: systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: suggestionsResponseSchema,
-        temperature: 0.5,
-      },
-    });
-
-    const responseText = response.text;
-    if (!responseText) throw new Error("Réponse vide de l'IA");
-    
-    return JSON.parse(responseText);
-
-  } catch (error) {
-    console.error("Erreur Gemini Suggestions:", error);
-    throw error;
-  }
-};
-
-/**
- * Aide à la rédaction de notifications pour l'admin
- */
-export const generateNotificationRefinement = async (draftText: string): Promise<string> => {
-    if (!apiKey || apiKey === "MISSING_KEY") {
-        return draftText; // Fallback safe
-    }
-
-    try {
-        const systemInstruction = `
-            Tu es un assistant de communication pour l'administration d'une faculté de médecine ou d'une plateforme de recherche médicale (MedataAI).
-            
-            TA MISSION :
-            Réécrire, corriger et professionnaliser le brouillon de notification fourni par l'administrateur.
-            Le message est destiné à un étudiant en médecine.
-
-            RÈGLES DE RÉDACTION :
-            1. **Ton** : Professionnel, Courtois, Clair, Concis et Ferme (si nécessaire pour des rappels).
-            2. **Langue** : Français impeccable.
-            3. **Objectif** : Transformer des notes brutes en un message prêt à l'envoi.
-            
-            EXEMPLES :
-            - Input : "paye tes dettes sinon ban" -> Output : "Bonjour, nous vous informons que votre solde est négatif. Veuillez régulariser votre situation rapidement pour éviter une suspension temporaire de votre compte. Cordialement, L'équipe MedataAI."
-            - Input : "bravo pour ta thèse" -> Output : "Félicitations pour l'avancement de votre thèse ! Nous sommes ravis de voir vos progrès sur la plateforme."
-            
-            SORTIE :
-            Renvoie UNIQUEMENT le texte du message amélioré, sans guillemets, sans préambule ("Voici le texte...").
-        `;
-
-        const response = await ai.models.generateContent({
-            model: TEXT_MODEL,
-            contents: `Voici le brouillon : "${draftText}"`,
-            config: {
-                systemInstruction: systemInstruction,
-                temperature: 0.7, // Un peu de créativité pour la politesse
-            },
-        });
-
-        return response.text?.trim() || draftText;
-
-    } catch (error) {
-        console.error("Erreur Gemini Notification:", error);
-        return draftText;
-    }
-};
-
-/**
- * Effectue une analyse complète des données.
- * Supporte le mode "Refinement" si un previousReport est fourni.
- */
 export const getAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string, previousReport: any = null): Promise<any> => {
-  if (!apiKey || apiKey === "MISSING_KEY") {
-      return {
-          analysisText: "<p class='text-red-500 font-bold'>⚠️ La clé API Gemini n'est pas configurée sur Vercel. Veuillez ajouter la variable API_KEY dans les settings.</p>",
-          chatResponse: "Je ne peux pas effectuer l'analyse car la clé API est manquante.",
-          charts: [],
-          requiresConfirmation: false
-      };
-  }
-  
   try {
-    // Préparation des données complètes au format optimisé (CSV-like)
-    // On récupère le nombre exact de lignes pour l'injecter dans le prompt
-    const { contextText: fullContext, totalRows } = prepareDataContext(forms, responses);
-    
-    // CALCUL STATISTIQUE EXACT (Vérité Terrain)
-    const statisticalSummary = generateStatisticalSummary(forms, responses);
+    const stats = generateStatisticalSummary(forms, responses);
+    const psvData = prepareDataContext(forms, responses);
     
     let baseInstruction = `
-      Tu es DASS (Data Analysis Statistical System), un expert de classe mondiale en biostatistiques médicales et épidémiologie, développé par JS GATE.
-      Ton rôle est d'assister des étudiants en médecine dans l'analyse de leurs thèses.
+      Tu es DASS, expert mondial en biostatistiques médicales. 
+      Ton rôle est d'analyser les données de recherche pour des thèses de médecine.
 
-      DONNÉES FOURNIES :
-      - Tu as reçu exactement **${totalRows}** entrées (lignes de réponses patients).
-      
-      *** RÈGLE SUPRÊME : INTERDICTION DE RECALCULER OU D'ARRONDIR ***
-      1. **COPIER-COLLER STRICT** : Pour tous les chiffres descriptifs (%, moyennes, effectifs), tu DOIS copier strictement les valeurs du bloc "RÉSUMÉ STATISTIQUE VÉRIFIÉ".
-      2. **PRECISION AU CENTIÈME** : Si le résumé indique "17.24%", tu écris "17.24%".
-         - INTERDIT d'écrire "17%" (arrondi).
-         - INTERDIT d'écrire "18%" (arrondi supérieur).
-         - INTERDIT d'écrire "18.00%".
-      3. **RAISONNEMENT** : Le résumé te donne la fraction (ex: "5/29"). Utilise cette fraction pour justifier le pourcentage si nécessaire, mais ne refais pas la division toi-même, tu risques d'halluciner. Fais confiance à la valeur entre parenthèses pré-calculée.
+      TA MISSION : Diviser ton raisonnement en deux modes :
 
-      CAPACITÉS D'EXPERT :
-      1. **Interprétation** : Explique ce que ces chiffres signifient médicalement. Compare-les aux standards (ex: "Ce taux de prévalence de 17.24% est cohérent avec...").
-      2. **Corrélations** : Si l'utilisateur demande un croisement (ex: Tabac vs Cancer), tu peux utiliser les Données Brutes pour estimer la tendance, mais reste prudent et mentionne que c'est une estimation IA.
-      
-      IMPORTANT - FORMAT DE SORTIE HTML (champ 'analysisText') :
-      - Tu dois générer le contenu de 'analysisText' en **HTML** pur.
-      - **N'UTILISE JAMAIS DE MARKDOWN**.
-      - Utilise des balises sémantiques : <h3>, <p>, <ul class="list-disc pl-5 space-y-1">, <li>.
-      - Utilise des classes Tailwind CSS si nécessaire pour la mise en page.
+      1. MODE COMPTABLE (Rigueur Absolue) :
+         - Pour tous les chiffres descriptifs (%, moyennes, effectifs), UTILISE EXCLUSIVEMENT le "RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ".
+         - INTERDICTION de recalculer ou d'arrondir. Si le résumé dit "17.24%", tu écris "17.24%".
+         - Ne recompte jamais les lignes brutes toi-même pour les statistiques de base.
 
-      IMPORTANT - INTERACTION CHAT (champ 'chatResponse') :
-      - Ce texte sera affiché directement dans la fenêtre de discussion pour guider l'étudiant.
-      - Ne dis pas simplement "Voici le rapport".
-      - **Résume** l'insight le plus percutant ou surprenant en une phrase.
-      - **Propose** proactivement 2 ou 3 pistes concrètes : des tests statistiques supplémentaires (ex: "Voulez-vous que je teste la corrélation X/Y ?") ou des améliorations méthodologiques.
-      - Sois un partenaire de recherche actif.
-      
-      RÈGLES DE SORTIE - GRAPHIQUES ('charts') :
-      - Tu peux générer **PLUSIEURS graphiques** si cela aide à la compréhension. N'hésite pas à en créer 2, 3 ou plus si pertinent.
-      - Utilise les données exactes du résumé statistique pour remplir les graphiques.
+      2. MODE CHERCHEUR (Créativité & Perspicacité) :
+         - Interprète cliniquement ces chiffres. Pourquoi sont-ils importants ?
+         - Utilise les données brutes (PSV) pour identifier des corrélations complexes ou des tendances individuelles.
+         - Fais des liens avec la littérature médicale épidémiologique.
+
+      CONTRAINTES DE SORTIE :
+      - Format : JSON Strict.
+      - Contenu 'analysisText' : HTML Pur uniquement. **Markdown INTERDIT**.
+      - Balises autorisées : <h3>, <p>, <ul>, <li>, <strong>.
+      - 'chatResponse' : Un résumé d'une phrase + 2 propositions d'analyses de corrélation spécifiques.
     `;
-
-    // Contexte combiné : Stats calculées + Données brutes
-    const contextWithStats = `
-    === RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ (SOURCE DE VÉRITÉ ABSOLUE - NE PAS MODIFIER) ===
-    ${statisticalSummary}
-    ===================================================================================
-
-    === DONNÉES BRUTES (Pour analyse de corrélation complexe uniquement) ===
-    ${fullContext}
-    `;
-
-    let userContent = "";
 
     if (previousReport) {
-        // MODE MODIFICATION / RAFFINEMENT
-        baseInstruction += `
-        
-        CONTEXTE DE MODIFICATION :
-        L'utilisateur souhaite modifier ou approfondir un rapport existant.
-        Tu recevras le "Rapport Actuel" et la "Nouvelle Instruction".
-        Tu dois régénérer le JSON complet du rapport (analysisText, charts, et chatResponse).
-        
-        IMPORTANT - MISE EN ÉVIDENCE VISUELLE :
-        1. Entoure EXCLUSIVEMENT les phrases ajoutées ou modifiées dans le rapport avec : <span style="color: #6366f1; font-weight: bold;">...</span>
-        `;
-
-        userContent = `
-        ${contextWithStats}
-
-        RAPPORT ACTUEL (JSON) :
-        ${JSON.stringify(previousReport)}
-
-        NOUVELLE INSTRUCTION UTILISATEUR :
-        "${userPrompt}"
-        `;
-    } else {
-        // MODE CRÉATION
-        baseInstruction += `
-        
-        TA MISSION :
-        Analyser les données fournies et répondre à la demande de l'utilisateur avec rigueur sur les chiffres et créativité sur l'analyse.
-        
-        STRUCTURE DE LA RÉPONSE (HTML dans 'analysisText') :
-        - <h3>Résumé Méthodologique</h3> (Indiquer n = ${totalRows})
-        - <h3>Résultats Clés</h3> (Utilise les stats pré-calculées obligatoirement)
-        - <h3>Analyse & Discussion</h3> (Sois créatif et perspicace ici)
-        - <h3>Recommandations</h3> (Propose des pistes d'amélioration ou de tests futurs)
-        `;
-
-        userContent = `
-        ${contextWithStats}
-
-        DEMANDE UTILISATEUR :
-        "${userPrompt}"
-        `;
+      baseInstruction += `
+        MODE RAFFINEMENT : 
+        L'étudiant souhaite approfondir le rapport précédent.
+        IMPORTANT : Entoure EXCLUSIVEMENT les phrases ajoutées ou modifiées dans le rapport avec : <span style="color: #6366f1; font-weight: bold;">...</span>
+      `;
     }
+
+    const userContent = `
+      === RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ (SSOT) ===
+      ${stats}
+
+      === DONNÉES BRUTES (PSV) ===
+      ${psvData}
+
+      ${previousReport ? `RAPPORT ACTUEL : ${JSON.stringify(previousReport)}` : ""}
+      DEMANDE DE L'ÉTUDIANT : "${userPrompt}"
+    `;
 
     const response = await ai.models.generateContent({
       model: ANALYSIS_MODEL,
@@ -459,116 +183,72 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
         systemInstruction: baseInstruction,
         responseMimeType: "application/json",
         responseSchema: analysisResponseSchema,
-        temperature: 0.1, // Température très basse pour réduire les hallucinations
+        temperature: 0.1,
       },
     });
 
-    const responseText = response.text;
-    if (!responseText) throw new Error("Réponse vide de l'IA");
-    
-    return JSON.parse(responseText);
-
-  } catch (error: any) {
-    console.error("Erreur Gemini Analysis:", error);
-    let errorMsg = "<p class='text-red-600'>⚠️ Une erreur technique est survenue lors de l'analyse IA.</p>";
-    const errorString = String(error);
-    if (errorString.includes("leaked") || errorString.includes("API key not valid")) {
-        errorMsg = "<p class='text-red-600 font-bold'>⚠️ Clé API bloquée par Google (fuite détectée ou invalide). Veuillez générer une nouvelle clé sur Google AI Studio et mettre à jour Vercel.</p>";
-    } else if (errorString.includes("429")) {
-        errorMsg = "<p class='text-yellow-600'>⚠️ Trop de requêtes (Quota dépassé). Veuillez réessayer dans une minute.</p>";
-    }
+    return JSON.parse(response.text || "{}");
+  } catch (error) {
+    console.error("Gemini Error:", error);
     return {
-      analysisText: errorMsg,
-      chatResponse: "Désolé, j'ai rencontré une erreur lors de l'analyse. Veuillez réessayer.",
-      charts: [],
-      requiresConfirmation: false
+      analysisText: "<p class='text-red-500'>Erreur lors de l'analyse. Veuillez vérifier votre clé API ou retenter.</p>",
+      chatResponse: "Une erreur technique est survenue.",
+      charts: []
     };
   }
 };
 
-export const performSampledAnalysis = async (forms: Form[], responses: FormResponse[], userPrompt: string, relevantFieldIds: string[]): Promise<any> => {
-  return getAnalysis(forms, responses, userPrompt);
+export const getAnalysisSuggestions = async (forms: Form[], responses: FormResponse[]): Promise<any[]> => {
+  const psv = prepareDataContext(forms, responses).slice(0, 2000);
+  const instruction = "Tu es un expert biostatisticien DASS. Analyse ces données PSV et suggère 4 analyses pertinentes pour une thèse (Titre, Raison, Prompt technique).";
+  
+  const response = await ai.models.generateContent({
+    model: CHAT_MODEL,
+    contents: psv,
+    config: {
+      systemInstruction: instruction,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            description: { type: Type.STRING },
+            searchPrompt: { type: Type.STRING }
+          },
+          required: ["title", "description", "searchPrompt"]
+        }
+      }
+    }
+  });
+  return JSON.parse(response.text || "[]");
 };
 
-/**
- * Chatbot interactif avec streaming (Reste inchangé pour le chatbot général)
- */
-export const getChatbotResponseStream = async (userRole: User['role'], history: ChatMessage[], settings: SystemSettings) => {
-  if (!apiKey || apiKey === "MISSING_KEY") {
-      return (async function* () {
-        yield { text: "⚠️ Clé API manquante. Veuillez configurer API_KEY sur Vercel." };
-      })();
-  }
-
-  try {
-    const systemInstruction = `
-      Tu es DASS, l'assistant virtuel intelligent de la plateforme de JS GATE.
-      Ton rôle est d'aider les étudiants en médecine et les administrateurs à utiliser la plateforme.
-
-      INFORMATIONS TARIFAIRES ACTUELLES (EN COINS) :
-      - Création de formulaire : Gratuit
-      - Validation de formulaire (pour collecter des réponses) : ${settings.coinCosts.validateForm} coins
-      - Ajout de réponse à un formulaire : ${settings.coinCosts.addResponse} coins
-      - Analyse IA avancée (déblocage par formulaire) : ${settings.coinCosts.aiAnalysis} coins
-      - Frais mensuels d'utilisation : ${settings.platformFees.monthly} coins/mois
-      - Bonus de bienvenue (nouveaux inscrits) : ${settings.welcomeBonus} coins
-      
-      INFORMATIONS BIBLIOTHÈQUE :
-      - Prix de vente standard d'un formulaire : ${settings.libraryPrices.defaultFormPrice} coins
-      - Prix de vente standard par réponse : ${settings.libraryPrices.defaultPricePerResponse} coins
-      
-      ACTIONS DE NAVIGATION DISPONIBLES :
-      Si l'utilisateur veut aller quelque part, ajoute ce tag à la fin de ta réponse :
-      - Pour créer/gérer des formulaires : [ACTION:navigate_formulaires]
-      - Pour voir la bibliothèque publique : [ACTION:navigate_bibliotheque]
-      - Pour lancer une analyse IA : [ACTION:navigate_analyse]
-      - Pour voir son solde/portefeuille : [ACTION:navigate_portefeuille]
-      
-      Rôle de l'utilisateur actuel : ${userRole}
-      
-      RÈGLES DE COMPORTEMENT :
-      1. Sois poli, concis et serviable.
-      2. Si on te demande un prix, utilise UNIQUEMENT les valeurs fournies ci-dessus.
-      3. Ne pas inventer de fonctionnalités qui n'existent pas.
-    `;
-
-    // FIX: Using recommended models: gemini-3-flash-preview for chat interactions
-    const chat = ai.chats.create({
-      model: CHAT_MODEL,
-      config: {
-        systemInstruction: systemInstruction,
-        temperature: 0.7,
-      },
-      history: history.slice(0, -1),
+export const generateNotificationRefinement = async (draftText: string): Promise<string> => {
+    const response = await ai.models.generateContent({
+        model: CHAT_MODEL,
+        contents: `Professionnalise ce message pour un étudiant en médecine : "${draftText}"`,
+        config: { systemInstruction: "Tu es un secrétaire de faculté de médecine travaillant pour DASS. Rends le texte courtois et clair." }
     });
+    return response.text?.trim() || draftText;
+};
 
-    const lastMessage = history[history.length - 1].parts[0].text;
-    
-    const resultStream = await chat.sendMessageStream({
-      message: lastMessage,
-    });
+export const getChatbotResponseStream = async (userRole: string, history: ChatMessage[], settings: SystemSettings) => {
+  const instruction = `Tu es DASS, l'assistant intelligent de JS GATE. Aide les utilisateurs sur la plateforme. Tarifs : Validation=${settings.coinCosts.validateForm}, Réponse=${settings.coinCosts.addResponse}, IA=${settings.coinCosts.aiAnalysis}. Tags : [ACTION:navigate_formulaires], [ACTION:navigate_bibliotheque], [ACTION:navigate_analyse], [ACTION:navigate_portefeuille].`;
 
-    return (async function* () {
-      for await (const chunk of resultStream) {
-        yield { text: chunk.text };
-      }
-    })();
+  const chat = ai.chats.create({
+    model: CHAT_MODEL,
+    config: { systemInstruction: instruction, temperature: 0.7 },
+    history: history.slice(0, -1),
+  });
 
-  } catch (error: any) {
-    console.error("Erreur Gemini Chatbot:", error);
-    let errorMsg = "Désolé, je rencontre des difficultés techniques.";
-    const errorString = String(error);
-    
-    if (errorString.includes("leaked")) {
-        errorMsg = "⚠️ ALERTE : Votre clé API a été désactivée par Google car elle a fuité sur internet. Veuillez en générer une nouvelle immédiatement.";
-    } else if (errorString.includes("API key not valid")) {
-        errorMsg = "⚠️ Clé API invalide. Vérifiez la configuration Vercel.";
-    } else if (errorString.includes("403")) {
-        errorMsg = "⚠️ Accès refusé (403). Vérifiez votre clé API.";
+  const lastMessage = history[history.length - 1].parts[0].text;
+  const resultStream = await chat.sendMessageStream({ message: lastMessage });
+
+  return (async function* () {
+    for await (const chunk of resultStream) {
+      yield { text: chunk.text };
     }
-
-    return (async function* () {
-      yield { text: errorMsg };
-    })();
-  }
+  })();
 };

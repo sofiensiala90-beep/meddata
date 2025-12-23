@@ -27,7 +27,12 @@ const Button: React.FC<ButtonProps> = ({ children, variant = 'primary', loading 
       {loading && (
         <Spinner className="w-4 h-4 mr-2 border-2 border-t-transparent" />
       )}
-      <span className={loading ? 'opacity-70' : ''}>{children}</span>
+      <span className={loading ? 'opacity-0' : ''}>{children}</span>
+      {loading && (
+        <span className="absolute inset-0 flex items-center justify-center">
+            <Spinner className="w-5 h-5" />
+        </span>
+      )}
     </button>
   );
 };

@@ -1,16 +1,15 @@
+
 import React from 'react';
 import LogoIcon from './icons/LogoIcon';
 import DashboardIcon from './icons/DashboardIcon';
 import FormsIcon from './icons/FormsIcon';
 import AnalysisIcon from './icons/AnalysisIcon';
 import WalletIcon from './icons/WalletIcon';
-import ProfileIcon from './icons/ProfileIcon';
 import StudentsIcon from './icons/StudentsIcon';
 import FinanceIcon from './icons/FinanceIcon';
 import ActivityIcon from './icons/ActivityIcon';
 import HelpIcon from './icons/HelpIcon';
 import { User } from '../types';
-import BellIcon from './icons/BellIcon';
 import LibraryIcon from './icons/LibraryIcon';
 import SettingsIcon from './icons/SettingsIcon';
 import TrashIcon from './icons/TrashIcon';
@@ -56,8 +55,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
     { id: 'bibliotheque', label: 'Bibliothèque', icon: <LibraryIcon className="w-5 h-5" />, disabled: isSuspended },
     { id: 'analyse', label: 'Analyse IA', icon: <AnalysisIcon className="w-5 h-5" />, disabled: isSuspended },
     { id: 'portefeuille', label: 'Portefeuille', icon: <WalletIcon className="w-5 h-5" />, disabled: false },
-    { id: 'notifications', label: 'Notifications', icon: <BellIcon className="w-5 h-5" />, disabled: false },
-    { id: 'profil', label: 'Profil', icon: <ProfileIcon className="w-5 h-5" />, disabled: false },
   ];
 
   const adminNavItems = [
@@ -68,8 +65,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, currentPage, onNavigate, onOpen
     { id: 'activite', label: 'Activité', icon: <ActivityIcon className="w-5 h-5" />, disabled: false },
     { id: 'corbeille', label: 'Corbeille', icon: <TrashIcon className="w-5 h-5" />, disabled: false },
     { id: 'configuration', label: 'Configuration', icon: <SettingsIcon className="w-5 h-5" />, disabled: false },
-    { id: 'profil', label: 'Profil', icon: <ProfileIcon className="w-5 h-5" />, disabled: false },
-    { id: 'notifications', label: 'Notifications', icon: <BellIcon className="w-5 h-5" />, disabled: false },
   ];
 
   const navItems = user.role === 'admin' ? adminNavItems : studentNavItems;

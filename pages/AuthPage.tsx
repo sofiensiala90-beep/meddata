@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { User, MedicalField, SystemSettings } from '../types';
 import Card from '../components/Card';
@@ -140,7 +141,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
           const coinBalance = isAdmin ? Infinity : welcomeBonus;
           const welcomeMessage = isAdmin 
             ? 'Bienvenue, Administrateur !'
-            : `Bienvenue sur MedataAI ! Votre solde de départ est de ${welcomeBonus} coins.`;
+            : `Bienvenue sur DASS ! Votre solde de départ est de ${welcomeBonus} coins.`;
 
           const newUser: Omit<User, 'id' | 'password'> = {
               name: signupData.name,
@@ -167,7 +168,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
            await db.collection('activities').add({
               userId: user.uid,
               type: 'ACCOUNT_CREATED',
-              details: `Compte créé pour ${newUser.name}.`,
+              details: `Compte créé pour ${newUser.name} sur la plateforme DASS.`,
               createdAt: new Date().toISOString(),
           });
 
@@ -346,7 +347,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
             <div className="pt-2">
               <label className="flex items-start">
                 <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="mt-1 h-4 w-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500" />
-                <span className="ml-2 text-sm text-slate-700 dark:text-slate-200">En créant un compte, je reconnais avoir lu et accepté les <a href="#" onClick={(e) => { e.preventDefault(); setIsTermsModalOpen(true); }} className="font-medium text-primary-600 hover:underline dark:text-primary-400">conditions d'utilisation</a> de MedataAI.</span>
+                <span className="ml-2 text-sm text-slate-700 dark:text-slate-200">En créant un compte, je reconnais avoir lu et accepté les <a href="#" onClick={(e) => { e.preventDefault(); setIsTermsModalOpen(true); }} className="font-medium text-primary-600 hover:underline dark:text-primary-400">conditions d'utilisation</a> de DASS.</span>
               </label>
             </div>
             {signupError && <p className="text-sm text-red-500">{signupError}</p>}

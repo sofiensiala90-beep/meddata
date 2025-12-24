@@ -1,4 +1,3 @@
-
 import { User, Form, FormResponse, Transaction, Notification, MedicalField, AnalysisHistory, PurchasedForm, Activity } from '../types';
 
 // The admin user is now used only for the initial seeding of the Firestore database if no admin exists.

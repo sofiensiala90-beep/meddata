@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User, SystemSettings } from '../types';
 
@@ -200,7 +199,7 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
 
 export const getAnalysisSuggestions = async (forms: Form[], responses: FormResponse[]): Promise<any[]> => {
   const psv = prepareDataContext(forms, responses).slice(0, 2000);
-  const instruction = "Tu es un expert biostatisticien DASS. Analyse ces données PSV et suggère 4 analyses pertinentes pour une thèse (Titre, Raison, Prompt technique).";
+  const instruction = "Tu es un expert biostatisticien. Analyse ces données PSV et suggère 4 analyses pertinentes pour une thèse (Titre, Raison, Prompt technique).";
   
   const response = await ai.models.generateContent({
     model: CHAT_MODEL,
@@ -229,13 +228,13 @@ export const generateNotificationRefinement = async (draftText: string): Promise
     const response = await ai.models.generateContent({
         model: CHAT_MODEL,
         contents: `Professionnalise ce message pour un étudiant en médecine : "${draftText}"`,
-        config: { systemInstruction: "Tu es un secrétaire de faculté de médecine travaillant pour DASS. Rends le texte courtois et clair." }
+        config: { systemInstruction: "Tu es un secrétaire de faculté de médecine. Rends le texte courtois et clair." }
     });
     return response.text?.trim() || draftText;
 };
 
 export const getChatbotResponseStream = async (userRole: string, history: ChatMessage[], settings: SystemSettings) => {
-  const instruction = `Tu es DASS, l'assistant intelligent de JS GATE. Aide les utilisateurs sur la plateforme. Tarifs : Validation=${settings.coinCosts.validateForm}, Réponse=${settings.coinCosts.addResponse}, IA=${settings.coinCosts.aiAnalysis}. Tags : [ACTION:navigate_formulaires], [ACTION:navigate_bibliotheque], [ACTION:navigate_analyse], [ACTION:navigate_portefeuille].`;
+  const instruction = `Tu es DASS, assistant de JS GATE. Aide les utilisateurs sur la plateforme. Tarifs : Validation=${settings.coinCosts.validateForm}, Réponse=${settings.coinCosts.addResponse}, IA=${settings.coinCosts.aiAnalysis}. Tags : [ACTION:navigate_formulaires], [ACTION:navigate_bibliotheque], [ACTION:navigate_analyse], [ACTION:navigate_portefeuille].`;
 
   const chat = ai.chats.create({
     model: CHAT_MODEL,

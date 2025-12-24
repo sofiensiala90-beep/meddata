@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, Form, FormResponse, TransactionReason, AnalysisHistory, SystemSettings, UnlockedAnalysis } from '../types';
 import Button from '../components/Button';
@@ -49,20 +48,20 @@ const ChartItem: React.FC<{ chart: any; index: number }> = ({ chart, index }) =>
     };
 
     return (
-        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative group">
-            <div className="flex justify-between items-start mb-4">
-                <h4 className="font-semibold text-slate-700 dark:text-slate-300 text-sm pr-24">{chart.title}</h4>
-                <div className="flex items-center bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-600 p-1 shadow-sm absolute top-3 right-3 z-10 transition-all">
+        <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-700 shadow-sm relative group overflow-hidden">
+            <div className="flex justify-between items-start mb-6">
+                <h4 className="font-black text-slate-800 dark:text-slate-200 text-xs uppercase tracking-widest pr-24 leading-relaxed">{chart.title}</h4>
+                <div className="flex items-center bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-600 p-1 shadow-sm absolute top-4 right-4 z-10 transition-all opacity-80 hover:opacity-100">
                     <button 
                         onClick={() => setChartType('bar')} 
-                        className={`p-1.5 rounded transition-colors ${chartType === 'bar' ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/30' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`p-1.5 rounded-lg transition-colors ${chartType === 'bar' ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/30' : 'text-slate-400 hover:text-slate-600'}`}
                         title="Histogramme"
                     >
                         <BarChartIcon className="w-4 h-4" />
                     </button>
                     <button 
                         onClick={() => setChartType('pie')} 
-                        className={`p-1.5 rounded transition-colors ${chartType === 'pie' ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/30' : 'text-slate-400 hover:text-slate-600'}`}
+                        className={`p-1.5 rounded-lg transition-colors ${chartType === 'pie' ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/30' : 'text-slate-400 hover:text-slate-600'}`}
                         title="Secteurs"
                     >
                         <PieChartIcon className="w-4 h-4" />
@@ -70,7 +69,7 @@ const ChartItem: React.FC<{ chart: any; index: number }> = ({ chart, index }) =>
                     <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1"></div>
                     <button 
                         onClick={togglePalette} 
-                        className="p-1.5 rounded text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-all"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-all"
                         title="Changer les couleurs"
                     >
                         <PaletteIcon className="w-4 h-4" />
@@ -100,19 +99,9 @@ const Analysis: React.FC<AnalysisProps> = ({
   const chatEndRef = useRef<HTMLDivElement>(null);
   const selectorRef = useRef<HTMLDivElement>(null);
 
-  // Seuls les formulaires validés que l'utilisateur possède (ou tous pour l'admin) sont éligibles
-  const validatedForms = useMemo(() => 
-    forms.filter(f => f.status === 'validated' && (f.userId === user.id || user.role === 'admin')), 
-  [forms, user.id, user.role]);
-
   useEffect(() => {
     if (analysisContext?.formIds) setSelectedFormIds(analysisContext.formIds);
   }, [analysisContext]);
-
-  // SYNC : Supprime automatiquement de la sélection les formulaires qui ont été supprimés de la base de données
-  useEffect(() => {
-    setSelectedFormIds(prev => prev.filter(id => validatedForms.some(vf => vf.id === id)));
-  }, [validatedForms]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -131,18 +120,41 @@ const Analysis: React.FC<AnalysisProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isSourceSelectorOpen]);
 
+  // CRITIQUE : Seuls les formulaires validés ET appartenant à l'utilisateur sont éligibles
+  const eligibleForms = useMemo(() => {
+    return forms.filter(f => {
+        const isValidated = f.status === 'validated';
+        const isOwner = f.userId === user.id;
+        if (user.role === 'admin') return isValidated;
+        return isValidated && isOwner;
+    });
+  }, [forms, user.id, user.role]);
+
+  // SÉCURITÉ : Nettoyage automatique des IDs sélectionnés qui ne sont plus éligibles
+  useEffect(() => {
+    setSelectedFormIds(prev => {
+        const next = prev.filter(id => eligibleForms.some(f => f.id === id));
+        // Si la sélection change, on réinitialise les suggestions
+        if (next.length !== prev.length) setSuggestions([]);
+        return next;
+    });
+  }, [eligibleForms]);
+
   const isUnlocked = user.role === 'admin' || (selectedFormIds.length > 0 && selectedFormIds.every(fid => unlockedAnalysis.some(u => u.formId === fid)));
 
   useEffect(() => {
-    if (isUnlocked && selectedFormIds.length > 0 && suggestions.length === 0) {
+    if (isUnlocked && selectedFormIds.length > 0 && suggestions.length === 0 && !loadingSuggestions) {
       setLoadingSuggestions(true);
-      const selectedForms = validatedForms.filter(f => selectedFormIds.includes(f.id));
+      const selectedForms = eligibleForms.filter(f => selectedFormIds.includes(f.id));
       const selectedResponses = responses.filter(r => selectedFormIds.includes(r.formId));
       getAnalysisSuggestions(selectedForms, selectedResponses)
         .then(setSuggestions)
+        .catch(() => setSuggestions([]))
         .finally(() => setLoadingSuggestions(false));
+    } else if (selectedFormIds.length === 0) {
+        setSuggestions([]);
     }
-  }, [isUnlocked, selectedFormIds, validatedForms, responses, suggestions.length]);
+  }, [isUnlocked, selectedFormIds, eligibleForms, responses]);
 
   const handleAnalyze = async (prompt: string = userPrompt) => {
     if (!prompt.trim()) return;
@@ -152,7 +164,7 @@ const Analysis: React.FC<AnalysisProps> = ({
     if (window.innerWidth < 1024) setMobileTab('report');
 
     try {
-      const selectedForms = validatedForms.filter(f => selectedFormIds.includes(f.id));
+      const selectedForms = eligibleForms.filter(f => selectedFormIds.includes(f.id));
       const selectedResponses = responses.filter(r => selectedFormIds.includes(r.formId));
       const result = await getAnalysis(selectedForms, selectedResponses, prompt, currentAnalysisResult);
       setCurrentAnalysisResult(result);
@@ -205,7 +217,7 @@ const Analysis: React.FC<AnalysisProps> = ({
                     </button>
                     {isSourceSelectorOpen && (
                         <div className="absolute left-4 right-4 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-50 p-2 max-h-64 overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
-                            {validatedForms.map(f => {
+                            {eligibleForms.map(f => {
                                 const isFormUnlocked = user.role === 'admin' || unlockedAnalysis.some(u => u.formId === f.id);
                                 return (
                                     <label key={f.id} className="flex items-center p-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg cursor-pointer group transition-colors">
@@ -226,11 +238,6 @@ const Analysis: React.FC<AnalysisProps> = ({
                                     </label>
                                 );
                             })}
-                            {validatedForms.length === 0 && (
-                                <div className="p-4 text-center text-xs text-slate-400 italic">
-                                    Aucune source validée disponible.
-                                </div>
-                            )}
                         </div>
                     )}
                 </div>
@@ -252,14 +259,23 @@ const Analysis: React.FC<AnalysisProps> = ({
                                 </div>
                             ) : (
                                 <>
-                                    {chatHistory.length === 0 && suggestions.length > 0 && (
+                                    {chatHistory.length === 0 && (
                                         <div className="space-y-2 mb-4 animate-fade-in">
                                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Suggestions d'expert</p>
-                                            {suggestions.map((s, i) => (
-                                                <button key={i} onClick={() => handleAnalyze(s.searchPrompt)} className="block w-full text-left p-3 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-primary-400 hover:shadow-md transition-all group">
-                                                    <span className="font-bold text-primary-600 dark:text-primary-400 group-hover:scale-110 inline-block mr-1">✨</span> {s.title}
-                                                </button>
-                                            ))}
+                                            {loadingSuggestions ? (
+                                                <div className="flex justify-start items-center space-x-3 p-3 animate-pulse bg-white/50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
+                                                    <Spinner className="w-4 h-4 text-primary-500" />
+                                                    <span className="text-xs text-slate-400 font-medium italic">DASS réfléchit pour suggérer...</span>
+                                                </div>
+                                            ) : suggestions.length > 0 ? (
+                                                suggestions.map((s, i) => (
+                                                    <button key={i} onClick={() => handleAnalyze(s.searchPrompt)} className="block w-full text-left p-3 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-primary-400 hover:shadow-md transition-all group">
+                                                        <span className="font-bold text-primary-600 dark:text-primary-400 group-hover:scale-110 inline-block mr-1">✨</span> {s.title}
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <p className="text-[10px] text-slate-400 italic px-1">Aucune suggestion disponible.</p>
+                                            )}
                                         </div>
                                     )}
                                     {chatHistory.map((m, i) => (
@@ -311,11 +327,11 @@ const Analysis: React.FC<AnalysisProps> = ({
                         {currentAnalysisResult && <Button onClick={handleExportWord} variant="secondary" className="!py-1.5 !px-3 !text-xs rounded-xl"><WordIcon className="w-4 h-4 mr-1.5" /> Exporter Word</Button>}
                     </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-8 lg:p-12 custom-scrollbar space-y-8">
+                <div className="flex-1 overflow-y-auto p-8 lg:p-12 custom-scrollbar space-y-12">
                     {currentAnalysisResult ? (
                         <div className="animate-fade-in-up">
                             {currentAnalysisResult.charts?.length > 0 && (
-                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 pb-10 mb-10 border-b border-dashed border-slate-200 dark:border-slate-700">
+                                <div className="grid grid-cols-1 gap-12 pb-12 mb-12 border-b border-dashed border-slate-200 dark:border-slate-700">
                                     {currentAnalysisResult.charts.map((c: any, i: number) => <ChartItem key={i} chart={c} index={i} />)}
                                 </div>
                             )}

@@ -78,8 +78,6 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notificati
     'finances': 'Finances',
     'activite': 'Activité',
     'bibliotheque': 'Bibliothèque',
-    'corbeille': 'Corbeille Admin',
-    'configuration': 'Configuration'
   };
 
   const title = pageTitles[currentPage] || currentPage;
@@ -189,13 +187,12 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, currentPage, notificati
                         <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
                     </div>
                     <div className="py-2">
-                        {/* Désormais accessible pour Admin et Student */}
                         <button
                             onClick={() => { onNavigate('profil'); setIsProfileMenuOpen(false); }}
                             className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center"
                         >
                             <ProfileIcon className="w-4 h-4 mr-3 text-slate-400" />
-                            {user.role === 'admin' ? 'Profil Admin' : 'Mon Profil'}
+                            Mon Profil
                         </button>
                         <button
                             onClick={onLogout}

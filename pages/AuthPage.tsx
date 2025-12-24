@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { User, MedicalField, SystemSettings } from '../types';
 import Card from '../components/Card';
@@ -168,7 +167,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
            await db.collection('activities').add({
               userId: user.uid,
               type: 'ACCOUNT_CREATED',
-              details: `Compte créé pour ${newUser.name} sur la plateforme DASS.`,
+              details: `Compte créé pour ${newUser.name}.`,
               createdAt: new Date().toISOString(),
           });
 

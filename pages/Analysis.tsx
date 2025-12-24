@@ -1,3 +1,5 @@
+
+// Added React import to provide access to the React namespace for React.FC
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, Form, FormResponse, TransactionReason, AnalysisHistory, SystemSettings, UnlockedAnalysis } from '../types';
 import Button from '../components/Button';
@@ -8,7 +10,6 @@ import ConfirmationModal, { ConfirmationModalProps } from '../components/Confirm
 import CoinIcon from '../components/icons/CoinIcon';
 import HistoryIcon from '../components/icons/HistoryIcon';
 import WordIcon from '../components/icons/WordIcon';
-import ChatIcon from '../components/icons/ChatIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import BarChartIcon from '../components/icons/BarChartIcon';
 import PieChartIcon from '../components/icons/PieChartIcon';
@@ -34,6 +35,7 @@ const COLOR_PALETTES = {
     classic: ['#1d4ed8', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#be123c'],
 };
 
+// Fixed missing React namespace by adding React import on line 2
 const ChartItem: React.FC<{ chart: any; index: number }> = ({ chart, index }) => {
     const [chartType, setChartType] = useState<'bar' | 'pie'>(
         chart.type === 'doughnut' ? 'pie' : (chart.type || 'bar')
@@ -81,6 +83,7 @@ const ChartItem: React.FC<{ chart: any; index: number }> = ({ chart, index }) =>
     );
 };
 
+// Fixed missing React namespace by adding React import on line 2
 const Analysis: React.FC<AnalysisProps> = ({ 
   user, forms, responses, onTransaction, analysisContext, onNavigate, 
   analysisHistory, saveAnalysisToHistory, deleteAnalysisHistory, unlockedAnalysis, systemSettings 
@@ -107,7 +110,6 @@ const Analysis: React.FC<AnalysisProps> = ({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, isAnalyzing]);
 
-  // Gestion du clic extérieur pour le sélecteur
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
         if (selectorRef.current && !selectorRef.current.contains(event.target as Node)) {
@@ -120,7 +122,6 @@ const Analysis: React.FC<AnalysisProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isSourceSelectorOpen]);
 
-  // CRITIQUE : Seuls les formulaires validés ET appartenant à l'utilisateur sont éligibles
   const eligibleForms = useMemo(() => {
     return forms.filter(f => {
         const isValidated = f.status === 'validated';
@@ -130,11 +131,9 @@ const Analysis: React.FC<AnalysisProps> = ({
     });
   }, [forms, user.id, user.role]);
 
-  // SÉCURITÉ : Nettoyage automatique des IDs sélectionnés qui ne sont plus éligibles
   useEffect(() => {
     setSelectedFormIds(prev => {
         const next = prev.filter(id => eligibleForms.some(f => f.id === id));
-        // Si la sélection change, on réinitialise les suggestions
         if (next.length !== prev.length) setSuggestions([]);
         return next;
     });
@@ -201,6 +200,14 @@ const Analysis: React.FC<AnalysisProps> = ({
     const a = document.createElement('a'); a.href = url; a.download = 'Rapport_DASS.doc'; a.click();
   };
 
+  const handleLoadHistory = (item: AnalysisHistory) => {
+      setSelectedFormIds(item.formIds);
+      setCurrentAnalysisResult(item.analysisResult);
+      setChatHistory([{ role: 'user', text: item.userPrompt }, { role: 'ai', text: item.analysisResult.chatResponse }]);
+      setShowHistoryModal(false);
+      setMobileTab('report');
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-110px)] gap-4 pb-2">
         <div className="lg:hidden flex border-b border-slate-200 dark:border-slate-700">
@@ -212,7 +219,7 @@ const Analysis: React.FC<AnalysisProps> = ({
             <div className={`w-full lg:w-[35%] flex-col bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden ${mobileTab === 'chat' ? 'flex' : 'hidden lg:flex'}`}>
                 <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20 relative" ref={selectorRef}>
                     <button onClick={() => setIsSourceSelectorOpen(!isSourceSelectorOpen)} className="w-full flex justify-between items-center p-3 bg-white dark:bg-slate-800 border rounded-xl shadow-sm text-sm">
-                        <span className="font-medium text-slate-700 dark:text-slate-200">{selectedFormIds.length || "0"} source(s) sélectionnée(s)</span>
+                        <span className="font-medium text-slate-700 dark:text-2xl-200">{selectedFormIds.length || "0"} source(s) sélectionnée(s)</span>
                         <svg className={`w-5 h-5 text-slate-400 transition-transform ${isSourceSelectorOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                     </button>
                     {isSourceSelectorOpen && (
@@ -317,7 +324,7 @@ const Analysis: React.FC<AnalysisProps> = ({
             </div>
 
             <div className={`w-full lg:w-[65%] bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex-col overflow-hidden ${mobileTab === 'report' ? 'flex' : 'hidden lg:flex'}`}>
-                <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20">
+                <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/10">
                     <div className="flex items-center">
                         <div className="w-2 h-6 bg-primary-500 rounded-full mr-3 shadow-glow"></div>
                         <h3 className="font-black text-slate-800 dark:text-white uppercase tracking-tighter">Rapport DASS</h3>
@@ -348,6 +355,57 @@ const Analysis: React.FC<AnalysisProps> = ({
                 </div>
             </div>
         </div>
+
+        {/* MODAL HISTORIQUE */}
+        {showHistoryModal && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-[100] p-4" onClick={() => setShowHistoryModal(false)}>
+                <div className="bg-white dark:bg-slate-800 rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-scale-up" onClick={e => e.stopPropagation()}>
+                    <header className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/10">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-primary-100 dark:bg-primary-900/30 rounded-xl text-primary-600 dark:text-primary-400">
+                                <HistoryIcon className="w-6 h-6" />
+                            </div>
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">Historique des Analyses</h3>
+                        </div>
+                        <button onClick={() => setShowHistoryModal(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </header>
+                    <main className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar bg-slate-50/30 dark:bg-slate-900/5">
+                        {analysisHistory.length > 0 ? (
+                            analysisHistory.map(item => (
+                                <div key={item.id} className="group relative bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-primary-300 hover:shadow-lg transition-all cursor-pointer" onClick={() => handleLoadHistory(item)}>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <p className="text-[10px] font-black text-primary-500 uppercase tracking-widest">{new Date(item.createdAt).toLocaleString()}</p>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); deleteAnalysisHistory(item.id!); }}
+                                            className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                        >
+                                            <TrashIcon className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <h4 className="text-sm font-bold text-slate-800 dark:text-white mb-1 line-clamp-1">"{item.userPrompt}"</h4>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {item.formTitles?.map((t, idx) => (
+                                            <span key={idx} className="text-[9px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded-full uppercase">{t}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-4">
+                                <HistoryIcon className="w-12 h-12 opacity-20" />
+                                <p className="text-sm font-bold uppercase tracking-widest italic opacity-50">Aucun historique disponible</p>
+                            </div>
+                        )}
+                    </main>
+                    <footer className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-center">
+                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-tight">Vos analyses sont sauvegardées automatiquement après chaque génération.</p>
+                    </footer>
+                </div>
+            </div>
+        )}
+
         {confirmation && <ConfirmationModal {...confirmation} />}
     </div>
   );

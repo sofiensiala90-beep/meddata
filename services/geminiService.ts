@@ -1,11 +1,14 @@
+
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ChatMessage, Form, FormResponse, User, SystemSettings } from '../types';
 
-// Initialisation conforme aux guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+// Initialisation stricte conforme aux guidelines
+// process.env.API_KEY est injecté par Vite/Vercel
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Modèles recommandés
-const ANALYSIS_MODEL = 'gemini-3-pro-preview';
+// Utilisation de gemini-3-flash-preview pour toutes les tâches afin d'assurer 
+// une disponibilité maximale et une latence réduite en production.
+const ANALYSIS_MODEL = 'gemini-3-flash-preview';
 const CHAT_MODEL = 'gemini-3-flash-preview';
 
 // Schéma JSON strict pour l'analyse
@@ -58,6 +61,7 @@ const analysisResponseSchema: Schema = {
 
 /**
  * Prépare le contexte au format PSV (Pipe-Separated Values)
+ * Ajout d'une limite de sécurité pour éviter les prompts trop volumineux (Timeout Vercel)
  */
 const prepareDataContext = (forms: Form[], responses: FormResponse[]): string => {
   let output = "";
@@ -70,7 +74,8 @@ const prepareDataContext = (forms: Form[], responses: FormResponse[]): string =>
     output += headers.map(() => "---").join("|") + "\n";
 
     const formResponses = responses.filter(r => r.formId === form.id);
-    formResponses.forEach(r => {
+    // On limite aux 150 dernières réponses pour garantir la rapidité de l'analyse en mode Preview
+    formResponses.slice(-150).forEach(r => {
       const rowValues = fieldIds.map(fid => {
         const val = r.data[fid];
         const strVal = Array.isArray(val) ? val.join("; ") : (val != null ? String(val) : "");
@@ -80,7 +85,7 @@ const prepareDataContext = (forms: Form[], responses: FormResponse[]): string =>
     });
     output += "\n";
   });
-  return output;
+  return output.slice(0, 30000); // Sécurité anti-saturation
 };
 
 /**
@@ -142,17 +147,14 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
       1. MODE COMPTABLE (Rigueur Absolue) :
          - Pour tous les chiffres descriptifs (%, moyennes, effectifs), UTILISE EXCLUSIVEMENT le "RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ".
          - INTERDICTION de recalculer ou d'arrondir. Si le résumé dit "17.24%", tu écris "17.24%".
-         - Ne recompte jamais les lignes brutes toi-même pour les statistiques de base.
 
       2. MODE CHERCHEUR (Créativité & Perspicacité) :
          - Interprète cliniquement ces chiffres. Pourquoi sont-ils importants ?
-         - Utilise les données brutes (PSV) pour identifier des corrélations complexes ou des tendances individuelles.
-         - Fais des liens avec la littérature médicale épidémiologique.
+         - Utilise les données brutes (PSV) pour identifier des corrélations complexes.
 
       CONTRAINTES DE SORTIE :
       - Format : JSON Strict.
       - Contenu 'analysisText' : HTML Pur uniquement. **Markdown INTERDIT**.
-      - Balises autorisées : <h3>, <p>, <ul>, <li>, <strong>.
       - 'chatResponse' : Un résumé d'une phrase + 2 propositions d'analyses de corrélation spécifiques.
     `;
 
@@ -160,15 +162,15 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
       baseInstruction += `
         MODE RAFFINEMENT : 
         L'étudiant souhaite approfondir le rapport précédent.
-        IMPORTANT : Entoure EXCLUSIVEMENT les phrases ajoutées ou modifiées dans le rapport avec : <span style="color: #6366f1; font-weight: bold;">...</span>
+        IMPORTANT : Entoure EXCLUSIVEMENT les phrases ajoutées ou modifiées avec : <span style="color: #14b8a6; font-weight: bold;">...</span>
       `;
     }
 
     const userContent = `
-      === RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ (SSOT) ===
+      === RÉSUMÉ STATISTIQUE PRÉ-CALCULÉ ===
       ${stats}
 
-      === DONNÉES BRUTES (PSV) ===
+      === DONNÉES BRUTES ===
       ${psvData}
 
       ${previousReport ? `RAPPORT ACTUEL : ${JSON.stringify(previousReport)}` : ""}
@@ -189,48 +191,53 @@ export const getAnalysis = async (forms: Form[], responses: FormResponse[], user
     return JSON.parse(response.text || "{}");
   } catch (error) {
     console.error("Gemini Error:", error);
-    return {
-      analysisText: "<p class='text-red-500'>Erreur lors de l'analyse. Veuillez vérifier votre clé API ou retenter.</p>",
-      chatResponse: "Une erreur technique est survenue.",
-      charts: []
-    };
+    throw error; // On laisse le composant UI gérer l'affichage de l'erreur
   }
 };
 
 export const getAnalysisSuggestions = async (forms: Form[], responses: FormResponse[]): Promise<any[]> => {
-  const psv = prepareDataContext(forms, responses).slice(0, 2000);
-  const instruction = "Tu es un expert biostatisticien. Analyse ces données PSV et suggère 4 analyses pertinentes pour une thèse (Titre, Raison, Prompt technique).";
-  
-  const response = await ai.models.generateContent({
-    model: CHAT_MODEL,
-    contents: psv,
-    config: {
-      systemInstruction: instruction,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            description: { type: Type.STRING },
-            searchPrompt: { type: Type.STRING }
-          },
-          required: ["title", "description", "searchPrompt"]
+  try {
+    const psv = prepareDataContext(forms, responses).slice(0, 5000);
+    const instruction = "Tu es un expert biostatisticien. Analyse ces données PSV et suggère 4 analyses pertinentes pour une thèse (Titre, Raison, Prompt technique).";
+    
+    const response = await ai.models.generateContent({
+      model: CHAT_MODEL,
+      contents: psv,
+      config: {
+        systemInstruction: instruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              description: { type: Type.STRING },
+              searchPrompt: { type: Type.STRING }
+            },
+            required: ["title", "description", "searchPrompt"]
+          }
         }
       }
-    }
-  });
-  return JSON.parse(response.text || "[]");
+    });
+    return JSON.parse(response.text || "[]");
+  } catch (error) {
+    console.error("Suggestions Error:", error);
+    return [];
+  }
 };
 
 export const generateNotificationRefinement = async (draftText: string): Promise<string> => {
-    const response = await ai.models.generateContent({
-        model: CHAT_MODEL,
-        contents: `Professionnalise ce message pour un étudiant en médecine : "${draftText}"`,
-        config: { systemInstruction: "Tu es un secrétaire de faculté de médecine. Rends le texte courtois et clair." }
-    });
-    return response.text?.trim() || draftText;
+    try {
+        const response = await ai.models.generateContent({
+            model: CHAT_MODEL,
+            contents: `Professionnalise ce message pour un étudiant en médecine : "${draftText}"`,
+            config: { systemInstruction: "Tu es un secrétaire de faculté de médecine. Rends le texte courtois et clair." }
+        });
+        return response.text?.trim() || draftText;
+    } catch {
+        return draftText;
+    }
 };
 
 export const getChatbotResponseStream = async (userRole: string, history: ChatMessage[], settings: SystemSettings) => {

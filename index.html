@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" class="scroll-smooth">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>DASS • JS GATE</title>
   
   <!-- Tailwind CSS via CDN -->
@@ -12,8 +12,6 @@
   <style type="text/tailwindcss">
     @layer base {
       :root {
-        /* New Palette: Teal/Emerald (Medical Tech Feel) */
-        /* Replaces the old Indigo palette */
         --color-primary-50: 240 253 250;
         --color-primary-100: 204 251 241;
         --color-primary-200: 153 246 228;
@@ -25,72 +23,72 @@
         --color-primary-800: 17 94 89;
         --color-primary-900: 19 78 74;
       }
+      /* Prevent elastic bounce on mobile but allow scrolling */
+      body {
+        overscroll-behavior-y: none;
+        -webkit-tap-highlight-color: transparent;
+      }
     }
     @layer components {
       .prose {
         color: theme('colors.slate.700');
+        font-size: 0.9375rem;
       }
       .dark .prose {
         color: theme('colors.slate.300');
       }
       .prose h1, .prose h2, .prose h3, .prose h4 {
         color: theme('colors.teal.900');
+        line-height: 1.2;
       }
       .dark .prose h1, .dark .prose h2, .dark .prose h3, .dark .prose h4 {
         color: theme('colors.white');
       }
-      .prose strong {
-         color: theme('colors.teal.800');
-      }
-      .dark .prose strong {
-         color: theme('colors.teal.200');
-      }
-       .prose blockquote {
-        border-left-color: theme('colors.primary.500');
-        color: theme('colors.slate.600');
-        background-color: theme('colors.primary.50');
-        padding: 1rem;
-        border-radius: 0.5rem;
-      }
-      .dark .prose blockquote {
-         border-left-color: theme('colors.primary.400');
-         color: theme('colors.slate.400');
-         background-color: theme('colors.slate.800');
-      }
-      @keyframes blink {
-        50% { opacity: 0; }
-      }
-      .blinking-cursor {
-        display: inline-block;
-        width: 8px;
-        height: 1rem;
-        background-color: theme('colors.slate.700');
-        animation: blink 1s step-start infinite;
-      }
-      .dark .blinking-cursor {
-        background-color: theme('colors.slate.300');
-      }
       
       /* Glassmorphism Utilities */
       .glass-panel {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
       }
       .dark .glass-panel {
-        background: rgba(30, 41, 59, 0.7);
+        background: rgba(30, 41, 59, 0.8);
+      }
+
+      /* Custom Mobile Scrollbar */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: theme('colors.slate.300');
+        border-radius: 10px;
+      }
+      .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: theme('colors.slate.600');
+      }
+
+      /* Animation for modals */
+      @keyframes mobile-slide-up {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+      }
+      .animate-mobile-slide-up {
+        animation: mobile-slide-up 0.3s ease-out;
       }
     }
   </style>
 
   <script>
-    // Tailwind Custom Configuration
     tailwind.config = {
       darkMode: 'class',
       theme: {
         extend: {
           fontFamily: {
-            sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
           },
           colors: {
             primary: {
@@ -109,13 +107,13 @@
           boxShadow: {
             'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
             'glow': '0 0 15px rgba(20, 184, 166, 0.3)',
+            'top': '0 -4px 15px -5px rgba(0,0,0,0.1)',
           }
         }
       }
     }
   </script>
   <script>
-    // Polyfill simple pour éviter le crash 'process is not defined' dans le navigateur
     window.process = { env: { NODE_ENV: 'production' } };
   </script>
 <script type="importmap">
@@ -131,11 +129,11 @@
   }
 }
 </script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-gradient-to-br from-slate-50 to-primary-50 dark:from-slate-900 dark:to-slate-800 bg-fixed min-h-screen text-slate-800 dark:text-slate-100 font-sans antialiased selection:bg-primary-200 selection:text-primary-900">
-  <noscript>You need to enable JavaScript to run this app.</noscript>
+<body class="bg-slate-50 dark:bg-slate-900 min-h-screen text-slate-800 dark:text-slate-100 font-sans antialiased selection:bg-primary-200 selection:text-primary-900 transition-colors duration-300">
+  <noscript>Vous devez activer JavaScript pour utiliser cette application.</noscript>
   <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>

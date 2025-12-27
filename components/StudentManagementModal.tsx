@@ -1,58 +1,29 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, Form, FormResponse, TransactionType, MedicalField, FormField } from '../types';
 import Button from './Button';
 import ConfirmationModal, { ConfirmationModalProps } from './ConfirmationModal';
 import { generateNotificationRefinement } from '../services/geminiService';
 import Spinner from './Spinner';
-
-// --- Components ---
+import CoinIcon from './icons/CoinIcon';
+import FormsIcon from './icons/FormsIcon';
+import ProfileIcon from './icons/ProfileIcon';
 
 const DiffBadge: React.FC<{ type: 'added' | 'removed' | 'modified' | 'unchanged' }> = ({ type }) => {
     switch (type) {
-        case 'added': return <span className="text-[9px] bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full font-black uppercase">+ Nouveau</span>;
-        case 'removed': return <span className="text-[9px] bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 px-2 py-0.5 rounded-full font-black uppercase">- Supprimé</span>;
-        case 'modified': return <span className="text-[9px] bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full font-black uppercase">Δ Modifié</span>;
-        default: return <span className="text-[9px] bg-slate-100 dark:bg-slate-700 text-slate-400 px-2 py-0.5 rounded-full font-black uppercase">Identique</span>;
+        case 'added': return <span className="text-[9px] bg-green-100 dark:bg-green-900/50 text-green-700 px-2 py-0.5 rounded-full font-black uppercase">+ Nouveau</span>;
+        case 'removed': return <span className="text-[9px] bg-red-100 dark:bg-red-900/50 text-red-700 px-2 py-0.5 rounded-full font-black uppercase">- Supprimé</span>;
+        case 'modified': return <span className="text-[9px] bg-blue-100 dark:bg-blue-900/50 text-blue-700 px-2 py-0.5 rounded-full font-black uppercase">Δ Modifié</span>;
+        default: return null;
     }
 };
 
-const FormStructureView: React.FC<{ form: Form; onBack: () => void }> = ({ form, onBack }) => {
-    return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-4">
-                <button onClick={onBack} className="text-xs font-black uppercase text-primary-600 hover:underline">← Retour à la liste</button>
-                <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full">Structure du formulaire</span>
-            </div>
-            <div className="space-y-4">
-                {form.schema.map((field, idx) => (
-                    <div key={field.id} className="p-5 bg-white dark:bg-slate-800 rounded-3xl border-2 border-slate-100 dark:border-slate-700 shadow-sm">
-                        <div className="flex justify-between mb-2">
-                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Question {idx + 1}</span>
-                             <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded font-bold text-slate-500 uppercase">{field.type}</span>
-                        </div>
-                        <p className="text-sm font-black text-slate-800 dark:text-slate-100 mb-3">{field.label || "Sans libellé"}</p>
-                        {(field.type === 'choice' || field.type === 'checkbox') && field.options && (
-                            <div className="space-y-2 mt-3 pl-3 border-l-2 border-primary-100 dark:border-primary-900">
-                                <p className="text-[10px] font-black text-primary-500 uppercase tracking-tight mb-1">Choix possibles :</p>
-                                {field.options.map((opt, i) => (
-                                    <div key={i} className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 font-medium">
-                                        <div className={`w-1.5 h-1.5 rounded-full ${field.type === 'choice' ? 'bg-primary-300' : 'bg-blue-300'}`}></div>
-                                        {opt}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {field.type === 'range' && (
-                            <div className="text-[10px] font-bold text-slate-400 mt-2">
-                                Échelle de {field.min ?? 0} à {field.max ?? 100}
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
+const getStatusBadge = (status: User['status']) => {
+    switch (status) {
+        case 'active': return { text: 'ACTIF', className: 'bg-green-100 text-green-700 border-green-200' };
+        case 'suspended_payment': return { text: 'SUSPENDU (PAIEMENT)', className: 'bg-amber-100 text-amber-700 border-amber-200' };
+        case 'suspended_manual': return { text: 'SUSPENDU (ADMIN)', className: 'bg-red-100 text-red-700 border-red-200' };
+        default: return { text: 'INCONNU', className: 'bg-slate-100 text-slate-700 border-slate-200' };
+    }
 };
 
 const FormComparisonView: React.FC<{ 
@@ -63,101 +34,47 @@ const FormComparisonView: React.FC<{
     onBack: () => void 
 }> = ({ currentForm, backupForm, onApprove, onReject, onBack }) => {
     
-    const renderFieldCard = (field: FormField, status: 'added' | 'removed' | 'modified' | 'unchanged', originalField?: FormField) => {
-        const isModified = status === 'modified' && originalField;
-        
-        return (
-            <div className={`p-5 rounded-3xl border-2 transition-all shadow-sm ${
-                status === 'added' ? 'border-green-400 bg-green-50/10' :
-                status === 'removed' ? 'border-red-300 bg-red-50/10 grayscale opacity-70' :
-                status === 'modified' ? 'border-blue-400 bg-blue-50/10' :
-                'border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800'
-            }`}>
-                <div className="flex justify-between items-start mb-3">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Question</span>
-                    <DiffBadge type={status} />
-                </div>
-                
-                <div className="space-y-1">
-                    {isModified && originalField.label !== field.label && (
-                        <p className="text-[10px] text-red-500 line-through font-bold mb-1 opacity-60">{originalField.label}</p>
-                    )}
-                    <p className={`font-black text-sm leading-snug ${status === 'removed' ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-slate-100'}`}>
-                        {field.label || "Sans libellé"}
-                    </p>
-                </div>
-
-                <div className="mt-3 flex items-center gap-2">
-                    <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-lg font-bold uppercase tracking-wider text-slate-500">
-                        {isModified && originalField.type !== field.type && (
-                            <span className="text-red-400 line-through mr-1">{originalField.type} →</span>
-                        )}
-                        {field.type}
-                    </span>
-                </div>
-
-                {(field.type === 'choice' || field.type === 'checkbox') && field.options && (
-                    <div className="mt-3 space-y-1.5 pl-3 border-l-2 border-slate-100 dark:border-slate-700/50">
-                        <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Choix :</p>
-                        {field.options.map((opt, i) => (
-                            <div key={i} className="flex items-center gap-2 text-[11px] font-medium text-slate-600 dark:text-slate-400">
-                                <div className="w-1 h-1 rounded-full bg-slate-300"></div>
-                                {opt}
-                            </div>
-                        ))}
-                    </div>
-                )}
+    const renderFieldCard = (field: FormField, status: 'added' | 'removed' | 'modified' | 'unchanged', originalField?: FormField) => (
+        <div className={`p-4 rounded-2xl border-2 mb-3 transition-all ${status === 'added' ? 'border-green-100 bg-green-50/30' : status === 'removed' ? 'border-red-100 opacity-50' : status === 'modified' ? 'border-blue-100 bg-blue-50/30' : 'border-slate-50'}`}>
+            <div className="flex justify-between mb-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{field.type}</span>
+                <DiffBadge type={status} />
             </div>
-        );
-    };
-
-    const originalFields = backupForm?.schema || [];
-    const newFields = currentForm.schema;
+            <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{field.label || "Sans libellé"}</p>
+        </div>
+    );
 
     return (
-        <div className="flex flex-col h-full space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50/50 dark:bg-slate-900/20 p-4 rounded-3xl border border-slate-100 dark:border-slate-800">
-                <button onClick={onBack} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-primary-600 flex items-center gap-2 group transition-all">
-                    ← Retour
+        <div className="flex flex-col h-full space-y-4">
+            <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                <button onClick={onBack} className="text-[10px] font-black uppercase text-slate-400 hover:text-primary-600 flex items-center transition-colors">
+                    <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7" /></svg>
+                    Retour
                 </button>
-                <div className="flex gap-3">
-                    <Button onClick={onReject} variant="danger" className="!py-2 !px-6 text-xs font-black uppercase">Refuser</Button>
-                    <Button onClick={onApprove} className="!py-2 !px-6 text-xs font-black uppercase">Approuver</Button>
+                <div className="flex gap-2">
+                    <Button onClick={onReject} variant="danger" className="!py-2 !px-4 !text-[10px] uppercase font-black">Refuser</Button>
+                    <Button onClick={onApprove} className="!py-2 !px-4 !text-[10px] uppercase font-black">Approuver</Button>
                 </div>
             </div>
-            
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-[2.5rem] border-2 border-primary-100 dark:border-primary-900 shadow-xl shadow-primary-500/5">
-                <h4 className="text-[10px] font-black text-primary-500 uppercase tracking-[0.3em] mb-2">Justificatif de modification</h4>
-                <p className="text-slate-700 dark:text-slate-100 italic font-bold leading-relaxed">
-                    "{currentForm.modificationRequestReason || "Aucun motif fourni."}"
-                </p>
+            <div className="bg-primary-50/30 dark:bg-primary-900/10 p-4 rounded-2xl border border-primary-100 dark:border-primary-900/30">
+                <h4 className="text-[9px] font-black text-primary-500 uppercase tracking-[0.2em] mb-1">Motif de la modification</h4>
+                <p className="text-slate-700 dark:text-slate-300 italic text-sm leading-relaxed">"{currentForm.modificationRequestReason || "Aucun motif spécifié."}"</p>
             </div>
-
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 overflow-hidden min-h-0">
-                <div className="flex flex-col border-2 rounded-[2.5rem] bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-700 overflow-hidden shadow-inner">
-                    <div className="p-4 font-black text-slate-500 border-b-2 border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 text-[10px] uppercase tracking-widest">
-                        VERSION ORIGINALE ({originalFields.length} Questions)
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
-                        {originalFields.map((field) => {
-                            const stillExists = newFields.some(f => f.id === field.id);
-                            return <div key={field.id}>{renderFieldCard(field, stillExists ? 'unchanged' : 'removed')}</div>;
-                        })}
-                        {originalFields.length === 0 && <p className="text-center italic text-slate-400 py-20 font-bold uppercase text-xs">Formulaire initial vide</p>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-hidden flex-1">
+                <div className="flex flex-col border border-slate-100 dark:border-slate-800 rounded-3xl overflow-hidden bg-white dark:bg-slate-900/40">
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800 font-black text-[9px] uppercase tracking-widest text-slate-500 text-center">Version Actuelle (Backup)</div>
+                    <div className="p-4 overflow-y-auto custom-scrollbar flex-1">
+                        {backupForm?.schema.map(f => <div key={f.id}>{renderFieldCard(f, currentForm.schema.some(sf => sf.id === f.id) ? 'unchanged' : 'removed')}</div>)}
+                        {!backupForm && <p className="text-center py-10 text-xs text-slate-400 italic">Aucune donnée de backup.</p>}
                     </div>
                 </div>
-
-                <div className="flex flex-col border-2 rounded-[2.5rem] bg-primary-50/20 dark:bg-primary-900/10 border-primary-200 dark:border-primary-900/40 overflow-hidden shadow-2xl shadow-primary-500/5">
-                    <div className="p-4 font-black text-primary-600 border-b-2 border-primary-100 dark:border-primary-900/30 bg-primary-100/50 dark:bg-primary-900/30 text-[10px] uppercase tracking-widest">
-                        NOUVELLE PROPOSITION ({newFields.length} Questions)
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
-                        {newFields.map((field) => {
-                            const original = originalFields.find(f => f.id === field.id);
-                            const status = !original ? 'added' : 
-                                           (original.label !== field.label || original.type !== field.type || JSON.stringify(original.options) !== JSON.stringify(field.options)) 
-                                           ? 'modified' : 'unchanged';
-                            return <div key={field.id}>{renderFieldCard(field, status, original)}</div>;
+                <div className="flex flex-col border border-primary-100 dark:border-primary-900 rounded-3xl overflow-hidden bg-white dark:bg-slate-900/40">
+                    <div className="p-3 bg-primary-50 dark:bg-primary-900/50 font-black text-[9px] uppercase tracking-widest text-primary-600 text-center">Nouvelle Version Proposée</div>
+                    <div className="p-4 overflow-y-auto custom-scrollbar flex-1">
+                        {currentForm.schema.map(f => {
+                            const orig = backupForm?.schema.find(of => of.id === f.id);
+                            const status = !orig ? 'added' : (orig.label !== f.label || orig.type !== f.type) ? 'modified' : 'unchanged';
+                            return <div key={f.id}>{renderFieldCard(f, status, orig)}</div>;
                         })}
                     </div>
                 </div>
@@ -180,328 +97,226 @@ interface ModalProps {
     initialTab?: string;
 }
 
-const translateField = (field: MedicalField) => {
-  switch (field) {
-    case MedicalField.Medicine: return 'Médecine';
-    case MedicalField.Pharmacy: return 'Pharmacie';
-    case MedicalField.Dentistry: return 'Dentaire';
-    case MedicalField.Other: return 'Autre';
-    default: return field;
-  }
-};
-
-const TabButton: React.FC<{ label: string; isActive: boolean; onClick: () => void; }> = ({ label, isActive, onClick }) => (
-    <button onClick={onClick} className={`px-4 py-2 text-sm font-black border-b-2 transition-colors duration-200 uppercase tracking-tight ${isActive ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'}`}>
-        {label}
-    </button>
-);
-
 const StudentManagementModal: React.FC<ModalProps> = ({ student, forms, responses, onClose, onSendNotification, onUpdateUserStatus, onAdminCoinAdjustment, onUnvalidateForm, onRefuseModification, onRevalidationDecision, initialTab = 'info' }) => {
     const [activeTab, setActiveTab] = useState(initialTab);
-    const [coinAmount, setCoinAmount] = useState<string>('');
+    const [coinAmount, setCoinAmount] = useState('');
     const [notificationMessage, setNotificationMessage] = useState('');
-    const [viewingFormResponses, setViewingFormResponses] = useState<Form | null>(null);
-    const [viewingFormStructure, setViewingFormStructure] = useState<Form | null>(null);
-    const [selectedResponseDetail, setSelectedResponseDetail] = useState<FormResponse | null>(null);
     const [viewingFormComparison, setViewingFormComparison] = useState<Form | null>(null);
-    const [confirmation, setConfirmation] = useState<ConfirmationModalProps | null>(null);
-    const [isAiLoading, setIsAiLoading] = useState(false);
+    const [isRefining, setIsRefining] = useState(false);
 
-    useEffect(() => {
-        if (activeTab !== 'forms') {
-            setViewingFormResponses(null);
-            setViewingFormComparison(null);
-            setViewingFormStructure(null);
-            setSelectedResponseDetail(null);
-        }
-    }, [activeTab]);
+    const handleRevalidationApprove = (form: Form) => { if (onRevalidationDecision) onRevalidationDecision(form, true); setViewingFormComparison(null); };
+    const handleRevalidationReject = (form: Form) => { if (onRevalidationDecision) onRevalidationDecision(form, false); setViewingFormComparison(null); };
 
-    const handleCredit = () => {
-        const amount = parseFloat(coinAmount);
-        if (isNaN(amount) || amount <= 0) return;
-        onAdminCoinAdjustment(student.id, amount, TransactionType.Credit);
-        setCoinAmount('');
-    };
-    
-    const handleDebit = () => {
-        const amount = parseFloat(coinAmount);
-        if (isNaN(amount) || amount <= 0) return;
-        onAdminCoinAdjustment(student.id, amount, TransactionType.Debit);
-        setCoinAmount('');
-    };
-
-    const handleSendNotif = () => {
-        if (!notificationMessage.trim()) return;
-        onSendNotification(student.id, notificationMessage);
-        setNotificationMessage('');
-    };
-    
-    const handleAiRefinement = async () => {
-        if (!notificationMessage.trim()) return;
-        setIsAiLoading(true);
+    const handleProfessionalize = async () => {
+        if (!notificationMessage.trim() || isRefining) return;
+        setIsRefining(true);
         try {
-            const improvedText = await generateNotificationRefinement(notificationMessage);
-            setNotificationMessage(improvedText);
+            const refinedText = await generateNotificationRefinement(notificationMessage);
+            setNotificationMessage(refinedText);
         } catch (error) {
-            console.error("AI Error:", error);
+            console.error("Erreur de professionnalisation IA:", error);
         } finally {
-            setIsAiLoading(false);
-        }
-    };
-    
-    const handleUnvalidateClick = (formToUnvalidate: Form) => {
-        setConfirmation({
-            isOpen: true,
-            title: "Accepter la modification",
-            message: `Autoriser l'étudiant à modifier "${formToUnvalidate.title}" ?`,
-            onConfirm: () => {
-                onUnvalidateForm(formToUnvalidate.id);
-                setConfirmation(null);
-            },
-            onClose: () => setConfirmation(null),
-            variant: 'primary',
-            confirmText: 'Autoriser'
-        });
-    };
-
-    const openRefuseModal = (form: Form) => {
-        let reason = "";
-        setConfirmation({
-            isOpen: true,
-            title: "Refuser la demande",
-            message: (
-                <textarea 
-                    className="w-full border-2 border-slate-200 dark:border-slate-700 rounded-2xl p-4 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-4 focus:ring-red-500/10 outline-none transition-all font-bold"
-                    placeholder="Précisez le motif du refus ici..."
-                    rows={4}
-                    onChange={(e) => { reason = e.target.value; }}
-                />
-            ),
-            onConfirm: () => {
-                if (!reason.trim()) return;
-                onRefuseModification(form, reason);
-                setConfirmation(null);
-            },
-            onClose: () => setConfirmation(null),
-            variant: 'danger',
-            confirmText: 'Confirmer le refus'
-        });
-    };
-    
-    const handleRevalidationApprove = (form: Form) => {
-        if (onRevalidationDecision) {
-            onRevalidationDecision(form, true);
-            setViewingFormComparison(null);
+            setIsRefining(false);
         }
     };
 
-    const handleRevalidationReject = (form: Form) => {
-        if (onRevalidationDecision) {
-            onRevalidationDecision(form, false);
-            setViewingFormComparison(null);
-        }
-    };
-
-    const renderInfoTab = () => (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[
-                { label: "Nom complet", value: student.name },
-                { label: "Email", value: student.email },
-                { label: "Université", value: student.university },
-                { label: "Filière", value: `${translateField(student.field)} (${student.studyYear}e année)` },
-                { label: "Téléphone", value: student.phoneNumber },
-                { label: "Inscrit le", value: new Date(student.createdAt).toLocaleDateString() }
-            ].map((item, i) => (
-                <div key={i} className="p-5 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{item.label}</p>
-                    <p className="text-base font-bold text-slate-900 dark:text-white leading-tight">{item.value}</p>
-                </div>
-            ))}
-        </div>
-    );
-
-    const renderResponseDetail = (form: Form, response: FormResponse) => (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-4">
-                <button onClick={() => setSelectedResponseDetail(null)} className="text-xs font-black uppercase text-primary-600 hover:underline">← Revenir aux réponses</button>
-                <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full">Détail complet</span>
-            </div>
-            <div className="space-y-4">
-                {form.schema.filter(f => f.type !== 'note').map(field => (
-                    <div key={field.id} className="p-5 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">{field.label}</p>
-                        <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                            {Array.isArray(response.data[field.id]) ? response.data[field.id].join(', ') : (String(response.data[field.id] ?? 'Non renseigné'))}
-                        </p>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-
-    const renderFormsTab = () => {
-        if (viewingFormComparison) {
-            return (
-                <FormComparisonView 
-                    currentForm={viewingFormComparison} 
-                    backupForm={viewingFormComparison.backupVersion}
-                    onApprove={() => handleRevalidationApprove(viewingFormComparison)}
-                    onReject={() => handleRevalidationReject(viewingFormComparison)}
-                    onBack={() => setViewingFormComparison(null)}
-                />
-            );
-        }
-
-        if (viewingFormStructure) {
-            return <FormStructureView form={viewingFormStructure} onBack={() => setViewingFormStructure(null)} />;
-        }
-
-        if (viewingFormResponses) {
-            if (selectedResponseDetail) return renderResponseDetail(viewingFormResponses, selectedResponseDetail);
-
-            const relevantResponses = responses.filter(r => r.formId === viewingFormResponses.id);
-            return (
-                <div className="space-y-4">
-                    <button onClick={() => setViewingFormResponses(null)} className="text-xs font-black uppercase text-primary-600">← Liste des formulaires</button>
-                    <h4 className="font-black text-slate-800 dark:text-white uppercase tracking-tighter">Réponses pour : {viewingFormResponses.title}</h4>
-                    {relevantResponses.length > 0 ? (
-                        <div className="overflow-x-auto border-2 border-slate-100 dark:border-slate-700 rounded-[2.5rem]">
-                            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-xs">
-                                <thead className="bg-slate-100 dark:bg-slate-800">
-                                    <tr>
-                                        <th className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest">Date de soumission</th>
-                                        <th className="px-6 py-4 text-right font-black text-slate-500 uppercase tracking-widest">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-100 dark:divide-slate-700">
-                                    {relevantResponses.map(r => (
-                                        <tr key={r.id} className="hover:bg-primary-50/30 cursor-pointer transition-colors" onClick={() => setSelectedResponseDetail(r)}>
-                                            <td className="px-6 py-4 whitespace-nowrap text-slate-500 font-bold">{new Date(r.createdAt).toLocaleString()}</td>
-                                            <td className="px-6 py-4 text-right text-primary-600 font-black uppercase text-[9px]">Détail de la réponse</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : <p className="text-center py-20 text-slate-400 italic font-bold uppercase tracking-widest text-xs">Aucune donnée collectée</p>}
-                </div>
-            );
-        }
-
-        return (
-            <div className="space-y-4">
-                {forms.map(form => {
-                    const isRequest = form.status === 'awaiting_modification_decision';
-                    const isReview = form.status === 'pending_revalidation';
-                    
-                    return (
-                        <div key={form.id} className={`p-6 bg-white dark:bg-slate-800 rounded-[2.5rem] border-2 transition-all hover:shadow-2xl group ${
-                            isRequest ? 'border-blue-400 bg-blue-50/5 shadow-blue-500/5' : isReview ? 'border-orange-400 bg-orange-50/5 shadow-orange-500/5' : 'border-slate-100 dark:border-slate-700'
-                        }`}>
-                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-                                <div className="flex-1 min-w-0">
-                                    <h5 className="font-black text-slate-800 dark:text-white text-xl truncate group-hover:text-primary-600 transition-colors leading-tight">{form.title}</h5>
-                                    <div className="flex flex-wrap gap-2 mt-2">
-                                        <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full border-2 ${
-                                            isRequest ? 'bg-blue-100 text-blue-700 border-blue-200' : isReview ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-slate-100 text-slate-500 border-slate-200'
-                                        }`}>
-                                            {form.status.replace(/_/g, ' ')}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3 shrink-0">
-                                    {isRequest ? (
-                                        <>
-                                            <Button onClick={() => handleUnvalidateClick(form)} className="!py-2 !px-5 !text-[10px] font-black uppercase !bg-green-600 shadow-lg shadow-green-500/20">Accepter</Button>
-                                            <Button onClick={() => openRefuseModal(form)} variant="danger" className="!py-2 !px-5 !text-[10px] font-black uppercase shadow-lg shadow-red-500/20">Refuser</Button>
-                                        </>
-                                    ) : isReview ? (
-                                        <Button onClick={() => setViewingFormComparison(form)} className="!py-2 !px-6 !text-[10px] font-black uppercase !bg-orange-500 !text-white !border-none shadow-lg shadow-orange-500/20">Examiner</Button>
-                                    ) : null}
-                                    <Button onClick={() => setViewingFormStructure(form)} variant="secondary" className="!py-2 !px-5 !text-[10px] font-black uppercase">Structure</Button>
-                                    <Button onClick={() => setViewingFormResponses(form)} variant="secondary" className="!py-2 !px-5 !text-[10px] font-black uppercase">Réponses</Button>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-                {forms.length === 0 && <p className="text-center py-20 text-slate-400 font-bold italic bg-slate-50 dark:bg-slate-900/30 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-700 uppercase tracking-widest text-xs">Aucun formulaire</p>}
-            </div>
-        );
-    };
+    const statusInfo = getStatusBadge(student.status);
 
     return (
-        <>
-            <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md flex justify-center items-center z-50 p-4" onClick={onClose}>
-                <div className="bg-white dark:bg-slate-800 rounded-[3rem] shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden animate-scale-up" onClick={e => e.stopPropagation()}>
-                    <header className="p-8 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/10">
-                        <div className="flex items-center space-x-6">
-                            <div className="w-20 h-20 bg-gradient-to-br from-primary-600 to-primary-500 text-white rounded-[2rem] flex items-center justify-center font-black text-3xl shadow-xl shadow-primary-600/30 transform -rotate-3">{student.name.charAt(0)}</div>
-                            <div>
-                                <h3 className="text-3xl font-black text-slate-800 dark:text-white leading-none tracking-tighter">{student.name}</h3>
-                                <p className="text-xs text-slate-500 font-bold uppercase tracking-[0.2em] mt-2 flex items-center gap-3">
-                                    <span className="text-primary-600 dark:text-primary-400">{student.coinBalance.toLocaleString()} Coins</span>
-                                    <span className="text-slate-300">|</span>
-                                    <span className="truncate max-w-[250px]">{student.email}</span>
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex justify-center items-center z-50 p-2 sm:p-4" onClick={onClose}>
+            <div className="bg-white dark:bg-slate-800 rounded-[2.5rem] shadow-2xl w-full max-w-4xl h-full max-h-[90vh] sm:h-auto flex flex-col overflow-hidden animate-scale-up" onClick={e => e.stopPropagation()}>
+                
+                {/* Header Section */}
+                <header className="px-6 py-6 sm:px-8 sm:py-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20 relative shrink-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center space-x-5">
+                            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-primary-600 text-white rounded-2xl flex items-center justify-center font-black text-2xl shadow-glow">
+                                {student.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white leading-none tracking-tighter truncate">{student.name}</h3>
+                                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-black border tracking-widest ${statusInfo.className}`}>
+                                        {statusInfo.text}
+                                    </span>
+                                </div>
+                                <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-widest mt-1.5 flex items-center">
+                                    <CoinIcon className="w-3 h-3 mr-1 text-yellow-500" />
+                                    {student.coinBalance.toLocaleString()} Coins <span className="mx-2 opacity-30">•</span> {student.email}
                                 </p>
                             </div>
                         </div>
-                        <button onClick={onClose} className="p-4 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-3xl transition-all">
-                            <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M6 18L18 6M6 6l12 12" /></svg>
+                        <button onClick={onClose} className="absolute top-4 right-4 sm:static p-2 text-slate-300 hover:text-red-500 transition-all hover:rotate-90">
+                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
-                    </header>
-                    
-                    <nav className="flex px-8 bg-white dark:bg-slate-800 border-b dark:border-slate-700">
-                        <TabButton label="Profil" isActive={activeTab === 'info'} onClick={() => setActiveTab('info')} />
-                        <TabButton label="Formulaires & Réponses" isActive={activeTab === 'forms'} onClick={() => setActiveTab('forms')} />
-                        <TabButton label="Coins & Accès" isActive={activeTab === 'manage'} onClick={() => setActiveTab('manage')} />
-                        <TabButton label="Notification Directe" isActive={activeTab === 'notify'} onClick={() => setActiveTab('notify')} />
-                    </nav>
+                    </div>
+                </header>
+                
+                {/* Navigation Tabs */}
+                <nav className="flex px-6 sm:px-8 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 sticky top-0 z-10 overflow-x-auto no-scrollbar shrink-0">
+                    {[
+                        { id: 'info', label: 'Détails' },
+                        { id: 'forms', label: 'Formulaires' },
+                        { id: 'manage', label: 'Gestion Compte' },
+                        { id: 'notify', label: 'Alerte Directe' }
+                    ].map(tab => (
+                        <button 
+                            key={tab.id} 
+                            onClick={() => setActiveTab(tab.id)} 
+                            className={`px-4 py-4 text-[10px] font-black uppercase tracking-[0.15em] border-b-4 transition-all whitespace-nowrap mr-4 ${activeTab === tab.id ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </nav>
 
-                    <main className="flex-1 p-8 overflow-y-auto bg-white dark:bg-slate-800 custom-scrollbar min-h-0">
-                        {activeTab === 'info' && renderInfoTab()}
-                        {activeTab === 'forms' && renderFormsTab()}
-                        {activeTab === 'manage' && (
-                            <div className="space-y-8">
-                                <div className="p-10 bg-slate-50 dark:bg-slate-900 rounded-[3rem] border-2 border-slate-100 dark:border-slate-800 shadow-inner">
-                                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8 text-center">Ajustement manuel du portefeuille</h4>
-                                    <div className="flex flex-col sm:flex-row gap-6">
-                                        <div className="relative flex-1">
-                                            <input type="number" value={coinAmount} onChange={(e) => setCoinAmount(e.target.value)} placeholder="Montant..." className="w-full bg-white dark:bg-slate-700 border-2 border-slate-100 dark:border-slate-600 rounded-3xl px-8 py-5 font-black text-xl shadow-sm outline-none focus:ring-4 focus:ring-primary-500/10 transition-all text-center" />
-                                        </div>
-                                        <div className="flex gap-3">
-                                            <Button onClick={handleCredit} className="flex-1 !bg-green-600 hover:!bg-green-700 border-none !px-10 font-black uppercase text-xs tracking-[0.1em] shadow-xl shadow-green-500/20">Créditer</Button>
-                                            <Button onClick={handleDebit} variant="secondary" className="flex-1 !text-red-500 !border-red-100 font-black uppercase text-xs tracking-[0.1em] shadow-xl shadow-red-500/10">Débiter</Button>
-                                        </div>
+                {/* Main Content Area */}
+                <main className="flex-1 p-6 sm:p-8 overflow-y-auto custom-scrollbar bg-white dark:bg-slate-800">
+                    {activeTab === 'info' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {[
+                                { label: "Université", value: student.university, icon: "🏫" },
+                                { label: "Année d'étude", value: `${student.studyYear}${student.studyYear === 1 ? 'ère' : 'ème'} Année`, icon: "🎓" },
+                                { label: "Téléphone", value: student.phoneNumber, icon: "📞" },
+                                { label: "Inscrit le", value: new Date(student.createdAt).toLocaleDateString(), icon: "📅" },
+                                { label: "Filière", value: student.field, icon: "🔬" },
+                                { label: "ID Système", value: student.id, icon: "🆔" }
+                            ].map((item, i) => (
+                                <div key={i} className="p-5 bg-slate-50 dark:bg-slate-900/40 rounded-3xl border border-slate-100 dark:border-slate-700/50 flex items-center space-x-4">
+                                    <div className="text-2xl grayscale opacity-50">{item.icon}</div>
+                                    <div>
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{item.label}</p>
+                                        <p className="font-bold text-slate-800 dark:text-slate-200">{item.value}</p>
                                     </div>
                                 </div>
-                                <Button onClick={() => onUpdateUserStatus(student.id, student.status === 'active' ? 'suspended_manual' : 'active')} variant={student.status === 'active' ? 'danger' : 'primary'} className="w-full !py-6 font-black uppercase tracking-[0.3em] text-xs shadow-2xl">
-                                    {student.status === 'active' ? 'Suspendre définitivement le compte' : 'Réactiver l\'accès étudiant'}
+                            ))}
+                        </div>
+                    )}
+
+                    {activeTab === 'forms' && (
+                        viewingFormComparison ? (
+                            <FormComparisonView 
+                                currentForm={viewingFormComparison} 
+                                backupForm={viewingFormComparison.backupVersion} 
+                                onApprove={() => handleRevalidationApprove(viewingFormComparison)} 
+                                onReject={() => handleRevalidationReject(viewingFormComparison)} 
+                                onBack={() => setViewingFormComparison(null)} 
+                            />
+                        ) : (
+                            <div className="space-y-3">
+                                {forms.length > 0 ? forms.map(form => (
+                                    <div key={form.id} className="p-4 sm:p-5 bg-white dark:bg-slate-900/20 border border-slate-100 dark:border-slate-700 rounded-3xl flex justify-between items-center group hover:border-primary-200 dark:hover:border-primary-800 transition-all shadow-sm">
+                                        <div className="min-w-0 pr-4">
+                                            <h5 className="font-black text-slate-800 dark:text-white truncate">{form.title}</h5>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border ${form.status === 'pending_revalidation' ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
+                                                    {form.status.replace(/_/g, ' ')}
+                                                </span>
+                                                <span className="text-[9px] text-slate-400 font-bold">{new Date(form.createdAt).toLocaleDateString()}</span>
+                                            </div>
+                                        </div>
+                                        <div className="shrink-0">
+                                            {form.status === 'pending_revalidation' ? (
+                                                <Button onClick={() => setViewingFormComparison(form)} className="!py-2 !px-4 !text-[9px] font-black uppercase tracking-widest shadow-glow">Examiner</Button>
+                                            ) : (
+                                                <div className="p-2 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M9 5l7 7-7 7" strokeWidth="3"/></svg>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )) : (
+                                    <div className="text-center py-16">
+                                        <div className="text-4xl mb-4 opacity-20">📂</div>
+                                        <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">Aucun formulaire trouvé</p>
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    )}
+
+                    {activeTab === 'manage' && (
+                        <div className="space-y-6 max-w-2xl mx-auto">
+                            <div className="p-8 bg-slate-50 dark:bg-slate-900/40 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-inner">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 text-center">Ajustement du Solde</h4>
+                                <div className="flex flex-col sm:flex-row gap-4">
+                                    <div className="relative flex-1">
+                                        <input 
+                                            type="number" 
+                                            value={coinAmount} 
+                                            onChange={(e) => setCoinAmount(e.target.value)} 
+                                            placeholder="Montant (ex: 500)" 
+                                            className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-2xl px-5 py-4 font-black text-lg outline-none focus:ring-4 focus:ring-primary-500/10 transition-all text-center sm:text-left" 
+                                        />
+                                        <CoinIcon className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 text-yellow-400 opacity-50" />
+                                    </div>
+                                    <div className="flex gap-2 shrink-0">
+                                        <Button onClick={() => { onAdminCoinAdjustment(student.id, parseFloat(coinAmount), TransactionType.Credit); setCoinAmount(''); }} className="!bg-green-600 !py-4 flex-1 sm:flex-none px-6 font-black uppercase text-[10px] tracking-widest">Créditer</Button>
+                                        <Button onClick={() => { onAdminCoinAdjustment(student.id, parseFloat(coinAmount), TransactionType.Debit); setCoinAmount(''); }} variant="secondary" className="!text-red-500 !border-red-100 !bg-red-50 !py-4 flex-1 sm:flex-none px-6 font-black uppercase text-[10px] tracking-widest">Débiter</Button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-slate-100 dark:border-slate-700 justify-center">
+                                <div className="p-4 rounded-3xl bg-red-50/50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 w-full sm:max-w-md">
+                                    <h5 className="text-[9px] font-black text-red-600 uppercase mb-3 px-1 text-center">Zone de Sécurité</h5>
+                                    <Button 
+                                        onClick={() => onUpdateUserStatus(student.id, student.status === 'active' ? 'suspended_manual' : 'active')} 
+                                        variant={student.status === 'active' ? 'danger' : 'primary'} 
+                                        className="w-full !py-4 font-black uppercase text-[10px] tracking-widest"
+                                    >
+                                        {student.status === 'active' ? 'Suspendre Compte' : 'Réactiver Compte'}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'notify' && (
+                        <div className="space-y-4 max-w-2xl mx-auto">
+                            <div className="bg-primary-50/30 dark:bg-primary-900/10 p-4 rounded-2xl mb-2 flex items-start gap-3">
+                                <span className="text-xl">💡</span>
+                                <p className="text-xs text-primary-700 dark:text-primary-300 leading-relaxed font-medium">Ce message sera affiché dans le centre de notifications de l'étudiant. Soyez clair et professionnel.</p>
+                            </div>
+                            <div className="relative">
+                                <textarea 
+                                    value={notificationMessage} 
+                                    onChange={(e) => setNotificationMessage(e.target.value)} 
+                                    placeholder="Tapez votre message ici..." 
+                                    className="w-full h-48 bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-700 outline-none focus:ring-4 focus:ring-primary-500/10 font-medium text-slate-800 dark:text-slate-200 shadow-inner resize-none" 
+                                    disabled={isRefining}
+                                />
+                                {isRefining && (
+                                    <div className="absolute inset-0 bg-white/40 dark:bg-slate-800/40 backdrop-blur-[2px] rounded-[2rem] flex items-center justify-center">
+                                        <div className="flex flex-col items-center">
+                                            <Spinner className="w-8 h-8 text-primary-600" />
+                                            <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-primary-600">DASS peaufine votre message...</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
+                                <button 
+                                    onClick={handleProfessionalize}
+                                    disabled={!notificationMessage.trim() || isRefining}
+                                    className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest text-primary-600 hover:text-primary-700 transition-colors disabled:opacity-30"
+                                >
+                                    <span className="text-base">✨</span>
+                                    <span>Professionaliser avec l'IA</span>
+                                </button>
+                                <Button 
+                                    onClick={() => { onSendNotification(student.id, notificationMessage); setNotificationMessage(''); }} 
+                                    disabled={!notificationMessage.trim() || isRefining}
+                                    className="w-full sm:w-auto !py-4 !px-10 font-black uppercase text-xs tracking-[0.2em] shadow-glow"
+                                >
+                                    Envoyer l'alerte
                                 </Button>
                             </div>
-                        )}
-                        {activeTab === 'notify' && (
-                            <div className="space-y-8">
-                                <div className="relative group">
-                                    <textarea value={notificationMessage} onChange={(e) => setNotificationMessage(e.target.value)} placeholder="Rédigez votre message à l'attention de l'étudiant..." className="w-full h-56 bg-slate-50 dark:bg-slate-900 rounded-[3rem] p-10 border-2 border-slate-100 dark:border-slate-800 shadow-inner outline-none focus:ring-4 focus:ring-primary-500/10 transition-all font-bold text-slate-700 dark:text-slate-200 text-lg" />
-                                    <div className="absolute top-6 right-10 flex items-center gap-2 text-[10px] font-black text-primary-500 uppercase tracking-widest opacity-50 group-focus-within:opacity-100 transition-opacity">
-                                        <span className="w-2.5 h-2.5 bg-primary-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(20,184,166,1)]"></span>
-                                        Système IA Prêt
-                                    </div>
-                                </div>
-                                <div className="flex flex-col sm:flex-row justify-between gap-6">
-                                    <button onClick={handleAiRefinement} disabled={isAiLoading} className="text-[11px] font-black text-primary-600 uppercase tracking-widest flex items-center gap-3 hover:bg-primary-50 p-4 rounded-3xl transition-all shadow-sm bg-white dark:bg-slate-800 border-2 border-primary-50 dark:border-primary-900/30">
-                                        {isAiLoading ? <Spinner className="w-4 h-4"/> : "✨"} <span>Professionnaliser par IA</span>
-                                    </button>
-                                    <Button onClick={handleSendNotif} disabled={!notificationMessage.trim()} className="!px-14 font-black uppercase tracking-[0.2em] text-xs shadow-2xl shadow-primary-500/30">Envoyer maintenant</Button>
-                                </div>
-                            </div>
-                        )}
-                    </main>
-                </div>
+                        </div>
+                    )}
+                </main>
             </div>
-            {confirmation && <ConfirmationModal {...confirmation} />}
-        </>
+        </div>
     );
 };
 

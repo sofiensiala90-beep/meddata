@@ -23,17 +23,17 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
             {icon}
         </div>
         <div className="min-w-0">
-            <p className="text-[10px] sm:text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate">{title}</p>
-            <p className="text-xl sm:text-3xl font-black text-slate-800 dark:text-white truncate tracking-tighter leading-tight">{value}</p>
+            <p className="text-[10px] sm:text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider truncate">{title}</p>
+            <p className="text-xl sm:text-3xl font-bold text-slate-800 dark:text-white truncate leading-tight">{value}</p>
         </div>
     </div>
 );
 
 const QuickAccessButton: React.FC<{title: string; description: string; onClick: () => void;}> = ({title, description, onClick}) => (
      <button onClick={onClick} className="text-left w-full p-4 sm:p-5 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-transparent hover:border-primary-200 dark:hover:border-primary-900 transition-all group">
-        <h4 className="font-black text-sm sm:text-base text-slate-800 dark:text-white uppercase tracking-tight group-hover:text-primary-600 transition-colors">{title}</h4>
+        <h4 className="font-bold text-sm sm:text-base text-slate-800 dark:text-white group-hover:text-primary-600 transition-colors">{title}</h4>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">{description}</p>
-        <div className="mt-4 text-[10px] font-black uppercase text-primary-600 tracking-widest flex items-center">
+        <div className="mt-4 text-[10px] font-bold uppercase text-primary-600 tracking-widest flex items-center">
             Commencer <span className="ml-1 group-hover:translate-x-1 transition-transform">→</span>
         </div>
     </button>
@@ -60,10 +60,10 @@ const RecentActivityList: React.FC<{ activities: Activity[]; users?: User[] }> =
                     </div>
                     <div className="min-w-0 flex-1">
                         <p className="text-xs text-slate-800 dark:text-slate-200 leading-snug">
-                            {users ? <span className="font-black uppercase text-[10px] text-primary-600 dark:text-primary-400 block mb-0.5">{getUserName(activity.userId)}</span> : null}
+                            {users ? <span className="font-semibold uppercase text-[10px] text-primary-600 dark:text-primary-400 block mb-0.5">{getUserName(activity.userId)}</span> : null}
                             {activity.details}
                         </p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">
+                        <p className="text-[9px] font-medium text-slate-400 uppercase mt-1">
                             {new Date(activity.createdAt).toLocaleDateString()} • {new Date(activity.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
                         </p>
                     </div>
@@ -82,13 +82,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, tr
 
         return (
             <div className="space-y-6 max-w-7xl mx-auto pb-10">
-                <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Administration</h2>
+                <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Tableau de bord</h2>
                 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
                     <StatCard title="Étudiants" value={studentCount} icon={<StudentsIcon className="h-6 w-6 sm:h-8 sm:w-8" />} />
                     <StatCard title="Formulaires" value={forms.length} icon={<FormsIcon className="h-6 w-6 sm:h-8 sm:w-8" />} />
-                    <StatCard title="Réponses" value={responses.length} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 sm:h-8 sm:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2-0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>} />
-                    <StatCard title="Transactions" value={totalDebit.toLocaleString()} icon={<CoinIcon className="h-6 w-6 sm:h-8 sm:w-8" />} />
+                    <StatCard title="Réponses" value={responses.length} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 sm:h-8 sm:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2-2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>} />
+                    <StatCard title="Volume Coins" value={totalDebit.toLocaleString()} icon={<CoinIcon className="h-6 w-6 sm:h-8 sm:w-8" />} />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -101,7 +101,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, tr
                     </Card>
                     <Card title="Activité Récente">
                         <RecentActivityList activities={sortedActivities} users={users} />
-                        <button onClick={() => onNavigate && onNavigate('activite')} className="w-full mt-4 text-[10px] font-black uppercase text-primary-600 hover:underline tracking-widest text-center">Historique complet →</button>
+                        <button onClick={() => onNavigate && onNavigate('activite')} className="w-full mt-4 text-[10px] font-bold uppercase text-primary-600 hover:underline tracking-widest text-center">Historique complet →</button>
                     </Card>
                 </div>
             </div>
@@ -117,8 +117,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, tr
     return (
         <div className="space-y-6 max-w-7xl mx-auto pb-10">
             <div className="flex flex-col gap-1">
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-primary-600 dark:text-primary-400">MedataAI System</p>
-                <h2 className="text-3xl sm:text-5xl font-black text-slate-900 dark:text-white uppercase tracking-tighter leading-none">Bonjour, {user.name.split(' ')[0]}</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary-600 dark:text-primary-400">DASS System</p>
+                <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white leading-tight">Bonjour, {user.name.split(' ')[0]}</h2>
             </div>
 
             {isSuspended && (
@@ -128,9 +128,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, tr
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                          </div>
                         <div>
-                            <h3 className="text-base font-black uppercase text-red-800 dark:text-red-300">Compte Suspendu</h3>
+                            <h3 className="text-base font-bold text-red-800 dark:text-red-300">Compte Suspendu</h3>
                             <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Votre accès est limité. Veuillez recharger pour réactiver.</p>
-                            <Button variant="danger" className="mt-3 !py-2 !px-4 !text-[10px] font-black uppercase tracking-widest" onClick={() => onNavigate && onNavigate('portefeuille')}>Aller au Portefeuille</Button>
+                            <Button variant="danger" className="mt-3 !py-2 !px-4 !text-[10px] font-bold uppercase tracking-widest" onClick={() => onNavigate && onNavigate('portefeuille')}>Aller au Portefeuille</Button>
                         </div>
                     </div>
                 </Card>
@@ -148,7 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, forms, responses, users, tr
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <QuickAccessButton title="Créer" description="Nouveau formulaire d'étude." onClick={() => onNavigate && onNavigate('formulaires')} />
                         <QuickAccessButton title="Analyser" description="Insights IA sur vos données." onClick={() => onNavigate && onNavigate('analyse')} />
-                        <QuickAccessButton title="Wallet" description="Gérer vos transactions." onClick={() => onNavigate && onNavigate('portefeuille')} />
+                        <QuickAccessButton title="Portefeuille" description="Gérer vos transactions." onClick={() => onNavigate && onNavigate('portefeuille')} />
                     </div>
                 </Card>
                 <Card title="Mon Activité">
